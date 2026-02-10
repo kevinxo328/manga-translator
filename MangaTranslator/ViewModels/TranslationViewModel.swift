@@ -12,9 +12,7 @@ final class TranslationViewModel: ObservableObject {
     @Published var batchProgress: (completed: Int, total: Int) = (0, 0)
     @Published var preferences = PreferencesService()
 
-    private let ocrService = VisionOCRService()
-    private let bubbleDetector = BubbleDetector()
-    private let readingOrderSorter = ReadingOrderSorter()
+    private let ocrRouter = OCRRouter()
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
 
@@ -128,9 +126,7 @@ final class TranslationViewModel: ObservableObject {
                 return
             }
 
-            let observations = try await ocrService.recognizeText(in: nsImage, sourceLanguage: preferences.sourceLanguage)
-            let bubbles = bubbleDetector.detectBubbles(from: observations)
-            let ordered = readingOrderSorter.sort(bubbles)
+            let ordered = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
 
             // Translate
             let translated = try await translationService.translate(

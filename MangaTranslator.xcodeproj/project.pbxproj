@@ -28,6 +28,21 @@
 		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050; };
 		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060; };
 		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061; };
+		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
+		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001; };
+		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002; };
+		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003; };
+		D10000010000000000000004 /* MangaOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000004; };
+		D10000010000000000000005 /* OCRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000005; };
+		D10000010000000000000010 /* comic-text-detector.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000010; };
+		D10000010000000000000011 /* encoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000011; };
+		D10000010000000000000012 /* decoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000012; };
+		D10000010000000000000013 /* vocab.txt in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000013; };
+		D10000010000000000000014 /* preprocessor_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000014; };
+		D10000010000000000000015 /* generation_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000015; };
+		D10000010000000000000016 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000016; };
+		D10000010000000000000017 /* config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000017; };
+		D10000010000000000000018 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000018; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +69,20 @@
 		A20000010000000000000050 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000060 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		A20000010000000000000061 /* TranslationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSidebar.swift; sourceTree = "<group>"; };
+		D20000010000000000000001 /* ComicTextDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorService.swift; sourceTree = "<group>"; };
+		D20000010000000000000002 /* MangaOCRTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTokenizer.swift; sourceTree = "<group>"; };
+		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
+		D20000010000000000000004 /* MangaOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRService.swift; sourceTree = "<group>"; };
+		D20000010000000000000005 /* OCRRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouter.swift; sourceTree = "<group>"; };
+		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
+		D20000010000000000000011 /* encoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = encoder_model.onnx; sourceTree = "<group>"; };
+		D20000010000000000000012 /* decoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = decoder_model.onnx; sourceTree = "<group>"; };
+		D20000010000000000000013 /* vocab.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = vocab.txt; sourceTree = "<group>"; };
+		D20000010000000000000014 /* preprocessor_config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = preprocessor_config.json; sourceTree = "<group>"; };
+		D20000010000000000000015 /* generation_config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = generation_config.json; sourceTree = "<group>"; };
+		D20000010000000000000016 /* tokenizer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer.json; sourceTree = "<group>"; };
+		D20000010000000000000017 /* config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = config.json; sourceTree = "<group>"; };
+		D20000010000000000000018 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,6 +90,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C10000010000000000000003 /* onnxruntime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +115,7 @@
 				A40000010000000000000004 /* Models */,
 				A40000010000000000000005 /* ViewModels */,
 				A40000010000000000000006 /* Services */,
+				D40000010000000000000001 /* Resources */,
 			);
 			path = MangaTranslator;
 			sourceTree = "<group>";
@@ -132,8 +163,37 @@
 				A20000010000000000000040 /* KeychainService.swift */,
 				A20000010000000000000041 /* PreferencesService.swift */,
 				A20000010000000000000042 /* FileInputService.swift */,
+				D20000010000000000000001 /* ComicTextDetectorService.swift */,
+				D20000010000000000000002 /* MangaOCRTokenizer.swift */,
+				D20000010000000000000003 /* MangaOCRRecognizer.swift */,
+				D20000010000000000000004 /* MangaOCRService.swift */,
+				D20000010000000000000005 /* OCRRouter.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		D40000010000000000000001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D40000010000000000000002 /* Models */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		D40000010000000000000002 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D20000010000000000000010 /* comic-text-detector.onnx */,
+				D20000010000000000000011 /* encoder_model.onnx */,
+				D20000010000000000000012 /* decoder_model.onnx */,
+				D20000010000000000000013 /* vocab.txt */,
+				D20000010000000000000014 /* preprocessor_config.json */,
+				D20000010000000000000015 /* generation_config.json */,
+				D20000010000000000000016 /* tokenizer.json */,
+				D20000010000000000000017 /* config.json */,
+				D20000010000000000000018 /* special_tokens_map.json */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000009 /* Products */ = {
@@ -160,6 +220,9 @@
 			dependencies = (
 			);
 			name = MangaTranslator;
+			packageProductDependencies = (
+				C10000010000000000000001 /* onnxruntime */,
+			);
 			productName = MangaTranslator;
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
 			productType = "com.apple.product-type.application";
@@ -190,6 +253,9 @@
 			mainGroup = A40000010000000000000001;
 			productRefGroup = A40000010000000000000009 /* Products */;
 			projectDirPath = "";
+			packageReferences = (
+				C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+			);
 			projectRoot = "";
 			targets = (
 				A50000010000000000000001 /* MangaTranslator */,
@@ -203,6 +269,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000004 /* Assets.xcassets in Resources */,
+				D10000010000000000000010 /* comic-text-detector.onnx in Resources */,
+				D10000010000000000000011 /* encoder_model.onnx in Resources */,
+				D10000010000000000000012 /* decoder_model.onnx in Resources */,
+				D10000010000000000000013 /* vocab.txt in Resources */,
+				D10000010000000000000014 /* preprocessor_config.json in Resources */,
+				D10000010000000000000015 /* generation_config.json in Resources */,
+				D10000010000000000000016 /* tokenizer.json in Resources */,
+				D10000010000000000000017 /* config.json in Resources */,
+				D10000010000000000000018 /* special_tokens_map.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -233,6 +308,11 @@
 				A10000010000000000000019 /* TranslationViewModel.swift in Sources */,
 				A10000010000000000000020 /* ImageViewer.swift in Sources */,
 				A10000010000000000000021 /* TranslationSidebar.swift in Sources */,
+				D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */,
+				D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */,
+				D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */,
+				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
+				D10000010000000000000005 /* OCRRouter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -429,6 +509,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
+			requirement = {
+				kind = exactVersion;
+				version = "1.20.0";
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C10000010000000000000001 /* onnxruntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
+			productName = onnxruntime;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = A90000010000000000000001 /* Project object */;
