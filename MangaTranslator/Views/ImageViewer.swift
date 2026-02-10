@@ -6,7 +6,6 @@ struct ImageViewer: View {
     let translations: [TranslatedBubble]
     @Binding var highlightedBubbleIndex: Int?
     @State private var imageSize: CGSize = .zero
-    @State private var hoveredBubbleIndex: Int? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -44,13 +43,8 @@ struct ImageViewer: View {
                     BubbleOverlay(
                         rect: rect,
                         index: bubble.index,
-                        isHighlighted: highlightedBubbleIndex == bubble.index,
-                        isHovered: hoveredBubbleIndex == bubble.index,
-                        translatedText: bubble.translatedText
+                        isHighlighted: highlightedBubbleIndex == bubble.index
                     )
-                    .onHover { hovering in
-                        hoveredBubbleIndex = hovering ? bubble.index : nil
-                    }
                 }
             }
         }
@@ -78,8 +72,6 @@ struct BubbleOverlay: View {
     let rect: CGRect
     let index: Int
     let isHighlighted: Bool
-    let isHovered: Bool
-    let translatedText: String
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -100,10 +92,5 @@ struct BubbleOverlay: View {
                 .offset(x: -8, y: -8)
         }
         .position(x: rect.midX, y: rect.midY)
-        .popover(isPresented: .constant(isHovered), arrowEdge: .bottom) {
-            Text(translatedText)
-                .padding(8)
-                .frame(maxWidth: 250)
-        }
     }
 }

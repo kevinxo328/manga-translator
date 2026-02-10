@@ -31,7 +31,11 @@ struct ContentView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                Task { await handleInput(url) }
+                let granted = url.startAccessingSecurityScopedResource()
+                Task {
+                    await handleInput(url)
+                    if granted { url.stopAccessingSecurityScopedResource() }
+                }
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in

@@ -8,11 +8,13 @@ enum FileInputService {
         guard let enumerator = fm.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+            options: [.skipsHiddenFiles]
         ) else { return [] }
 
         var imageURLs: [URL] = []
         for case let fileURL as URL in enumerator {
+            // Skip __MACOSX metadata folder commonly found in zip archives
+            if fileURL.pathComponents.contains("__MACOSX") { continue }
             if imageExtensions.contains(fileURL.pathExtension.lowercased()) {
                 imageURLs.append(fileURL)
             }
