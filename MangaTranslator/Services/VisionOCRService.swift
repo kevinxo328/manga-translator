@@ -2,14 +2,14 @@ import Vision
 import AppKit
 
 struct VisionOCRService {
-    func recognizeText(in image: NSImage) async throws -> [TextObservation] {
+    func recognizeText(in image: NSImage, sourceLanguage: Language = .ja) async throws -> [TextObservation] {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw OCRError.invalidImage
         }
-        return try await recognizeText(in: cgImage)
+        return try await recognizeText(in: cgImage, sourceLanguage: sourceLanguage)
     }
 
-    func recognizeText(in cgImage: CGImage) async throws -> [TextObservation] {
+    func recognizeText(in cgImage: CGImage, sourceLanguage: Language = .ja) async throws -> [TextObservation] {
         let imageWidth = CGFloat(cgImage.width)
         let imageHeight = CGFloat(cgImage.height)
 
@@ -27,6 +27,9 @@ struct VisionOCRService {
 
                 let observations = results.compactMap { observation -> TextObservation? in
                     guard let candidate = observation.topCandidates(1).first else { return nil }
+
+                    // Filter out low confidence results
+                    guard candidate.confidence > 0.15 else { return nil }
 
                     let box = observation.boundingBox
                     let imageRect = CGRect(
@@ -47,8 +50,26 @@ struct VisionOCRService {
             }
 
             request.recognitionLevel = .accurate
-            request.recognitionLanguages = ["ja", "en", "zh-Hant"]
             request.usesLanguageCorrection = true
+
+            // Prioritize the user's source language
+            let languages: [String]
+            switch sourceLanguage {
+            case .ja:
+                languages = ["ja", "zh-Hant", "en"]
+            case .zhHant:
+                languages = ["zh-Hant", "ja", "en"]
+            case .en:
+                languages = ["en", "ja", "zh-Hant"]
+            }
+            request.recognitionLanguages = languages
+
+            // Filter out very small text (noise) — fraction of image height
+            request.minimumTextHeight = 0.01
+
+            if #available(macOS 14.0, *) {
+                request.automaticallyDetectsLanguage = true
+            }
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {

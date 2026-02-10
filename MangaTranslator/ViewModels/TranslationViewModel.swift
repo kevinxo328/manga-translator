@@ -128,7 +128,7 @@ final class TranslationViewModel: ObservableObject {
                 return
             }
 
-            let observations = try await ocrService.recognizeText(in: nsImage)
+            let observations = try await ocrService.recognizeText(in: nsImage, sourceLanguage: preferences.sourceLanguage)
             let bubbles = bubbleDetector.detectBubbles(from: observations)
             let ordered = readingOrderSorter.sort(bubbles)
 
