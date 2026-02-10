@@ -50,26 +50,8 @@ struct VisionOCRService {
             }
 
             request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-
-            // Prioritize the user's source language
-            let languages: [String]
-            switch sourceLanguage {
-            case .ja:
-                languages = ["ja", "zh-Hant", "en"]
-            case .zhHant:
-                languages = ["zh-Hant", "ja", "en"]
-            case .en:
-                languages = ["en", "ja", "zh-Hant"]
-            }
-            request.recognitionLanguages = languages
-
-            // Filter out very small text (noise) — fraction of image height
-            request.minimumTextHeight = 0.01
-
-            if #available(macOS 14.0, *) {
-                request.automaticallyDetectsLanguage = true
-            }
+            request.usesLanguageCorrection = false
+            request.recognitionLanguages = [sourceLanguage.visionLanguageCode]
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {

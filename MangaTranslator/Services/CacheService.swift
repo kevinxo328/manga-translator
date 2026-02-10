@@ -111,6 +111,10 @@ final class CacheService {
         sqlite3_step(stmt)
     }
 
+    func clearAll() {
+        sqlite3_exec(db, "DELETE FROM translation_cache", nil, nil, nil)
+    }
+
     func addHistory(path: String, pageCount: Int?) {
         let sql = """
         INSERT OR REPLACE INTO history (file_path, page_count, last_opened)

@@ -154,6 +154,13 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
+    func clearCacheAndResetPages() {
+        cacheService.clearAll()
+        for i in pages.indices {
+            pages[i].state = .pending
+        }
+    }
+
     func retranslateCurrentPage() async {
         await translatePage(at: currentPageIndex)
     }

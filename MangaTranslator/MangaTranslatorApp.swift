@@ -2,9 +2,11 @@ import SwiftUI
 
 @main
 struct MangaTranslatorApp: App {
+    @StateObject private var viewModel = TranslationViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: viewModel)
         }
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -16,7 +18,7 @@ struct MangaTranslatorApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(onClearCache: viewModel.clearCacheAndResetPages)
         }
     }
 }

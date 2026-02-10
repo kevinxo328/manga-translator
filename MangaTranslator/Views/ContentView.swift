@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var viewModel = TranslationViewModel()
+    @ObservedObject var viewModel: TranslationViewModel
     @State private var showFileImporter = false
 
     var body: some View {

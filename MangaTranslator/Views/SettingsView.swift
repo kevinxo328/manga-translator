@@ -3,11 +3,13 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var preferences = PreferencesService()
     private let keychainService = KeychainService()
+    var onClearCache: (() -> Void)?
 
     @State private var deepLKey = ""
     @State private var googleKey = ""
     @State private var openAIKey = ""
     @State private var claudeKey = ""
+    @State private var showClearCacheAlert = false
 
     var body: some View {
         TabView {
@@ -90,9 +92,31 @@ struct SettingsView: View {
             } header: {
                 Label("Translation Defaults", systemImage: "gear")
             }
+
+            if onClearCache != nil {
+                Section {
+                    Button(role: .destructive) {
+                        showClearCacheAlert = true
+                    } label: {
+                        Label("Clear Cache", systemImage: "trash")
+                    }
+                } header: {
+                    Label("Cache", systemImage: "internaldrive")
+                } footer: {
+                    Text("Removes all cached translations. Pages will be re-translated on next run.")
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
+        .alert("Clear Cache", isPresented: $showClearCacheAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                onClearCache?()
+            }
+        } message: {
+            Text("This will delete all cached translation results. This action cannot be undone.")
+        }
     }
 
     private func loadKeys() {
