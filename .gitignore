@@ -1,4 +1,14 @@
-.venv
-__pycache__
-*.pyc
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+
+# macOS
 .DS_Store
+
+# Python (legacy)
+.venv/
+__pycache__/
+*.pyc
