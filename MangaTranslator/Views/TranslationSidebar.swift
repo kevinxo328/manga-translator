@@ -6,61 +6,104 @@ struct TranslationSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Header
             Text("Translations")
-                .font(.headline)
-                .padding()
+                .font(.system(.title2, design: .rounded).bold())
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial)
+                .zIndex(1)
 
-            if translations.isEmpty {
-                Text("No translations yet")
-                    .foregroundColor(.secondary)
-                    .padding()
-                Spacer()
-            } else {
-                List(translations.sorted(by: { $0.index < $1.index })) { bubble in
-                    TranslationRow(
-                        bubble: bubble,
-                        isHighlighted: highlightedBubbleIndex == bubble.index
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        highlightedBubbleIndex = highlightedBubbleIndex == bubble.index ? nil : bubble.index
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if translations.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(translations.sorted(by: { $0.index < $1.index })) { bubble in
+                            TranslationCard(
+                                bubble: bubble,
+                                isHighlighted: highlightedBubbleIndex == bubble.index
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3)) {
+                                    if highlightedBubbleIndex == bubble.index {
+                                        highlightedBubbleIndex = nil
+                                    } else {
+                                        highlightedBubbleIndex = bubble.index
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                .listStyle(.plain)
+                .padding(16)
             }
         }
-        .frame(minWidth: 250, idealWidth: 300)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(minWidth: 300, idealWidth: 350)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.largeTitle)
+                .foregroundColor(.secondary.opacity(0.5))
+            Text("No translations yet")
+                .font(.callout)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
     }
 }
 
-struct TranslationRow: View {
+struct TranslationCard: View {
     let bubble: TranslatedBubble
     let isHighlighted: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("\(bubble.index + 1)")
-                    .font(.caption.bold())
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.orange))
+        HStack(alignment: .top, spacing: 12) {
+            // Index Badge
+            Text("\(bubble.index + 1)")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(isHighlighted ? .white : .secondary)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(isHighlighted ? Color.accentColor : Color.secondary.opacity(0.2))
+                )
+
+            // Content
+            VStack(alignment: .leading, spacing: 6) {
+                Text(bubble.translatedText)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
 
                 Text(bubble.bubble.text)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(2)
             }
-
-            Text(bubble.translatedText)
-                .font(.body)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHighlighted ? Color.blue.opacity(0.1) : Color.clear)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(
+                    color: .black.opacity(isHighlighted ? 0.15 : 0.05),
+                    radius: isHighlighted ? 8 : 4,
+                    x: 0,
+                    y: isHighlighted ? 4 : 2
+                )
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isHighlighted ? Color.accentColor : Color.clear, lineWidth: 2)
+        )
+        .scaleEffect(isHighlighted ? 1.02 : 1.0)
     }
 }

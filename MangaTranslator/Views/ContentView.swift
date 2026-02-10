@@ -53,81 +53,165 @@ struct ContentView: View {
             handlePaste(providers)
         }
         .keyboardShortcut(.init("o"), modifiers: .command)
+        // Bubble Navigation Shortcuts
+        .background(
+            Button("") {
+                navigateBubbles(direction: 1)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [])
+            .hidden()
+        )
+        .background(
+            Button("") {
+                navigateBubbles(direction: -1)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [])
+            .hidden()
+        )
+    }
+
+    private func navigateBubbles(direction: Int) {
+        let translations = viewModel.currentTranslations
+        guard !translations.isEmpty else { return }
+        
+        // Sort bubbles to ensure logical order matches visual order
+        let sorted = translations.sorted(by: { $0.index < $1.index })
+        let indices = sorted.map { $0.index }
+        
+        if let current = viewModel.highlightedBubbleIndex, let currentIndexInSorted = indices.firstIndex(of: current) {
+            let nextIndexInSorted = currentIndexInSorted + direction
+            if nextIndexInSorted >= 0 && nextIndexInSorted < indices.count {
+                viewModel.highlightedBubbleIndex = indices[nextIndexInSorted]
+            }
+        } else {
+            // If nothing selected, select first (for down) or last (for up)
+            if direction > 0 {
+                viewModel.highlightedBubbleIndex = indices.first
+            } else {
+                viewModel.highlightedBubbleIndex = indices.last
+            }
+        }
     }
 
     @ViewBuilder
     private func imageContent(for page: MangaPage) -> some View {
-        switch page.state {
-        case .pending, .processing:
-            VStack {
-                ImageViewer(
-                    imageURL: page.imageURL,
-                    translations: [],
-                    highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
-                )
-                if case .processing = page.state {
-                    ProgressView("Translating...")
-                        .padding()
-                }
+        let currentBubbles: [TranslatedBubble] = {
+            if case .translated(let bubbles) = page.state {
+                return bubbles
             }
-        case .translated(let bubbles):
+            return []
+        }()
+
+        ZStack {
+            // Base Image Layer
             ImageViewer(
                 imageURL: page.imageURL,
-                translations: bubbles,
+                translations: currentBubbles,
                 highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
             )
-        case .error(let message):
-            VStack {
-                ImageViewer(
-                    imageURL: page.imageURL,
-                    translations: [],
-                    highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
-                )
-                Text(message)
-                    .foregroundColor(.red)
-                    .padding()
+
+            // Overlays
+            switch page.state {
+            case .processing:
+                ZStack {
+                    Color.black.opacity(0.3)
+                    
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("Translating...")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(24)
+                    .background(.regularMaterial)
+                    .cornerRadius(12)
+                }
+            
+            case .error(let message):
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    Text("Translation Failed")
+                        .font(.headline)
+                    Text(message)
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(.regularMaterial)
+                .cornerRadius(12)
+                .padding()
+                
+            default:
+                EmptyView()
             }
         }
     }
 
     private var dropZone: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.badge.plus")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
-            Text("Drop image, folder, or archive here")
-                .font(.title3)
-                .foregroundColor(.secondary)
-            Text("Or press \u{2318}O to open")
-                .font(.caption)
-                .foregroundColor(Color(nsColor: .tertiaryLabelColor))
+        ZStack {
+            Color(nsColor: .controlBackgroundColor)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.1))
+                        .frame(width: 120, height: 120)
+                    
+                    Image(systemName: "arrow.up.doc.on.clipboard")
+                        .font(.system(size: 48))
+                        .foregroundColor(.accentColor)
+                }
+
+                VStack(spacing: 8) {
+                    Text("Drag and Drop Manga Here")
+                        .font(.title2.bold())
+                        .foregroundColor(.primary)
+                    
+                    Text("Supports Images, Folders, CBZ, and ZIP")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+
+                Text("Or press \u{2318}O to browse files")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+            }
+            .padding(40)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
+                    .foregroundColor(.secondary.opacity(0.3))
+            )
+            .padding(40)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             Button(action: { showFileImporter = true }) {
-                Label("Open", systemImage: "folder")
+                Label("Open", systemImage: "plus.rectangle.on.folder")
             }
+            .help("Open image, folder or archive")
         }
 
         if viewModel.pages.count > 1 {
             ToolbarItem {
-                HStack {
+                ControlGroup {
                     Button(action: { viewModel.previousPage() }) {
-                        Image(systemName: "chevron.left")
+                        Label("Previous", systemImage: "chevron.left")
                     }
                     .disabled(viewModel.currentPageIndex == 0)
                     .keyboardShortcut(.leftArrow, modifiers: [])
 
-                    Text("Page \(viewModel.currentPageIndex + 1)/\(viewModel.pages.count)")
-                        .monospacedDigit()
-
                     Button(action: { viewModel.nextPage() }) {
-                        Image(systemName: "chevron.right")
+                        Label("Next", systemImage: "chevron.right")
                     }
                     .disabled(viewModel.currentPageIndex >= viewModel.pages.count - 1)
                     .keyboardShortcut(.rightArrow, modifiers: [])
@@ -135,45 +219,116 @@ struct ContentView: View {
             }
 
             ToolbarItem {
-                let (completed, total) = viewModel.batchProgress
-                if total > 0 {
-                    Text("\(completed)/\(total) translated")
-                        .font(.caption)
+                HStack(spacing: 4) {
+                    Text("\(viewModel.currentPageIndex + 1)")
+                        .fontWeight(.bold)
+                    Text("/")
+                        .foregroundColor(.secondary)
+                    Text("\(viewModel.pages.count)")
                         .foregroundColor(.secondary)
                 }
+                .font(.subheadline.monospacedDigit())
+                .padding(.horizontal, 12) // Increased from 8
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.secondary.opacity(0.12)))
             }
-        }
 
-        ToolbarItem {
-            Picker("From", selection: $viewModel.preferences.sourceLanguage) {
-                ForEach(Language.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+            ToolbarItem {
+                let (completed, total) = viewModel.batchProgress
+                if total > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("\(completed)/\(total)")
+                    }
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 4)
                 }
             }
-            .frame(width: 140)
         }
 
-        ToolbarItem {
-            Image(systemName: "arrow.right")
-                .foregroundColor(.secondary)
-        }
+        ToolbarItem(placement: .primaryAction) {
+            HStack(spacing: 12) {
+                // Language Pair
+                HStack(spacing: 0) {
+                    Menu {
+                        Picker("Source", selection: $viewModel.preferences.sourceLanguage) {
+                            ForEach(Language.allCases) { lang in
+                                Text(lang.displayName).tag(lang)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Text(viewModel.preferences.sourceLanguage.displayName)
+                            .font(.subheadline)
+                            .frame(width: 80, alignment: .center)
+                    }
+                    .buttonStyle(.plain)
 
-        ToolbarItem {
-            Picker("To", selection: $viewModel.preferences.targetLanguage) {
-                ForEach(Language.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 0)
+
+                    Menu {
+                        Picker("Target", selection: $viewModel.preferences.targetLanguage) {
+                            ForEach(Language.allCases) { lang in
+                                Text(lang.displayName).tag(lang)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Text(viewModel.preferences.targetLanguage.displayName)
+                            .font(.subheadline.bold())
+                            .frame(width: 80, alignment: .center)
+                    }
+                    .buttonStyle(.plain)
                 }
-            }
-            .frame(width: 140)
-        }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(
+                    Capsule()
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                )
 
-        ToolbarItem {
-            Picker("Engine", selection: $viewModel.preferences.translationEngine) {
-                ForEach(TranslationEngine.allCases) { engine in
-                    Text(engine.displayName).tag(engine)
+                // Engine
+                HStack(spacing: 0) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 10)
+                    
+                    Menu {
+                        Picker("Engine", selection: $viewModel.preferences.translationEngine) {
+                            ForEach(TranslationEngine.allCases) { engine in
+                                Text(engine.displayName).tag(engine)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Text(viewModel.preferences.translationEngine.displayName)
+                            .font(.subheadline)
+                            .frame(width: 85, alignment: .leading)
+                            .padding(.leading, 4)
+                    }
+                    .buttonStyle(.plain)
                 }
+                .frame(height: 28)
+                .background(
+                    Capsule()
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                )
             }
-            .frame(width: 120)
+            .controlSize(.small)
             .onChange(of: viewModel.preferences.translationEngine) { _ in
                 Task { await viewModel.retranslateCurrentPage() }
             }

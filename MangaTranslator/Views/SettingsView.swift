@@ -23,29 +23,46 @@ struct SettingsView: View {
 
     private var apiKeysTab: some View {
         Form {
-            Section("DeepL") {
+            Section {
                 SecureField("API Key", text: $deepLKey)
+                    .textFieldStyle(.roundedBorder)
                     .onChange(of: deepLKey) { newValue in
                         saveKey(newValue, for: .deepL)
                     }
+            } header: {
+                Label("DeepL", systemImage: "globe.europe.africa")
+            } footer: {
+                Text("Required for DeepL translation.")
             }
-            Section("Google Translate") {
+
+            Section {
                 SecureField("API Key", text: $googleKey)
+                    .textFieldStyle(.roundedBorder)
                     .onChange(of: googleKey) { newValue in
                         saveKey(newValue, for: .google)
                     }
+            } header: {
+                Label("Google Translate", systemImage: "g.circle")
             }
-            Section("OpenAI") {
+
+            Section {
                 SecureField("API Key", text: $openAIKey)
+                    .textFieldStyle(.roundedBorder)
                     .onChange(of: openAIKey) { newValue in
                         saveKey(newValue, for: .openAI)
                     }
+            } header: {
+                Label("OpenAI", systemImage: "brain")
             }
-            Section("Anthropic (Claude)") {
+
+            Section {
                 SecureField("API Key", text: $claudeKey)
+                    .textFieldStyle(.roundedBorder)
                     .onChange(of: claudeKey) { newValue in
                         saveKey(newValue, for: .claude)
                     }
+            } header: {
+                Label("Anthropic (Claude)", systemImage: "sparkles")
             }
         }
         .formStyle(.grouped)
@@ -54,20 +71,24 @@ struct SettingsView: View {
 
     private var preferencesTab: some View {
         Form {
-            Picker("Source Language", selection: $preferences.sourceLanguage) {
-                ForEach(Language.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+            Section {
+                Picker("Source Language", selection: $preferences.sourceLanguage) {
+                    ForEach(Language.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
                 }
-            }
-            Picker("Target Language", selection: $preferences.targetLanguage) {
-                ForEach(Language.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+                Picker("Target Language", selection: $preferences.targetLanguage) {
+                    ForEach(Language.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
                 }
-            }
-            Picker("Translation Engine", selection: $preferences.translationEngine) {
-                ForEach(TranslationEngine.allCases) { engine in
-                    Text(engine.displayName).tag(engine)
+                Picker("Translation Engine", selection: $preferences.translationEngine) {
+                    ForEach(TranslationEngine.allCases) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
                 }
+            } header: {
+                Label("Translation Defaults", systemImage: "gear")
             }
         }
         .formStyle(.grouped)
