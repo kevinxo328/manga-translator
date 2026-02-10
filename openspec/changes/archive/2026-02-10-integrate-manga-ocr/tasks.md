@@ -29,7 +29,7 @@
 
 ## 5. Testing & Validation
 
-- [ ] 5.1 Test manga-ocr pipeline with the test_image.jpg (One Piece page) — verify vertical text is detected and recognized
+- [x] 5.1 Test manga-ocr pipeline with the test_image.jpg (One Piece page) — verify vertical text is detected and recognized
 - [x] 5.2 Test Vision OCR fallback with English source language — verify existing behavior is preserved (code review: OCRRouter routes non-ja to VisionOCRService, no changes to Vision path)
 - [x] 5.3 Test model loading failure gracefully falls back to Vision OCR (code review: OCRRouter catches errors and falls back)
-- [ ] 5.4 Verify end-to-end: OCR → translation pipeline works with manga-ocr output
+- [x] 5.4 Verify end-to-end: OCR → translation pipeline works with manga-ocr output
