@@ -124,11 +124,15 @@ final class TranslationViewModel: ObservableObject {
 
         pages[index].state = .processing
 
+        let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+
         do {
-            guard keychainService.hasKey(for: preferences.translationEngine) else {
-                showMissingKeyAlert = true
-                pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
-                return
+            if needsTranslation {
+                guard keychainService.hasKey(for: preferences.translationEngine) else {
+                    showMissingKeyAlert = true
+                    pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
+                    return
+                }
             }
 
             let imageURL = pages[index].imageURL
@@ -168,12 +172,24 @@ final class TranslationViewModel: ObservableObject {
             // OCR
             let ordered = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
 
-            // Translate
-            let translated = try await translationService.translate(
-                bubbles: ordered,
-                from: preferences.sourceLanguage,
-                to: preferences.targetLanguage
-            )
+            // Skip translation if source == target or all bubbles are punctuation-only
+            let translated: [TranslatedBubble]
+            if preferences.sourceLanguage == preferences.targetLanguage || ordered.allSatisfy({ $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }) {
+                translated = ordered.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+            } else {
+                // Filter out punctuation-only bubbles from translation
+                let toTranslate = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+                let punctuationOnly = ordered.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+
+                let translatedResults = try await translationService.translate(
+                    bubbles: toTranslate,
+                    from: preferences.sourceLanguage,
+                    to: preferences.targetLanguage
+                )
+
+                let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+                translated = (translatedResults + passthrough).sorted { $0.index < $1.index }
+            }
 
             // Cache
             cacheService.store(
@@ -206,20 +222,35 @@ final class TranslationViewModel: ObservableObject {
         guard pages.indices.contains(index),
               case .translated(let existing) = pages[index].state else { return }
 
-        guard keychainService.hasKey(for: preferences.translationEngine) else {
-            showMissingKeyAlert = true
-            return
+        let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+
+        if needsTranslation {
+            guard keychainService.hasKey(for: preferences.translationEngine) else {
+                showMissingKeyAlert = true
+                return
+            }
         }
 
         let bubbles = existing.map { $0.bubble }
         pages[index].state = .processing
 
         do {
-            let translated = try await translationService.translate(
-                bubbles: bubbles,
-                from: preferences.sourceLanguage,
-                to: preferences.targetLanguage
-            )
+            let translated: [TranslatedBubble]
+            if preferences.sourceLanguage == preferences.targetLanguage || bubbles.allSatisfy({ $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }) {
+                translated = bubbles.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+            } else {
+                let toTranslate = bubbles.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+                let punctuationOnly = bubbles.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+
+                let translatedResults = try await translationService.translate(
+                    bubbles: toTranslate,
+                    from: preferences.sourceLanguage,
+                    to: preferences.targetLanguage
+                )
+
+                let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+                translated = (translatedResults + passthrough).sorted { $0.index < $1.index }
+            }
 
             // Cache
             let imageURL = pages[index].imageURL
