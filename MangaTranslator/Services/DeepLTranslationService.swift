@@ -34,7 +34,8 @@ struct DeepLTranslationService: TranslationService {
     private func translateText(
         _ text: String, from source: Language, to target: Language, apiKey: String
     ) async throws -> String {
-        let url = URL(string: "https://api-free.deepl.com/v2/translate")!
+        let host = apiKey.hasSuffix(":fx") ? "api-free.deepl.com" : "api.deepl.com"
+        let url = URL(string: "https://\(host)/v2/translate")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("DeepL-Auth-Key \(apiKey)", forHTTPHeaderField: "Authorization")
