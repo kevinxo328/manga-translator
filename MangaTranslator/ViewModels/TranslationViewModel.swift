@@ -26,6 +26,11 @@ final class TranslationViewModel: ObservableObject {
         return bubbles
     }
 
+    var isCurrentPageProcessing: Bool {
+        guard let page = currentPage, case .processing = page.state else { return false }
+        return true
+    }
+
     var translationService: TranslationService {
         switch preferences.translationEngine {
         case .deepL: return DeepLTranslationService(keychainService: keychainService)
@@ -159,6 +164,45 @@ final class TranslationViewModel: ObservableObject {
 
     func retranslateCurrentPage() async {
         await translatePage(at: currentPageIndex)
+    }
+
+    func retranslateFromOCR() async {
+        let index = currentPageIndex
+        guard pages.indices.contains(index),
+              case .translated(let existing) = pages[index].state else { return }
+
+        guard keychainService.hasKey(for: preferences.translationEngine) else {
+            showMissingKeyAlert = true
+            return
+        }
+
+        let bubbles = existing.map { $0.bubble }
+        pages[index].state = .processing
+
+        do {
+            let translated = try await translationService.translate(
+                bubbles: bubbles,
+                from: preferences.sourceLanguage,
+                to: preferences.targetLanguage
+            )
+
+            let imageURL = pages[index].imageURL
+            if let imageData = try? Data(contentsOf: imageURL) {
+                let imageHash = CacheService.imageHash(data: imageData)
+                cacheService.store(
+                    imageHash: imageHash,
+                    source: preferences.sourceLanguage,
+                    target: preferences.targetLanguage,
+                    engine: preferences.translationEngine,
+                    bubbles: translated
+                )
+            }
+
+            pages[index].state = .translated(translated)
+        } catch {
+            pages[index].state = .translated(existing)
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Navigation

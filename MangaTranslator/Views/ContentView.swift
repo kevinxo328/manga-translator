@@ -20,7 +20,11 @@ struct ContentView: View {
             // Right: Sidebar
             TranslationSidebar(
                 translations: viewModel.currentTranslations,
-                highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
+                highlightedBubbleIndex: $viewModel.highlightedBubbleIndex,
+                isProcessing: viewModel.isCurrentPageProcessing,
+                onRetranslate: {
+                    Task { await viewModel.retranslateFromOCR() }
+                }
             )
         }
         .frame(minWidth: 800, minHeight: 600)

@@ -3,17 +3,37 @@ import SwiftUI
 struct TranslationSidebar: View {
     let translations: [TranslatedBubble]
     @Binding var highlightedBubbleIndex: Int?
+    var isProcessing: Bool = false
+    var onRetranslate: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Text("Translations")
-                .font(.system(.title2, design: .rounded).bold())
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial)
-                .zIndex(1)
+            HStack {
+                Text("Translations")
+                    .font(.system(.title2, design: .rounded).bold())
+
+                Spacer()
+
+                if let onRetranslate, !translations.isEmpty {
+                    Button(action: onRetranslate) {
+                        if isProcessing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("Re-translate", systemImage: "arrow.trianglehead.2.counterclockwise")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isProcessing)
+                    .help("Re-translate using current settings")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial)
+            .zIndex(1)
 
             ScrollView {
                 LazyVStack(spacing: 12) {
