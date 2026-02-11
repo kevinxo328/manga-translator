@@ -7,42 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000010000000000000001 /* MangaTranslatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001; };
-		A10000010000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002; };
-		A10000010000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003; };
-		A10000010000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004; };
-		A10000010000000000000005 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020; };
-		A10000010000000000000006 /* VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030; };
-		A10000010000000000000007 /* BubbleDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031; };
-		A10000010000000000000008 /* ReadingOrderSorter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032; };
-		A10000010000000000000009 /* LLMPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033; };
-		A10000010000000000000010 /* TranslationError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000034; };
-		A10000010000000000000011 /* DeepLTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000035; };
-		A10000010000000000000012 /* GoogleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000036; };
-		A10000010000000000000013 /* OpenAITranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000037; };
-		A10000010000000000000014 /* ClaudeTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000038; };
-		A10000010000000000000015 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000039; };
-		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040; };
-		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041; };
-		A10000010000000000000018 /* FileInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042; };
-		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050; };
-		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060; };
-		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061; };
+		A10000010000000000000001 /* MangaTranslatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* MangaTranslatorApp.swift */; };
+		A10000010000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* ContentView.swift */; };
+		A10000010000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* SettingsView.swift */; };
+		A10000010000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* Assets.xcassets */; };
+		A10000010000000000000005 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* Models.swift */; };
+		A10000010000000000000006 /* VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* VisionOCRService.swift */; };
+		A10000010000000000000007 /* BubbleDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* BubbleDetector.swift */; };
+		A10000010000000000000008 /* ReadingOrderSorter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* ReadingOrderSorter.swift */; };
+		A10000010000000000000009 /* LLMPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033 /* LLMPrompt.swift */; };
+		A10000010000000000000010 /* TranslationError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000034 /* TranslationError.swift */; };
+		A10000010000000000000011 /* DeepLTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000035 /* DeepLTranslationService.swift */; };
+		A10000010000000000000012 /* GoogleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000036 /* GoogleTranslationService.swift */; };
+		A10000010000000000000013 /* OpenAITranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000037 /* OpenAITranslationService.swift */; };
+		A10000010000000000000014 /* ClaudeTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000038 /* ClaudeTranslationService.swift */; };
+		A10000010000000000000015 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000039 /* CacheService.swift */; };
+		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* KeychainService.swift */; };
+		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* PreferencesService.swift */; };
+		A10000010000000000000018 /* FileInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* FileInputService.swift */; };
+		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050 /* TranslationViewModel.swift */; };
+		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* ImageViewer.swift */; };
+		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061 /* TranslationSidebar.swift */; };
 		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
-		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001; };
-		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002; };
-		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003; };
-		D10000010000000000000004 /* MangaOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000004; };
-		D10000010000000000000005 /* OCRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000005; };
-		D10000010000000000000010 /* comic-text-detector.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000010; };
-		D10000010000000000000011 /* encoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000011; };
-		D10000010000000000000012 /* decoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000012; };
-		D10000010000000000000013 /* vocab.txt in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000013; };
-		D10000010000000000000014 /* preprocessor_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000014; };
-		D10000010000000000000015 /* generation_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000015; };
-		D10000010000000000000016 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000016; };
-		D10000010000000000000017 /* config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000017; };
-		D10000010000000000000018 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000018; };
+		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* ComicTextDetectorService.swift */; };
+		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002 /* MangaOCRTokenizer.swift */; };
+		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003 /* MangaOCRRecognizer.swift */; };
+		D10000010000000000000004 /* MangaOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000004 /* MangaOCRService.swift */; };
+		D10000010000000000000005 /* OCRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000005 /* OCRRouter.swift */; };
+		D10000010000000000000010 /* comic-text-detector.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000010 /* comic-text-detector.onnx */; };
+		D10000010000000000000011 /* encoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000011 /* encoder_model.onnx */; };
+		D10000010000000000000012 /* decoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000012 /* decoder_model.onnx */; };
+		D10000010000000000000013 /* vocab.txt in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000013 /* vocab.txt */; };
+		D10000010000000000000014 /* preprocessor_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000014 /* preprocessor_config.json */; };
+		D10000010000000000000015 /* generation_config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000015 /* generation_config.json */; };
+		D10000010000000000000016 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000016 /* tokenizer.json */; };
+		D10000010000000000000017 /* config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000017 /* config.json */; };
+		D10000010000000000000018 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000018 /* special_tokens_map.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -172,6 +172,14 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		A40000010000000000000009 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000010 /* MangaTranslator.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		D40000010000000000000001 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -194,14 +202,6 @@
 				D20000010000000000000018 /* special_tokens_map.json */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		A40000010000000000000009 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A20000010000000000000010 /* MangaTranslator.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -251,11 +251,11 @@
 				Base,
 			);
 			mainGroup = A40000010000000000000001;
-			productRefGroup = A40000010000000000000009 /* Products */;
-			projectDirPath = "";
 			packageReferences = (
 				C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
 			);
+			productRefGroup = A40000010000000000000009 /* Products */;
+			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				A50000010000000000000001 /* MangaTranslator */,
@@ -444,16 +444,16 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Chun-Wei Liu. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslator;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -470,19 +470,21 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Chun-Wei Liu. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslator;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -516,7 +518,7 @@
 			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
 			requirement = {
 				kind = exactVersion;
-				version = "1.20.0";
+				version = 1.20.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -528,7 +530,6 @@
 			productName = onnxruntime;
 		};
 /* End XCSwiftPackageProductDependency section */
-
 	};
 	rootObject = A90000010000000000000001 /* Project object */;
 }

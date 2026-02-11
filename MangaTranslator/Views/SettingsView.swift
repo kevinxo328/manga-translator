@@ -172,37 +172,8 @@ struct SettingsView: View {
     }
 
     private var aboutTab: some View {
-        VStack(spacing: 16) {
-            Spacer()
-
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 96, height: 96)
-
-            Text("MangaTranslator")
-                .font(.title.bold())
-
-            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
-                .foregroundStyle(.secondary)
-
-            Text("© 2026 Chun-Wei Liu. All rights reserved.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 24) {
-                Link(destination: URL(string: "mailto:kevinxo328@gmail.com")!) {
-                    Label("kevinxo328@gmail.com", systemImage: "envelope")
-                }
-                Link(destination: URL(string: "https://github.com/kevinxo328")!) {
-                    Label("GitHub", systemImage: "link")
-                }
-            }
-            .font(.callout)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+        AboutView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func loadKeys() {
@@ -233,5 +204,43 @@ struct SettingsView: View {
         } else {
             keychainService.store(key, for: engine)
         }
+    }
+}
+
+struct AboutView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 80, height: 80)
+
+            VStack(spacing: 4) {
+                Text("MangaTranslator")
+                    .font(.title2.bold())
+                
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("© 2026 Chun-Wei Liu. All rights reserved.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+                .padding(.vertical, 8)
+
+            VStack(spacing: 12) {
+                Link(destination: URL(string: "mailto:kevinxo328@gmail.com")!) {
+                    Label("kevinxo328@gmail.com", systemImage: "envelope")
+                }
+                Link(destination: URL(string: "https://github.com/kevinxo328")!) {
+                    Label("GitHub", systemImage: "link")
+                }
+            }
+            .font(.callout)
+        }
+        .padding(24)
+        .frame(width: 300)
     }
 }

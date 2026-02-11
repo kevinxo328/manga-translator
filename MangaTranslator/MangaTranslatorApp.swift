@@ -9,11 +9,18 @@ struct MangaTranslatorApp: App {
             ContentView(viewModel: viewModel)
         }
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            CommandGroup(replacing: .appInfo) {
+                Button("About MangaTranslator") {
+                    let aboutWindow = NSWindow(
+                        contentRect: NSRect(x: 0, y: 0, width: 300, height: 350),
+                        styleMask: [.titled, .closable, .fullSizeContentView],
+                        backing: .buffered, defer: false)
+                    aboutWindow.title = "About MangaTranslator"
+                    aboutWindow.center()
+                    aboutWindow.isReleasedWhenClosed = false
+                    aboutWindow.contentView = NSHostingView(rootView: AboutView())
+                    aboutWindow.makeKeyAndOrderFront(nil)
                 }
-                .keyboardShortcut(",", modifiers: .command)
             }
         }
 
