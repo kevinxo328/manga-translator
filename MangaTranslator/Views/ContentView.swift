@@ -181,7 +181,7 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Text("Or press \u{2318}O to browse files")
+                Text("Click here or press \u{2318}O to browse files")
                     .font(.callout)
                     .foregroundColor(.secondary)
                     .padding(.top, 8)
@@ -192,6 +192,10 @@ struct ContentView: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
                     .foregroundColor(.secondary.opacity(0.3))
             )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showFileImporter = true
+            }
             .padding(40)
         }
     }
