@@ -3,9 +3,11 @@ import Foundation
 struct OpenAITranslationService: TranslationService {
     let engine = TranslationEngine.openAI
     private let keychainService: KeychainService
+    private let model: String
     private let maxRetries = 2
 
-    init(keychainService: KeychainService = KeychainService()) {
+    init(model: String, keychainService: KeychainService = KeychainService()) {
+        self.model = model
         self.keychainService = keychainService
     }
 
@@ -45,10 +47,10 @@ struct OpenAITranslationService: TranslationService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt]

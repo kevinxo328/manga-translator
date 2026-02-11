@@ -3,9 +3,11 @@ import Foundation
 struct ClaudeTranslationService: TranslationService {
     let engine = TranslationEngine.claude
     private let keychainService: KeychainService
+    private let model: String
     private let maxRetries = 2
 
-    init(keychainService: KeychainService = KeychainService()) {
+    init(model: String, keychainService: KeychainService = KeychainService()) {
+        self.model = model
         self.keychainService = keychainService
     }
 
@@ -46,10 +48,10 @@ struct ClaudeTranslationService: TranslationService {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "model": "claude-sonnet-4-5-20250929",
+            "model": model,
             "max_tokens": 4096,
             "system": systemPrompt,
             "messages": [

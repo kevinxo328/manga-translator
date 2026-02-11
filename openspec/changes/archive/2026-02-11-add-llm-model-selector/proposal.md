@@ -5,6 +5,8 @@ LLM model names are currently hardcoded in translation services (`claude-sonnet-
 ## What Changes
 
 - Add an LLM model selector UI in the API Keys tab of SettingsView, displayed below each LLM provider's API key input (OpenAI and Claude)
+- Support manual model identifier entry for power users or unlisted models
+- Update predefined OpenAI models to GPT-5 series
 - Add model preference persistence via UserDefaults in PreferencesService
 - Pass the selected model to LLM translation services instead of using hardcoded values
 

@@ -44,6 +44,30 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+struct LLMModel: Identifiable, Hashable, Codable {
+    let id: String
+    let displayName: String
+    let apiIdentifier: String
+    
+    init(displayName: String, apiIdentifier: String) {
+        self.id = apiIdentifier
+        self.displayName = displayName
+        self.apiIdentifier = apiIdentifier
+    }
+}
+
+extension TranslationEngine {
+    static let openAIModels = [
+        LLMModel(displayName: "GPT-5 Turbo", apiIdentifier: "gpt-5-turbo"),
+        LLMModel(displayName: "GPT-5", apiIdentifier: "gpt-5")
+    ]
+    
+    static let claudeModels = [
+        LLMModel(displayName: "Claude Sonnet 4.5", apiIdentifier: "claude-sonnet-4-5-20250929"),
+        LLMModel(displayName: "Claude Haiku 3.5", apiIdentifier: "claude-3-5-haiku-20241022")
+    ]
+}
+
 struct TextObservation: Identifiable {
     let id = UUID()
     let boundingBox: CGRect

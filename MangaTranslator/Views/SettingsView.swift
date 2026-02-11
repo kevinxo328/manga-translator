@@ -10,6 +10,11 @@ struct SettingsView: View {
     @State private var openAIKey = ""
     @State private var claudeKey = ""
     @State private var showClearCacheAlert = false
+    
+    @State private var selectedOpenAIModel: String = ""
+    @State private var selectedClaudeModel: String = ""
+    @State private var customOpenAIModel: String = ""
+    @State private var customClaudeModel: String = ""
 
     var body: some View {
         TabView {
@@ -53,6 +58,28 @@ struct SettingsView: View {
                     .onChange(of: openAIKey) { newValue in
                         saveKey(newValue, for: .openAI)
                     }
+                
+                Picker("Model", selection: $selectedOpenAIModel) {
+                    ForEach(TranslationEngine.openAIModels) { model in
+                        Text(model.displayName).tag(model.apiIdentifier)
+                    }
+                    Text("Custom...").tag("custom")
+                }
+                .onChange(of: selectedOpenAIModel) { newValue in
+                    if newValue != "custom" {
+                        preferences.openAIModel = newValue
+                    } else {
+                        preferences.openAIModel = customOpenAIModel
+                    }
+                }
+                
+                if selectedOpenAIModel == "custom" {
+                    TextField("Model ID", text: $customOpenAIModel)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: customOpenAIModel) { newValue in
+                            preferences.openAIModel = newValue
+                        }
+                }
             } header: {
                 Label("OpenAI", systemImage: "brain")
             }
@@ -63,6 +90,28 @@ struct SettingsView: View {
                     .onChange(of: claudeKey) { newValue in
                         saveKey(newValue, for: .claude)
                     }
+                
+                Picker("Model", selection: $selectedClaudeModel) {
+                    ForEach(TranslationEngine.claudeModels) { model in
+                        Text(model.displayName).tag(model.apiIdentifier)
+                    }
+                    Text("Custom...").tag("custom")
+                }
+                .onChange(of: selectedClaudeModel) { newValue in
+                    if newValue != "custom" {
+                        preferences.claudeModel = newValue
+                    } else {
+                        preferences.claudeModel = customClaudeModel
+                    }
+                }
+                
+                if selectedClaudeModel == "custom" {
+                    TextField("Model ID", text: $customClaudeModel)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: customClaudeModel) { newValue in
+                            preferences.claudeModel = newValue
+                        }
+                }
             } header: {
                 Label("Anthropic (Claude)", systemImage: "sparkles")
             }
@@ -124,6 +173,21 @@ struct SettingsView: View {
         googleKey = keychainService.retrieve(for: .google) ?? ""
         openAIKey = keychainService.retrieve(for: .openAI) ?? ""
         claudeKey = keychainService.retrieve(for: .claude) ?? ""
+        
+        // Initialize model selection states
+        if let _ = TranslationEngine.openAIModels.first(where: { $0.apiIdentifier == preferences.openAIModel }) {
+            selectedOpenAIModel = preferences.openAIModel
+        } else {
+            selectedOpenAIModel = "custom"
+            customOpenAIModel = preferences.openAIModel
+        }
+        
+        if let _ = TranslationEngine.claudeModels.first(where: { $0.apiIdentifier == preferences.claudeModel }) {
+            selectedClaudeModel = preferences.claudeModel
+        } else {
+            selectedClaudeModel = "custom"
+            customClaudeModel = preferences.claudeModel
+        }
     }
 
     private func saveKey(_ key: String, for engine: TranslationEngine) {

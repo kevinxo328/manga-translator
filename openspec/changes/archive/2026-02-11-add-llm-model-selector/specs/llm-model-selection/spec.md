@@ -40,4 +40,12 @@ Each LLM provider has a curated list of available models.
 
 #### Scenario: OpenAI model options
 - **WHEN** the user opens the OpenAI model picker
-- **THEN** the available options include at least: GPT-4o mini, GPT-4o
+- **THEN** the available options include at least: GPT-5, GPT-5 Turbo
+
+### Requirement: Manual model identifier input
+Users can enter a custom model identifier if it's not in the predefined list.
+
+#### Scenario: User enters custom model
+- **WHEN** the user selects "Custom..." from the model picker
+- **THEN** a text field appears for manual entry
+- **THEN** the entered value is used for API calls and persisted

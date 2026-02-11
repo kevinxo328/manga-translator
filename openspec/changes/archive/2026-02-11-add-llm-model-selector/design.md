@@ -18,9 +18,11 @@ LLM models are hardcoded in `ClaudeTranslationService` (`claude-sonnet-4-5-20250
 
 ## Decisions
 
-1. **Model list as enum cases**: Define available models as static arrays on `TranslationEngine` or a new `LLMModel` helper. This keeps the model list in the data layer close to the engine definition. Each entry has a `displayName` and `apiIdentifier`.
+1. **Model list as enum cases**: Define available models as static arrays on `TranslationEngine` or a new `LLMModel` helper. OpenAI models should be updated to GPT-5 series.
 
-2. **Picker placement**: Place a `Picker` directly below each LLM API key's `SecureField` in the API Keys tab. Only show for engines where `isLLM` is true. This keeps related config together without adding a new tab.
+2. **Picker placement**: Place a `Picker` directly below each LLM API key's `SecureField` in the API Keys tab. Add a "Custom..." option to the picker.
+
+3. **Manual Input**: If "Custom..." (or a flag) is selected, show a `TextField` for manual `apiIdentifier` entry. Bind this field to the same `PreferencesService` model property.
 
 3. **PreferencesService storage**: Add `claudeModel` and `openAIModel` properties to `PreferencesService`, persisted via UserDefaults with sensible defaults matching the current hardcoded values.
 
