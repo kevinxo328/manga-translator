@@ -35,7 +35,11 @@ EXPORT_PATH="${BUILD_DIR}/export"
 mkdir -p "$EXPORT_PATH"
 cp -R "${BUILD_DIR}/${PROJECT_NAME}.xcarchive/Products/Applications/${PROJECT_NAME}.app" "$EXPORT_PATH/"
 
-# 5. Package into DMG using hdiutil
+# 5. Ad-hoc code sign the app to prevent "damaged" error on macOS
+echo "🔏 Ad-hoc signing the app..."
+codesign --force --deep --sign - "$EXPORT_PATH/${PROJECT_NAME}.app"
+
+# 6. Package into DMG using hdiutil
 echo "💿 Generating DMG..."
 DMG_FILENAME="${PROJECT_NAME}-${VERSION}.dmg"
 hdiutil create -volname "${PROJECT_NAME}" -srcfolder "$EXPORT_PATH" -ov -format UDZO "${BUILD_DIR}/${DMG_FILENAME}"
