@@ -103,12 +103,14 @@ final class TranslationViewModel: ObservableObject {
                 started += 1
 
                 group.addTask { [weak self] in
-                    await self?.translatePage(at: i)
+                    guard let self else { return }
+                    await self.translatePage(at: i)
                     await MainActor.run {
-                        self?.batchProgress.0 = (self?.pages.filter {
+                        let count = self.pages.filter {
                             if case .translated = $0.state { return true }
                             return false
-                        }.count) ?? 0
+                        }.count
+                        self.batchProgress.0 = count
                     }
                 }
             }
