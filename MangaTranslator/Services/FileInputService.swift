@@ -46,6 +46,20 @@ enum FileInputService {
 
         return tempDir
     }
+
+    static func copyToTemp(_ url: URL) throws -> URL {
+        let fm = FileManager.default
+        let tempDir = fm.temporaryDirectory
+            .appendingPathComponent("MangaTranslator")
+            .appendingPathComponent(UUID().uuidString)
+        
+        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        let destURL = tempDir.appendingPathComponent(url.lastPathComponent)
+        try fm.copyItem(at: url, to: destURL)
+        
+        return destURL
+    }
 }
 
 enum FileInputError: LocalizedError {

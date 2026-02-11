@@ -43,7 +43,19 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Single image
 
     func loadImage(_ url: URL) async {
-        pages = [MangaPage(imageURL: url)]
+        let isSecurityScoped = url.startAccessingSecurityScopedResource()
+        // Copy to temp to ensure accessibility after security scope is revoked
+        let processedURL: URL
+        do {
+            processedURL = try FileInputService.copyToTemp(url)
+        } catch {
+            processedURL = url
+        }
+        if isSecurityScoped {
+            url.stopAccessingSecurityScopedResource()
+        }
+        
+        pages = [MangaPage(imageURL: processedURL)]
         currentPageIndex = 0
         await translatePage(at: 0)
     }
@@ -51,8 +63,12 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Batch
 
     func loadFolder(_ url: URL) async {
+        let isSecurityScoped = url.startAccessingSecurityScopedResource()
         let imageURLs = FileInputService.scanFolder(url)
         pages = imageURLs.map { MangaPage(imageURL: $0) }
+        if isSecurityScoped {
+            url.stopAccessingSecurityScopedResource()
+        }
         currentPageIndex = 0
         batchProgress = (0, pages.count)
         cacheService.addHistory(path: url.path, pageCount: pages.count)
@@ -60,10 +76,17 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func loadArchive(_ url: URL) async {
+        let isSecurityScoped = url.startAccessingSecurityScopedResource()
         do {
             let extractedURL = try FileInputService.extractArchive(url)
+            if isSecurityScoped {
+                url.stopAccessingSecurityScopedResource()
+            }
             await loadFolder(extractedURL)
         } catch {
+            if isSecurityScoped {
+                url.stopAccessingSecurityScopedResource()
+            }
             errorMessage = "Failed to extract archive: \(error.localizedDescription)"
         }
     }
@@ -107,6 +130,8 @@ final class TranslationViewModel: ObservableObject {
             }
 
             let imageURL = pages[index].imageURL
+            
+            // Get image data for hashing
             guard let imageData = try? Data(contentsOf: imageURL) else {
                 pages[index].state = .error("Failed to read image file")
                 return
@@ -125,12 +150,20 @@ final class TranslationViewModel: ObservableObject {
                 return
             }
 
-            // OCR
-            guard let nsImage = NSImage(contentsOf: imageURL) else {
-                pages[index].state = .error("Failed to load image")
-                return
+            // Load image if not already cached
+            let nsImage: NSImage
+            if let cached = pages[index].image {
+                nsImage = cached
+            } else {
+                guard let loaded = NSImage(contentsOf: imageURL) else {
+                    pages[index].state = .error("Failed to load image")
+                    return
+                }
+                pages[index].image = loaded
+                nsImage = loaded
             }
 
+            // OCR
             let ordered = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
 
             // Translate
@@ -186,6 +219,7 @@ final class TranslationViewModel: ObservableObject {
                 to: preferences.targetLanguage
             )
 
+            // Cache
             let imageURL = pages[index].imageURL
             if let imageData = try? Data(contentsOf: imageURL) {
                 let imageHash = CacheService.imageHash(data: imageData)

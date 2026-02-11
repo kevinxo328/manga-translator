@@ -2,14 +2,14 @@ import SwiftUI
 import AppKit
 
 struct ImageViewer: View {
-    let imageURL: URL
+    let page: MangaPage
     let translations: [TranslatedBubble]
     @Binding var highlightedBubbleIndex: Int?
     @State private var imageSize: CGSize = .zero
 
     var body: some View {
         GeometryReader { geometry in
-            let image = NSImage(contentsOf: imageURL)
+            let image = page.image ?? NSImage(contentsOf: page.imageURL)
             let originalSize = image?.size ?? CGSize(width: 1, height: 1)
             let scale = min(
                 geometry.size.width / originalSize.width,

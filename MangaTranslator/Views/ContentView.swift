@@ -109,7 +109,7 @@ struct ContentView: View {
         ZStack {
             // Base Image Layer
             ImageViewer(
-                imageURL: page.imageURL,
+                page: page,
                 translations: currentBubbles,
                 highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
             )

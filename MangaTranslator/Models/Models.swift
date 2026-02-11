@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import AppKit
 
 enum Language: String, CaseIterable, Identifiable, Codable {
     case ja = "ja"
@@ -100,6 +101,7 @@ enum PageState {
 struct MangaPage: Identifiable {
     let id = UUID()
     let imageURL: URL
+    var image: NSImage? = nil
     var state: PageState = .pending
 }
 
