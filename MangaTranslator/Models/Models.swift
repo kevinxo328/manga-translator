@@ -102,6 +102,7 @@ struct MangaPage: Identifiable {
     let id = UUID()
     let imageURL: URL
     var image: NSImage? = nil
+    var imageHash: String? = nil
     var state: PageState = .pending
 }
 

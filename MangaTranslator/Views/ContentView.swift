@@ -23,7 +23,7 @@ struct ContentView: View {
                 highlightedBubbleIndex: $viewModel.highlightedBubbleIndex,
                 isProcessing: viewModel.isCurrentPageProcessing,
                 onRetranslate: {
-                    Task { await viewModel.retranslateFromOCR() }
+                    Task { await viewModel.retranslateCurrentPage() }
                 }
             )
         }
@@ -254,6 +254,7 @@ struct ContentView: View {
                     .padding(.leading, 4)
                 }
             }
+
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -335,7 +336,17 @@ struct ContentView: View {
                     Capsule()
                         .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
                 )
+                // Re-translate All
+                Button {
+                    Task { await viewModel.retranslateAllPages() }
+                } label: {
+                    Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.isProcessing)
+                .help("Re-translate all pages using current settings")
             }
+            .padding(.horizontal, 4)
             .controlSize(.small)
             .onChange(of: viewModel.preferences.translationEngine) { _ in
                 Task { await viewModel.retranslateCurrentPage() }

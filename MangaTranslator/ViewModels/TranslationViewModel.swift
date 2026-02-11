@@ -119,7 +119,7 @@ final class TranslationViewModel: ObservableObject {
 
     // MARK: - Translation pipeline
 
-    func translatePage(at index: Int) async {
+    func translatePage(at index: Int, bypassCache: Bool = false) async {
         guard pages.indices.contains(index) else { return }
 
         pages[index].state = .processing
@@ -136,25 +136,6 @@ final class TranslationViewModel: ObservableObject {
             }
 
             let imageURL = pages[index].imageURL
-            
-            // Get image data for hashing
-            guard let imageData = try? Data(contentsOf: imageURL) else {
-                pages[index].state = .error("Failed to read image file")
-                return
-            }
-
-            let imageHash = CacheService.imageHash(data: imageData)
-
-            // Check cache
-            if let cached = cacheService.lookup(
-                imageHash: imageHash,
-                source: preferences.sourceLanguage,
-                target: preferences.targetLanguage,
-                engine: preferences.translationEngine
-            ) {
-                pages[index].state = .translated(cached)
-                return
-            }
 
             // Load image if not already cached
             let nsImage: NSImage
@@ -167,6 +148,32 @@ final class TranslationViewModel: ObservableObject {
                 }
                 pages[index].image = loaded
                 nsImage = loaded
+            }
+
+            // Compute image hash (reuse stored hash if available)
+            let imageHash: String
+            if let storedHash = pages[index].imageHash {
+                imageHash = storedHash
+            } else if let fileData = try? Data(contentsOf: imageURL) {
+                imageHash = CacheService.imageHash(data: fileData)
+                pages[index].imageHash = imageHash
+            } else if let tiffData = nsImage.tiffRepresentation {
+                imageHash = CacheService.imageHash(data: tiffData)
+                pages[index].imageHash = imageHash
+            } else {
+                pages[index].state = .error("Failed to read image data")
+                return
+            }
+
+            // Check cache
+            if !bypassCache, let cached = cacheService.lookup(
+                imageHash: imageHash,
+                source: preferences.sourceLanguage,
+                target: preferences.targetLanguage,
+                engine: preferences.translationEngine
+            ) {
+                pages[index].state = .translated(cached)
+                return
             }
 
             // OCR
@@ -214,61 +221,33 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func retranslateCurrentPage() async {
-        await translatePage(at: currentPageIndex)
+        await translatePage(at: currentPageIndex, bypassCache: true)
     }
 
-    func retranslateFromOCR() async {
-        let index = currentPageIndex
-        guard pages.indices.contains(index),
-              case .translated(let existing) = pages[index].state else { return }
+    func retranslateAllPages() async {
+        batchProgress = (0, pages.count)
+        await withTaskGroup(of: Void.self) { group in
+            let maxConcurrent = 3
+            var started = 0
 
-        let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+            for i in pages.indices {
+                if started >= maxConcurrent {
+                    await group.next()
+                }
+                started += 1
 
-        if needsTranslation {
-            guard keychainService.hasKey(for: preferences.translationEngine) else {
-                showMissingKeyAlert = true
-                return
+                group.addTask { [weak self] in
+                    guard let self else { return }
+                    await self.translatePage(at: i, bypassCache: true)
+                    await MainActor.run {
+                        let count = self.pages.filter {
+                            if case .translated = $0.state { return true }
+                            return false
+                        }.count
+                        self.batchProgress.0 = count
+                    }
+                }
             }
-        }
-
-        let bubbles = existing.map { $0.bubble }
-        pages[index].state = .processing
-
-        do {
-            let translated: [TranslatedBubble]
-            if preferences.sourceLanguage == preferences.targetLanguage || bubbles.allSatisfy({ $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }) {
-                translated = bubbles.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
-            } else {
-                let toTranslate = bubbles.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
-                let punctuationOnly = bubbles.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
-
-                let translatedResults = try await translationService.translate(
-                    bubbles: toTranslate,
-                    from: preferences.sourceLanguage,
-                    to: preferences.targetLanguage
-                )
-
-                let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
-                translated = (translatedResults + passthrough).sorted { $0.index < $1.index }
-            }
-
-            // Cache
-            let imageURL = pages[index].imageURL
-            if let imageData = try? Data(contentsOf: imageURL) {
-                let imageHash = CacheService.imageHash(data: imageData)
-                cacheService.store(
-                    imageHash: imageHash,
-                    source: preferences.sourceLanguage,
-                    target: preferences.targetLanguage,
-                    engine: preferences.translationEngine,
-                    bubbles: translated
-                )
-            }
-
-            pages[index].state = .translated(translated)
-        } catch {
-            pages[index].state = .translated(existing)
-            errorMessage = error.localizedDescription
         }
     }
 

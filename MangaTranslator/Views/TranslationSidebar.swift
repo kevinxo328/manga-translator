@@ -15,7 +15,7 @@ struct TranslationSidebar: View {
 
                 Spacer()
 
-                if let onRetranslate, !translations.isEmpty {
+                if let onRetranslate {
                     Button(action: onRetranslate) {
                         if isProcessing {
                             ProgressView()

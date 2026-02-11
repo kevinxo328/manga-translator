@@ -1,10 +1,6 @@
-## Purpose
+## MODIFIED Requirements
 
-Re-translate the current page by performing a full OCR + translation pipeline with current settings, bypassing cache lookup.
-
-## Requirements
-
-### Requirement: Re-translate current page with fresh OCR
+### Requirement: Re-translate current page from existing OCR results
 The system SHALL provide a re-translate action that performs a full OCR + translation pipeline on the current page using the current engine and language settings, bypassing cache lookup. The OCR step SHALL re-detect and re-recognize text from the page image. The translation step SHALL translate the fresh OCR results. The complete results SHALL be written back to cache, overwriting any existing entry.
 
 #### Scenario: Successful re-translation with fresh OCR
@@ -22,21 +18,3 @@ The system SHALL provide a re-translate action that performs a full OCR + transl
 #### Scenario: Re-translate produces different OCR results
 - **WHEN** re-translate OCR detects different text regions or text content than the original translation
 - **THEN** the system SHALL use the new OCR results for translation and completely replace the previous cache entry with the new results
-
-### Requirement: Re-translate button in translation sidebar
-The system SHALL display a re-translate button in the TranslationSidebar header area. The button SHALL always be visible when a page is loaded.
-
-#### Scenario: Button visibility
-- **WHEN** a page is loaded (any state)
-- **THEN** the re-translate button is visible in the sidebar header
-
-### Requirement: Loading state during re-translation
-The system SHALL indicate a loading state while re-translation is in progress. The page state SHALL transition to processing and back to translated upon completion.
-
-#### Scenario: Loading indicator during re-translate
-- **WHEN** user triggers re-translate
-- **THEN** the UI shows a processing state until the new translation completes
-
-#### Scenario: Error during re-translate
-- **WHEN** re-translation fails (e.g., API error)
-- **THEN** the system SHALL display the error and preserve the previous translation results
