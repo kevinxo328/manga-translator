@@ -1,8 +1,10 @@
 import SwiftUI
+import Sparkle
 
 @main
 struct MangaTranslatorApp: App {
     @StateObject private var viewModel = TranslationViewModel()
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     var body: some Scene {
         WindowGroup {
@@ -22,10 +24,13 @@ struct MangaTranslatorApp: App {
                     aboutWindow.makeKeyAndOrderFront(nil)
                 }
             }
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
         }
 
         Settings {
-            SettingsView(onClearCache: viewModel.clearCacheAndResetPages)
+            SettingsView(onClearCache: viewModel.clearCacheAndResetPages, updater: updaterController.updater)
         }
     }
 }

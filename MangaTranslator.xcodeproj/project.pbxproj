@@ -29,6 +29,8 @@
 		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* ImageViewer.swift */; };
 		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061 /* TranslationSidebar.swift */; };
 		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
+		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
+		E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000010000000000000010 /* CheckForUpdatesView.swift */; };
 		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* ComicTextDetectorService.swift */; };
 		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002 /* MangaOCRTokenizer.swift */; };
 		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003 /* MangaOCRRecognizer.swift */; };
@@ -69,6 +71,7 @@
 		A20000010000000000000050 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000060 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		A20000010000000000000061 /* TranslationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSidebar.swift; sourceTree = "<group>"; };
+		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
 		D20000010000000000000001 /* ComicTextDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorService.swift; sourceTree = "<group>"; };
 		D20000010000000000000002 /* MangaOCRTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTokenizer.swift; sourceTree = "<group>"; };
 		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
@@ -91,6 +94,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C10000010000000000000003 /* onnxruntime in Frameworks */,
+				E10000010000000000000001 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +129,7 @@
 			children = (
 				A20000010000000000000002 /* ContentView.swift */,
 				A20000010000000000000003 /* SettingsView.swift */,
+				E20000010000000000000010 /* CheckForUpdatesView.swift */,
 				A20000010000000000000060 /* ImageViewer.swift */,
 				A20000010000000000000061 /* TranslationSidebar.swift */,
 			);
@@ -222,6 +227,7 @@
 			name = MangaTranslator;
 			packageProductDependencies = (
 				C10000010000000000000001 /* onnxruntime */,
+				E10000010000000000000002 /* Sparkle */,
 			);
 			productName = MangaTranslator;
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
@@ -253,6 +259,7 @@
 			mainGroup = A40000010000000000000001;
 			packageReferences = (
 				C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+				E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			productRefGroup = A40000010000000000000009 /* Products */;
 			projectDirPath = "";
@@ -291,6 +298,7 @@
 				A10000010000000000000001 /* MangaTranslatorApp.swift in Sources */,
 				A10000010000000000000002 /* ContentView.swift in Sources */,
 				A10000010000000000000003 /* SettingsView.swift in Sources */,
+				E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */,
 				A10000010000000000000005 /* Models.swift in Sources */,
 				A10000010000000000000006 /* VisionOCRService.swift in Sources */,
 				A10000010000000000000007 /* BubbleDetector.swift in Sources */,
@@ -447,6 +455,7 @@
 				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MangaTranslator/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Chun-Wei Liu. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -473,6 +482,7 @@
 				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MangaTranslator/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Chun-Wei Liu. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -521,6 +531,14 @@
 				version = 1.20.0;
 			};
 		};
+		E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -528,6 +546,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
 			productName = onnxruntime;
+		};
+		E10000010000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

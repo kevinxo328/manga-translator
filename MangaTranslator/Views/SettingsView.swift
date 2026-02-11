@@ -1,9 +1,11 @@
 import SwiftUI
+import Sparkle
 
 struct SettingsView: View {
     @StateObject private var preferences = PreferencesService()
     private let keychainService = KeychainService()
     var onClearCache: (() -> Void)?
+    private let updater: SPUUpdater?
 
     @State private var deepLKey = ""
     @State private var googleKey = ""
@@ -15,6 +17,11 @@ struct SettingsView: View {
     @State private var selectedClaudeModel: String = ""
     @State private var customOpenAIModel: String = ""
     @State private var customClaudeModel: String = ""
+
+    init(onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
+        self.onClearCache = onClearCache
+        self.updater = updater
+    }
 
     var body: some View {
         TabView {
@@ -145,6 +152,14 @@ struct SettingsView: View {
                 Label("Translation Defaults", systemImage: "gear")
             }
 
+            if let updater = updater {
+                Section {
+                    UpdateSettingsView(updater: updater)
+                } header: {
+                    Label("Updates", systemImage: "arrow.triangle.2.circlepath")
+                }
+            }
+
             if onClearCache != nil {
                 Section {
                     Button(role: .destructive) {
@@ -204,6 +219,28 @@ struct SettingsView: View {
         } else {
             keychainService.store(key, for: engine)
         }
+    }
+}
+
+private struct UpdateSettingsView: View {
+    @ObservedObject private var checkForUpdatesViewModel: CheckForUpdatesViewModel
+    private let updater: SPUUpdater
+
+    init(updater: SPUUpdater) {
+        self.updater = updater
+        self.checkForUpdatesViewModel = CheckForUpdatesViewModel(updater: updater)
+    }
+
+    var body: some View {
+        Toggle("Automatically check for updates", isOn: Binding(
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.automaticallyChecksForUpdates = $0 }
+        ))
+
+        Button("Check for Updates Now") {
+            updater.checkForUpdates()
+        }
+        .disabled(!checkForUpdatesViewModel.canCheckForUpdates)
     }
 }
 

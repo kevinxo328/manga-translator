@@ -31,10 +31,33 @@ jobs:
       - name: Build and Package DMG
         run: ./scripts/build_dmg.sh
 
+      - name: Download Sparkle
+        run: |
+          SPARKLE_VERSION="2.6.0"
+          curl -L -o /tmp/Sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p /tmp/sparkle
+          tar -xf /tmp/Sparkle.tar.xz -C /tmp/sparkle
+
+      - name: Sign DMG with EdDSA and generate appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          DMG_PATH=$(ls build/MangaTranslator-*.dmg)
+          FILE_SIZE=$(stat -f%z "$DMG_PATH")
+
+          # Sign the DMG and extract the EdDSA signature
+          SIGN_OUTPUT=$(/tmp/sparkle/bin/sign_update "$DMG_PATH" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY"))
+          ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"' | cut -d'"' -f2)
+
+          # Generate appcast.xml
+          ./scripts/generate_appcast.sh "$VERSION" "$DMG_PATH" "$ED_SIGNATURE" "$FILE_SIZE"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/MangaTranslator-*.dmg
+          files: |
+            build/MangaTranslator-*.dmg
+            appcast.xml
           draft: false
           prerelease: false
           generate_release_notes: true
