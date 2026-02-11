@@ -1,0 +1,42 @@
+name: Build and Release DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for branch check
+
+      - name: Verify tag is on main branch
+        run: |
+          # Check if the current tag's commit is included in the remote main branch
+          if ! git branch -r --contains ${{ github.sha }} | grep -q "origin/main"; then
+            echo "❌ Error: This tag is not on the main branch. Skipping release."
+            exit 1
+          fi
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Build and Package DMG
+        run: ./scripts/build_dmg.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/MangaTranslator-*.dmg
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
