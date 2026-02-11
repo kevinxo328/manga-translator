@@ -19,6 +19,15 @@ A native macOS application that automatically detects, recognizes, and translate
 | English | Apple Vision | Japanese, Traditional Chinese |
 | Traditional Chinese | Apple Vision | Japanese, English |
 
+## Installation
+
+1. Download the latest DMG from the [Releases](https://github.com/kevinxo328/manga-translator/releases) page.
+2. Open the DMG and drag **MangaTranslator** to the Applications folder.
+3. On first launch, macOS will block the app because it is not signed with an Apple Developer certificate. To open it:
+   - Go to **System Settings > Privacy & Security**.
+   - Scroll down to the Security section and click **Open Anyway** next to the MangaTranslator message.
+   - Click **Open** in the confirmation dialog.
+
 ## Getting Started
 
 ### Prerequisites
