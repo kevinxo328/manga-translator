@@ -34,7 +34,9 @@ jobs:
       - name: Download Sparkle
         run: |
           SPARKLE_VERSION="2.6.0"
+          SPARKLE_SHA256="a520534a2880d02b19179027fb1900b9868889ff996ac53c81ad3a9f5bf2aca8"
           curl -L -o /tmp/Sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          echo "${SPARKLE_SHA256}  /tmp/Sparkle.tar.xz" | shasum -a 256 --check
           mkdir -p /tmp/sparkle
           tar -xf /tmp/Sparkle.tar.xz -C /tmp/sparkle
 
