@@ -35,29 +35,39 @@ struct TranslationSidebar: View {
             .background(.ultraThinMaterial)
             .zIndex(1)
 
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    if translations.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(translations.sorted(by: { $0.index < $1.index })) { bubble in
-                            TranslationCard(
-                                bubble: bubble,
-                                isHighlighted: highlightedBubbleIndex == bubble.index
-                            )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3)) {
-                                    if highlightedBubbleIndex == bubble.index {
-                                        highlightedBubbleIndex = nil
-                                    } else {
-                                        highlightedBubbleIndex = bubble.index
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if translations.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(translations.sorted(by: { $0.index < $1.index })) { bubble in
+                                TranslationCard(
+                                    bubble: bubble,
+                                    isHighlighted: highlightedBubbleIndex == bubble.index
+                                )
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.3)) {
+                                        if highlightedBubbleIndex == bubble.index {
+                                            highlightedBubbleIndex = nil
+                                        } else {
+                                            highlightedBubbleIndex = bubble.index
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    .padding(16)
                 }
-                .padding(16)
+                .onChange(of: highlightedBubbleIndex) { newIndex in
+                    guard let targetIndex = newIndex,
+                          let bubble = translations.first(where: { $0.index == targetIndex })
+                    else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(bubble.id, anchor: .center)
+                    }
+                }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
