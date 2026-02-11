@@ -1,4 +1,6 @@
-# MangaTranslator
+# <img src="MangaTranslator/Assets.xcassets/AppIcon.appiconset/Gemini_Generated_Image_ok7apqok7apqok7a 8.png" width="48" height="48" valign="middle"> MangaTranslator
+
+[![Release](https://img.shields.io/github/v/release/kevinxo328/manga-translator?style=flat-square)](https://github.com/kevinxo328/manga-translator/releases)
 
 A native macOS application that automatically detects, recognizes, and translates text in manga pages. It combines on-device ML models for Japanese OCR with multiple translation engine backends to deliver a seamless reading experience.
 
