@@ -47,9 +47,16 @@ jobs:
           DMG_PATH=$(ls build/MangaTranslator-*.dmg)
           FILE_SIZE=$(stat -f%z "$DMG_PATH")
 
+          # Write private key to a temp file for sign_update
+          KEY_FILE=$(mktemp)
+          echo "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
+
           # Sign the DMG and extract the EdDSA signature
-          SIGN_OUTPUT=$(/tmp/sparkle/bin/sign_update "$DMG_PATH" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY"))
+          SIGN_OUTPUT=$(/tmp/sparkle/bin/sign_update "$DMG_PATH" --ed-key-file "$KEY_FILE")
           ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"' | cut -d'"' -f2)
+
+          # Clean up private key
+          rm -f "$KEY_FILE"
 
           # Generate appcast.xml
           ./scripts/generate_appcast.sh "$VERSION" "$DMG_PATH" "$ED_SIGNATURE" "$FILE_SIZE"
