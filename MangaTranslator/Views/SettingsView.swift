@@ -23,6 +23,9 @@ struct SettingsView: View {
 
             preferencesTab
                 .tabItem { Label("Preferences", systemImage: "gearshape") }
+
+            aboutTab
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 450, height: 350)
         .onAppear { loadKeys() }
@@ -166,6 +169,40 @@ struct SettingsView: View {
         } message: {
             Text("This will delete all cached translation results. This action cannot be undone.")
         }
+    }
+
+    private var aboutTab: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+
+            Text("MangaTranslator")
+                .font(.title.bold())
+
+            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                .foregroundStyle(.secondary)
+
+            Text("© 2026 Chun-Wei Liu. All rights reserved.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 24) {
+                Link(destination: URL(string: "mailto:kevinxo328@gmail.com")!) {
+                    Label("kevinxo328@gmail.com", systemImage: "envelope")
+                }
+                Link(destination: URL(string: "https://github.com/kevinxo328")!) {
+                    Label("GitHub", systemImage: "link")
+                }
+            }
+            .font(.callout)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 
     private func loadKeys() {
