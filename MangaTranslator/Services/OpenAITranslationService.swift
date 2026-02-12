@@ -4,10 +4,12 @@ struct OpenAITranslationService: TranslationService {
     let engine = TranslationEngine.openAI
     private let keychainService: KeychainService
     private let model: String
+    private let baseURL: String
     private let maxRetries = 2
 
-    init(model: String, keychainService: KeychainService = KeychainService()) {
+    init(model: String, baseURL: String, keychainService: KeychainService = KeychainService()) {
         self.model = model
+        self.baseURL = baseURL
         self.keychainService = keychainService
     }
 
@@ -43,14 +45,16 @@ struct OpenAITranslationService: TranslationService {
     }
 
     private func callAPI(systemPrompt: String, userPrompt: String, apiKey: String) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        let sanitizedModel = String(model.drop(while: { $0 == "/" }))
+        let url = URL(string: "\(sanitizedBaseURL)/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "model": model,
+            "model": sanitizedModel,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt]

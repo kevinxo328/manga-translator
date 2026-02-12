@@ -35,7 +35,7 @@ final class TranslationViewModel: ObservableObject {
         switch preferences.translationEngine {
         case .deepL: return DeepLTranslationService(keychainService: keychainService)
         case .google: return GoogleTranslationService(keychainService: keychainService)
-        case .openAI: return OpenAITranslationService(model: preferences.openAIModel, keychainService: keychainService)
+        case .openAI: return OpenAITranslationService(model: preferences.openAIModel, baseURL: preferences.openAIBaseURL, keychainService: keychainService)
         case .claude: return ClaudeTranslationService(model: preferences.claudeModel, keychainService: keychainService)
         }
     }

@@ -13,9 +13,7 @@ struct SettingsView: View {
     @State private var claudeKey = ""
     @State private var showClearCacheAlert = false
     
-    @State private var selectedOpenAIModel: String = ""
     @State private var selectedClaudeModel: String = ""
-    @State private var customOpenAIModel: String = ""
     @State private var customClaudeModel: String = ""
 
     init(onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
@@ -68,30 +66,28 @@ struct SettingsView: View {
                     .onChange(of: openAIKey) { newValue in
                         saveKey(newValue, for: .openAI)
                     }
-                
-                Picker("Model", selection: $selectedOpenAIModel) {
-                    ForEach(TranslationEngine.openAIModels) { model in
-                        Text(model.displayName).tag(model.apiIdentifier)
-                    }
-                    Text("Custom...").tag("custom")
-                }
-                .onChange(of: selectedOpenAIModel) { newValue in
-                    if newValue != "custom" {
-                        preferences.openAIModel = newValue
-                    } else {
-                        preferences.openAIModel = customOpenAIModel
-                    }
-                }
-                
-                if selectedOpenAIModel == "custom" {
-                    TextField("Model ID", text: $customOpenAIModel)
+
+                HStack {
+                    TextField("Base URL", text: $preferences.openAIBaseURL)
                         .textFieldStyle(.roundedBorder)
-                        .onChange(of: customOpenAIModel) { newValue in
-                            preferences.openAIModel = newValue
-                        }
+                    Button("Reset to Default") {
+                        preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(preferences.openAIBaseURL == PreferencesService.defaultOpenAIBaseURL)
+                }
+
+                HStack {
+                    TextField("Model", text: $preferences.openAIModel)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Reset to Default") {
+                        preferences.openAIModel = PreferencesService.defaultOpenAIModel
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(preferences.openAIModel == PreferencesService.defaultOpenAIModel)
                 }
             } header: {
-                Label("OpenAI", systemImage: "brain")
+                Label("OpenAI Compatible", systemImage: "brain")
             }
 
             Section {
@@ -197,14 +193,7 @@ struct SettingsView: View {
         openAIKey = keychainService.retrieve(for: .openAI) ?? ""
         claudeKey = keychainService.retrieve(for: .claude) ?? ""
         
-        // Initialize model selection states
-        if let _ = TranslationEngine.openAIModels.first(where: { $0.apiIdentifier == preferences.openAIModel }) {
-            selectedOpenAIModel = preferences.openAIModel
-        } else {
-            selectedOpenAIModel = "custom"
-            customOpenAIModel = preferences.openAIModel
-        }
-        
+        // Initialize Claude model selection state
         if let _ = TranslationEngine.claudeModels.first(where: { $0.apiIdentifier == preferences.claudeModel }) {
             selectedClaudeModel = preferences.claudeModel
         } else {

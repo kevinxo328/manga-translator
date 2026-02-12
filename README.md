@@ -7,7 +7,7 @@ A native macOS application that automatically detects, recognizes, and translate
 ## Core Features
 
 - **Manga-Optimized OCR** — Japanese uses bundled ONNX models (Manga-OCR encoder/decoder + YOLOv5-based comic text detector) with Apple Vision as a fallback. English and Traditional Chinese use Apple Vision directly, so the app can OCR manga in all three supported languages.
-- **Multiple Translation Engines** — Supports Claude (Anthropic), OpenAI, DeepL, and Google Translate. LLM-based engines allow custom model selection.
+- **Multiple Translation Engines** — Supports Claude (Anthropic), OpenAI-compatible APIs, DeepL, and Google Translate. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection.
 - **Batch Processing** — Load entire folders or CBZ/ZIP archives and translate all pages concurrently (up to 3 pages in parallel).
 - **Interactive Viewer** — Displays detected speech bubbles as overlays on the original image. Click or use keyboard arrows to navigate between bubbles and pages.
 - **Translation Caching** — SHA256-based content-addressable cache (SQLite) avoids redundant API calls when revisiting pages.

@@ -1,6 +1,10 @@
 import Foundation
 
 final class PreferencesService: ObservableObject {
+    static let defaultOpenAIBaseURL = "https://api.openai.com/v1"
+    static let defaultOpenAIModel = "gpt-5"
+
+
     @Published var sourceLanguage: Language {
         didSet { UserDefaults.standard.set(sourceLanguage.rawValue, forKey: "sourceLanguage") }
     }
@@ -21,17 +25,23 @@ final class PreferencesService: ObservableObject {
         didSet { UserDefaults.standard.set(openAIModel, forKey: "openAIModel") }
     }
 
+    @Published var openAIBaseURL: String {
+        didSet { UserDefaults.standard.set(openAIBaseURL, forKey: "openAIBaseURL") }
+    }
+
     init() {
         let sourceLang = UserDefaults.standard.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
         let targetLang = UserDefaults.standard.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
         let engine = UserDefaults.standard.string(forKey: "translationEngine") ?? TranslationEngine.claude.rawValue
         let claudeM = UserDefaults.standard.string(forKey: "claudeModel") ?? "claude-sonnet-4-5-20250929"
-        let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? "gpt-4o-mini"
+        let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
+        let openAIURL = UserDefaults.standard.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
 
         self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
         self.translationEngine = TranslationEngine(rawValue: engine) ?? .claude
         self.claudeModel = claudeM
         self.openAIModel = openAIM
+        self.openAIBaseURL = openAIURL
     }
 }

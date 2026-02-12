@@ -6,6 +6,16 @@
 
 - Reset translation sidebar scroll position when switching between images
 
+### Features
+
+- **OpenAI Compatible**: Renamed "OpenAI" to "OpenAI Compatible" with configurable base URL and free-text model input, enabling support for any OpenAI-compatible API provider (local LLMs, Azure OpenAI, etc.)
+- **Reset to Default**: Added reset buttons for base URL and model fields in OpenAI Compatible settings
+- **Input Sanitization**: Automatically strips trailing slashes from base URLs and leading slashes from model names to prevent common configuration errors
+
+### Changes
+
+- Default OpenAI model updated from `gpt-4o-mini` to `gpt-5`
+
 ## v1.0.0 (2026-02-11)
 
 Initial release of Manga Translator — a macOS app for translating manga with OCR and AI-powered translation.

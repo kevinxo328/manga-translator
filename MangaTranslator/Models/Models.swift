@@ -32,7 +32,7 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .deepL: return "DeepL"
         case .google: return "Google Translate"
-        case .openAI: return "OpenAI"
+        case .openAI: return "OpenAI Compatible"
         case .claude: return "Claude"
         }
     }
@@ -58,11 +58,6 @@ struct LLMModel: Identifiable, Hashable, Codable {
 }
 
 extension TranslationEngine {
-    static let openAIModels = [
-        LLMModel(displayName: "GPT-5 Turbo", apiIdentifier: "gpt-5-turbo"),
-        LLMModel(displayName: "GPT-5", apiIdentifier: "gpt-5")
-    ]
-    
     static let claudeModels = [
         LLMModel(displayName: "Claude Sonnet 4.5", apiIdentifier: "claude-sonnet-4-5-20250929"),
         LLMModel(displayName: "Claude Haiku 3.5", apiIdentifier: "claude-3-5-haiku-20241022")
