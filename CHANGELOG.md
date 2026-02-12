@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.1 (2026-02-12)
+
+### Bug Fixes
+
+- Reset translation sidebar scroll position when switching between images
+
 ## v1.0.0 (2026-02-11)
 
 Initial release of Manga Translator — a macOS app for translating manga with OCR and AI-powered translation.

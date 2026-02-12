@@ -3,6 +3,7 @@ import SwiftUI
 struct TranslationSidebar: View {
     let translations: [TranslatedBubble]
     @Binding var highlightedBubbleIndex: Int?
+    var pageId: UUID? = nil
     var isProcessing: Bool = false
     var onRetranslate: (() -> Void)? = nil
 
@@ -59,6 +60,7 @@ struct TranslationSidebar: View {
                         }
                     }
                     .padding(16)
+                    .id(0)
                 }
                 .onChange(of: highlightedBubbleIndex) { newIndex in
                     guard let targetIndex = newIndex,
@@ -66,6 +68,11 @@ struct TranslationSidebar: View {
                     else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(bubble.id, anchor: .center)
+                    }
+                }
+                .onChange(of: pageId) { _ in
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(0, anchor: .top)
                     }
                 }
             }

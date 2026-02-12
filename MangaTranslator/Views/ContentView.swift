@@ -21,6 +21,7 @@ struct ContentView: View {
             TranslationSidebar(
                 translations: viewModel.currentTranslations,
                 highlightedBubbleIndex: $viewModel.highlightedBubbleIndex,
+                pageId: viewModel.currentPage?.id,
                 isProcessing: viewModel.isCurrentPageProcessing,
                 onRetranslate: {
                     Task { await viewModel.retranslateCurrentPage() }
