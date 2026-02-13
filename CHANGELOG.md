@@ -4,36 +4,33 @@
 
 ### Bug Fixes
 
-- **Bubble Navigation**: Fixed arrow key navigation breaking when OCR produces duplicate bubble indices by tracking selection with UUID instead of index
-- **Bubble Numbering**: Display sequential numbers (1, 2, 3...) based on sorted position instead of raw index, preventing duplicate numbers
+- Fixed arrow key navigation between bubbles sometimes not working correctly
+- Fixed bubble numbering showing duplicate numbers in some cases
 
 ## v1.0.2 (2026-02-13)
 
 ### Bug Fixes
 
-- **Version Display**: Fixed app showing incorrect version (1.0.0) after update by passing version from git tag to xcodebuild
-- **Auto-Update Detection**: Fixed Sparkle version comparison failing due to "v" prefix in appcast version strings, causing "You're up to date" even when a newer version exists
+- Fixed version number showing 1.0.0 instead of actual version after update
+- Fixed "You're up to date" showing incorrectly when a new version is available
 
 ### Improvements
 
-- **Auto-Update Check**: Explicitly enabled automatic update checks on launch via `SUAutomaticallyChecksForUpdates` in Info.plist
-- **Check for Updates Button**: Reduced button size in Settings for consistent UI
+- App now automatically checks for updates on launch
+- Smaller "Check for Updates" button in Settings for a cleaner look
 
 ## v1.0.1 (2026-02-12)
 
-### Bug Fixes
+### New Features
 
-- Reset translation sidebar scroll position when switching between images
+- **OpenAI Compatible**: Now supports any OpenAI-compatible API provider (local LLMs, Azure OpenAI, etc.) with configurable base URL and model
+- Added reset buttons for base URL and model fields in OpenAI Compatible settings
+- Auto-corrects common URL and model name formatting mistakes in settings
 
-### Features
+### Improvements
 
-- **OpenAI Compatible**: Renamed "OpenAI" to "OpenAI Compatible" with configurable base URL and free-text model input, enabling support for any OpenAI-compatible API provider (local LLMs, Azure OpenAI, etc.)
-- **Reset to Default**: Added reset buttons for base URL and model fields in OpenAI Compatible settings
-- **Input Sanitization**: Automatically strips trailing slashes from base URLs and leading slashes from model names to prevent common configuration errors
-
-### Changes
-
-- Default OpenAI model updated from `gpt-4o-mini` to `gpt-5`
+- Default OpenAI model updated to `gpt-5`
+- Sidebar now scrolls back to top when switching between images
 
 ## v1.0.0 (2026-02-11)
 
@@ -41,21 +38,13 @@ Initial release of Manga Translator — a macOS app for translating manga with O
 
 ### Features
 
-- **Manga OCR**: Integrated Manga OCR pipeline with ONNX models for accurate Japanese text recognition
-- **Speech Bubble Detection**: Automatic detection and highlighting of speech bubbles in manga images
-- **Multi-backend Translation**: Support for DeepL, Claude, and OpenAI translation backends
-- **LLM Model Selection**: Choose specific models for Claude and OpenAI in settings
-- **Re-translate**: Re-translate individual bubbles with full OCR + translate pipeline and cache bypass
-- **Smart Skip**: Skip translation when source and target languages match or text is punctuation-only
-- **Bubble Navigation**: Keyboard shortcuts for navigating between speech bubbles with auto-scroll
-- **Drag & Drop / Click-to-Open**: Import manga images via drag-and-drop or file picker
-- **Cache Management**: Clear translation cache from settings
-- **Auto-update**: Sparkle-based auto-update with EdDSA signing
-- **About Tab**: Application details and contact links in settings
-
-### Bug Fixes
-
-- Auto-detect DeepL API plan based on key suffix to support Pro users
-- Fix file upload error from keyboard
-- Improve batch translation progress tracking
-- Auto-scroll sidebar to highlighted bubble on keyboard navigation
+- Automatic Japanese text recognition (Manga OCR)
+- Automatic speech bubble detection and highlighting
+- Translation powered by DeepL, Claude, or OpenAI
+- Choose specific models for Claude and OpenAI in settings
+- Re-translate individual bubbles on demand
+- Navigate between bubbles with keyboard shortcuts and auto-scroll
+- Import images via drag-and-drop or file picker
+- Clear translation cache from settings
+- Auto-update support
+- DeepL Pro plan auto-detection
