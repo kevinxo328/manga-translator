@@ -4,13 +4,18 @@ set -euo pipefail
 # Usage: ./scripts/generate_appcast.sh <version> <dmg-path> <ed-signature> <file-size>
 # Generates appcast.xml for Sparkle auto-update.
 
-VERSION="$1"
+TAG_VERSION="$1"
 DMG_PATH="$2"
 ED_SIGNATURE="$3"
 FILE_SIZE="$4"
 
+# Strip leading "v" prefix for Sparkle version comparison
+# Sparkle compares sparkle:shortVersionString against CFBundleShortVersionString (e.g. "1.0.1")
+# and sparkle:version against CFBundleVersion (build number)
+SHORT_VERSION="${TAG_VERSION#v}"
+
 DMG_FILENAME=$(basename "$DMG_PATH")
-DOWNLOAD_URL="https://github.com/kevinxo328/manga-translator/releases/download/${VERSION}/${DMG_FILENAME}"
+DOWNLOAD_URL="https://github.com/kevinxo328/manga-translator/releases/download/${TAG_VERSION}/${DMG_FILENAME}"
 PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S %z")
 
 cat > appcast.xml <<EOF
@@ -20,10 +25,10 @@ cat > appcast.xml <<EOF
     <title>MangaTranslator Updates</title>
     <language>en</language>
     <item>
-      <title>Version ${VERSION}</title>
+      <title>Version ${SHORT_VERSION}</title>
       <pubDate>${PUB_DATE}</pubDate>
-      <sparkle:version>${VERSION}</sparkle:version>
-      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+      <sparkle:version>${SHORT_VERSION}</sparkle:version>
+      <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
       <enclosure
         url="${DOWNLOAD_URL}"
         length="${FILE_SIZE}"
@@ -35,4 +40,4 @@ cat > appcast.xml <<EOF
 </rss>
 EOF
 
-echo "Generated appcast.xml for ${VERSION}"
+echo "Generated appcast.xml for ${TAG_VERSION} (version: ${SHORT_VERSION})"

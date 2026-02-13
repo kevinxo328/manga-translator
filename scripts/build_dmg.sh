@@ -7,9 +7,11 @@ BUILD_DIR="build"
 
 echo "🚀 Starting build process..."
 
-# 1. Determine version
+# 1. Determine version (strip "v" prefix from git tag if present)
 if [ -z "$VERSION" ]; then
     VERSION=$(xcodebuild -showBuildSettings | grep MARKETING_VERSION | tr -d ' ' | cut -d '=' -f2)
+else
+    VERSION="${VERSION#v}"
 fi
 echo "📦 Version: $VERSION"
 
@@ -24,6 +26,8 @@ xcodebuild archive \
     -scheme "${SCHEME_NAME}" \
     -configuration Release \
     -archivePath "${BUILD_DIR}/${PROJECT_NAME}.xcarchive" \
+    MARKETING_VERSION="${VERSION}" \
+    CURRENT_PROJECT_VERSION="${VERSION}" \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY="" \

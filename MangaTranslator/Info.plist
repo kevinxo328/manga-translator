@@ -6,5 +6,7 @@
 	<string>https://github.com/kevinxo328/manga-translator/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>wBM+qWzYj8vbAMxvpP+pVUIsTN6tGxqFrkBgiaDdbzk=</string>
+	<key>SUAutomaticallyChecksForUpdates</key>
+	<true/>
 </dict>
 </plist>
