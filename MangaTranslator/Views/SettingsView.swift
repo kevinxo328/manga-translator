@@ -229,6 +229,7 @@ private struct UpdateSettingsView: View {
         Button("Check for Updates Now") {
             updater.checkForUpdates()
         }
+        .controlSize(.small)
         .disabled(!checkForUpdatesViewModel.canCheckForUpdates)
     }
 }

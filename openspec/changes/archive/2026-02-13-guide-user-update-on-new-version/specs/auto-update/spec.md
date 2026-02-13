@@ -1,26 +1,4 @@
-## Purpose
-
-Sparkle-based automatic update checking and in-app update installation.
-
-## Requirements
-
-### Requirement: Sparkle framework integration
-The system SHALL integrate Sparkle 2.x as a Swift Package dependency and initialize `SPUStandardUpdaterController` at app launch to manage the update lifecycle.
-
-#### Scenario: App launches with Sparkle initialized
-- **WHEN** the app starts
-- **THEN** Sparkle's updater controller is initialized and ready to check for updates
-
-### Requirement: EdDSA update verification
-The system SHALL embed the EdDSA public key in Info.plist (`SUPublicEDKey`) and configure the feed URL (`SUFeedURL`) pointing to `https://github.com/kevinxo328/manga-translator/releases/latest/download/appcast.xml`. Sparkle SHALL verify downloaded updates against the EdDSA signature before installation.
-
-#### Scenario: Valid update signature
-- **WHEN** Sparkle downloads a new DMG and the EdDSA signature matches the embedded public key
-- **THEN** the update proceeds to installation
-
-#### Scenario: Invalid update signature
-- **WHEN** Sparkle downloads a new DMG and the EdDSA signature does not match
-- **THEN** the update is rejected and the user is notified
+## MODIFIED Requirements
 
 ### Requirement: Automatic update checking
 The system SHALL check for updates automatically on launch when the user has enabled automatic checks. The default value for automatic checks SHALL be enabled. Info.plist SHALL include `SUAutomaticallyChecksForUpdates` set to `true` to explicitly enable this behavior. When a newer version is found, Sparkle SHALL display the standard update dialog prompting the user to install, skip, or be reminded later. If the user chooses to install, Sparkle SHALL download and install the update automatically, then offer to relaunch the app.
@@ -51,10 +29,3 @@ The system SHALL provide a way for users to manually trigger an update check fro
 #### Scenario: Manual check finds no update
 - **WHEN** user triggers a manual update check and the app is up to date
 - **THEN** Sparkle displays a "you're up to date" message
-
-### Requirement: CI appcast generation
-The release CI workflow SHALL generate an `appcast.xml` file containing the version, download URL, file size, and EdDSA signature for the DMG. The appcast SHALL be uploaded as a GitHub Release asset alongside the DMG.
-
-#### Scenario: Tag push triggers appcast generation
-- **WHEN** a version tag is pushed and CI builds the DMG
-- **THEN** CI signs the DMG with the EdDSA private key, generates `appcast.xml`, and uploads both as release assets

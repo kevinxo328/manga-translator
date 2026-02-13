@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.2 (2026-02-13)
+
+### Bug Fixes
+
+- **Version Display**: Fixed app showing incorrect version (1.0.0) after update by passing version from git tag to xcodebuild
+- **Auto-Update Detection**: Fixed Sparkle version comparison failing due to "v" prefix in appcast version strings, causing "You're up to date" even when a newer version exists
+
+### Improvements
+
+- **Auto-Update Check**: Explicitly enabled automatic update checks on launch via `SUAutomaticallyChecksForUpdates` in Info.plist
+- **Check for Updates Button**: Reduced button size in Settings for consistent UI
+
 ## v1.0.1 (2026-02-12)
 
 ### Bug Fixes
