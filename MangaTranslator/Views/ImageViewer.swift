@@ -4,7 +4,7 @@ import AppKit
 struct ImageViewer: View {
     let page: MangaPage
     let translations: [TranslatedBubble]
-    @Binding var highlightedBubbleIndex: Int?
+    @Binding var highlightedBubbleId: UUID?
     @State private var imageSize: CGSize = .zero
 
     var body: some View {
@@ -31,11 +31,12 @@ struct ImageViewer: View {
                         .frame(width: displaySize.width, height: displaySize.height)
                         .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                         .onTapGesture {
-                            highlightedBubbleIndex = nil
+                            highlightedBubbleId = nil
                         }
                 }
 
-                ForEach(translations) { bubble in
+                let sorted = translations.sorted(by: { $0.index < $1.index })
+                ForEach(Array(sorted.enumerated()), id: \.element.id) { position, bubble in
                     let rect = scaledRect(
                         bubble.bubble.boundingBox,
                         imageSize: originalSize,
@@ -45,14 +46,14 @@ struct ImageViewer: View {
 
                     BubbleOverlay(
                         rect: rect,
-                        index: bubble.index,
-                        isHighlighted: highlightedBubbleIndex == bubble.index
+                        index: position,
+                        isHighlighted: highlightedBubbleId == bubble.id
                     )
                     .onTapGesture {
-                        if highlightedBubbleIndex == bubble.index {
-                            highlightedBubbleIndex = nil
+                        if highlightedBubbleId == bubble.id {
+                            highlightedBubbleId = nil
                         } else {
-                            highlightedBubbleIndex = bubble.index
+                            highlightedBubbleId = bubble.id
                         }
                     }
                 }

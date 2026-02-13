@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.3 (2026-02-13)
+
+### Bug Fixes
+
+- **Bubble Navigation**: Fixed arrow key navigation breaking when OCR produces duplicate bubble indices by tracking selection with UUID instead of index
+- **Bubble Numbering**: Display sequential numbers (1, 2, 3...) based on sorted position instead of raw index, preventing duplicate numbers
+
 ## v1.0.2 (2026-02-13)
 
 ### Bug Fixes

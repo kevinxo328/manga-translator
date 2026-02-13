@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TranslationSidebar: View {
     let translations: [TranslatedBubble]
-    @Binding var highlightedBubbleIndex: Int?
+    @Binding var highlightedBubbleId: UUID?
     var pageId: UUID? = nil
     var isProcessing: Bool = false
     var onRetranslate: (() -> Void)? = nil
@@ -42,17 +42,19 @@ struct TranslationSidebar: View {
                         if translations.isEmpty {
                             emptyState
                         } else {
-                            ForEach(translations.sorted(by: { $0.index < $1.index })) { bubble in
+                            let sorted = translations.sorted(by: { $0.index < $1.index })
+                            ForEach(Array(sorted.enumerated()), id: \.element.id) { position, bubble in
                                 TranslationCard(
                                     bubble: bubble,
-                                    isHighlighted: highlightedBubbleIndex == bubble.index
+                                    displayNumber: position + 1,
+                                    isHighlighted: highlightedBubbleId == bubble.id
                                 )
                                 .onTapGesture {
                                     withAnimation(.spring(response: 0.3)) {
-                                        if highlightedBubbleIndex == bubble.index {
-                                            highlightedBubbleIndex = nil
+                                        if highlightedBubbleId == bubble.id {
+                                            highlightedBubbleId = nil
                                         } else {
-                                            highlightedBubbleIndex = bubble.index
+                                            highlightedBubbleId = bubble.id
                                         }
                                     }
                                 }
@@ -62,12 +64,10 @@ struct TranslationSidebar: View {
                     .padding(16)
                     .id(0)
                 }
-                .onChange(of: highlightedBubbleIndex) { newIndex in
-                    guard let targetIndex = newIndex,
-                          let bubble = translations.first(where: { $0.index == targetIndex })
-                    else { return }
+                .onChange(of: highlightedBubbleId) { newId in
+                    guard let targetId = newId else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        proxy.scrollTo(bubble.id, anchor: .center)
+                        proxy.scrollTo(targetId, anchor: .center)
                     }
                 }
                 .onChange(of: pageId) { _ in
@@ -97,12 +97,13 @@ struct TranslationSidebar: View {
 
 struct TranslationCard: View {
     let bubble: TranslatedBubble
+    let displayNumber: Int
     let isHighlighted: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Index Badge
-            Text("\(bubble.index + 1)")
+            Text("\(displayNumber)")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundColor(isHighlighted ? .white : .secondary)
                 .frame(width: 24, height: 24)

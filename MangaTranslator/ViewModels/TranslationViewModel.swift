@@ -5,7 +5,7 @@ import AppKit
 final class TranslationViewModel: ObservableObject {
     @Published var pages: [MangaPage] = []
     @Published var currentPageIndex: Int = 0
-    @Published var highlightedBubbleIndex: Int? = nil
+    @Published var highlightedBubbleId: UUID? = nil
     @Published var isProcessing = false
     @Published var errorMessage: String? = nil
     @Published var showMissingKeyAlert = false
@@ -256,14 +256,14 @@ final class TranslationViewModel: ObservableObject {
     func nextPage() {
         if currentPageIndex < pages.count - 1 {
             currentPageIndex += 1
-            highlightedBubbleIndex = nil
+            highlightedBubbleId = nil
         }
     }
 
     func previousPage() {
         if currentPageIndex > 0 {
             currentPageIndex -= 1
-            highlightedBubbleIndex = nil
+            highlightedBubbleId = nil
         }
     }
 }

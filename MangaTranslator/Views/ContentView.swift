@@ -20,7 +20,7 @@ struct ContentView: View {
             // Right: Sidebar
             TranslationSidebar(
                 translations: viewModel.currentTranslations,
-                highlightedBubbleIndex: $viewModel.highlightedBubbleIndex,
+                highlightedBubbleId: $viewModel.highlightedBubbleId,
                 pageId: viewModel.currentPage?.id,
                 isProcessing: viewModel.isCurrentPageProcessing,
                 onRetranslate: {
@@ -78,22 +78,22 @@ struct ContentView: View {
     private func navigateBubbles(direction: Int) {
         let translations = viewModel.currentTranslations
         guard !translations.isEmpty else { return }
-        
+
         // Sort bubbles to ensure logical order matches visual order
         let sorted = translations.sorted(by: { $0.index < $1.index })
-        let indices = sorted.map { $0.index }
-        
-        if let current = viewModel.highlightedBubbleIndex, let currentIndexInSorted = indices.firstIndex(of: current) {
-            let nextIndexInSorted = currentIndexInSorted + direction
-            if nextIndexInSorted >= 0 && nextIndexInSorted < indices.count {
-                viewModel.highlightedBubbleIndex = indices[nextIndexInSorted]
+
+        if let currentId = viewModel.highlightedBubbleId,
+           let currentPos = sorted.firstIndex(where: { $0.id == currentId }) {
+            let nextPos = currentPos + direction
+            if nextPos >= 0 && nextPos < sorted.count {
+                viewModel.highlightedBubbleId = sorted[nextPos].id
             }
         } else {
             // If nothing selected, select first (for down) or last (for up)
             if direction > 0 {
-                viewModel.highlightedBubbleIndex = indices.first
+                viewModel.highlightedBubbleId = sorted.first?.id
             } else {
-                viewModel.highlightedBubbleIndex = indices.last
+                viewModel.highlightedBubbleId = sorted.last?.id
             }
         }
     }
@@ -112,7 +112,7 @@ struct ContentView: View {
             ImageViewer(
                 page: page,
                 translations: currentBubbles,
-                highlightedBubbleIndex: $viewModel.highlightedBubbleIndex
+                highlightedBubbleId: $viewModel.highlightedBubbleId
             )
 
             // Overlays
