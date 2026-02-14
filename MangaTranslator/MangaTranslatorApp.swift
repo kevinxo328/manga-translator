@@ -4,7 +4,7 @@ import Sparkle
 @main
 struct MangaTranslatorApp: App {
     @StateObject private var viewModel = TranslationViewModel()
-    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private let updateChecker = UpdateChecker()
 
     var body: some Scene {
         WindowGroup {
@@ -25,12 +25,12 @@ struct MangaTranslatorApp: App {
                 }
             }
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: updaterController.updater)
+                CheckForUpdatesView(updater: updateChecker.updater)
             }
         }
 
         Settings {
-            SettingsView(onClearCache: viewModel.clearCacheAndResetPages, updater: updaterController.updater)
+            SettingsView(onClearCache: viewModel.clearCacheAndResetPages, updater: updateChecker.updater)
         }
     }
 }

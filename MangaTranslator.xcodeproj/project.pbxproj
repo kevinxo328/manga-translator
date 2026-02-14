@@ -25,6 +25,7 @@
 		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* KeychainService.swift */; };
 		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* PreferencesService.swift */; };
 		A10000010000000000000018 /* FileInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* FileInputService.swift */; };
+		F10000010000000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* UpdateChecker.swift */; };
 		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050 /* TranslationViewModel.swift */; };
 		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* ImageViewer.swift */; };
 		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061 /* TranslationSidebar.swift */; };
@@ -68,6 +69,7 @@
 		A20000010000000000000040 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
 		A20000010000000000000042 /* FileInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInputService.swift; sourceTree = "<group>"; };
+		F20000010000000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		A20000010000000000000050 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000060 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		A20000010000000000000061 /* TranslationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSidebar.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				D20000010000000000000003 /* MangaOCRRecognizer.swift */,
 				D20000010000000000000004 /* MangaOCRService.swift */,
 				D20000010000000000000005 /* OCRRouter.swift */,
+				F20000010000000000000001 /* UpdateChecker.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -321,6 +324,7 @@
 				D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */,
 				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
 				D10000010000000000000005 /* OCRRouter.swift in Sources */,
+				F10000010000000000000001 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

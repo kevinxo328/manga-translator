@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.4 (2026-02-14)
+
+### Improvements
+
+- App now checks for updates when you switch back to it, so you'll discover new versions faster even if you leave the app open for a long time
+
 ## v1.0.3 (2026-02-13)
 
 ### Bug Fixes
