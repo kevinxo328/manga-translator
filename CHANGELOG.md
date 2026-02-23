@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.5 (2026-02-23)
+
+### Bug Fixes
+
+- Fixed ⌘O not working when an image is already open
+
 ## v1.0.4 (2026-02-14)
 
 ### Improvements

@@ -57,7 +57,6 @@ struct ContentView: View {
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { providers in
             handlePaste(providers)
         }
-        .keyboardShortcut(.init("o"), modifiers: .command)
         // Bubble Navigation Shortcuts
         .background(
             Button("") {
@@ -208,6 +207,7 @@ struct ContentView: View {
                 Label("Open", systemImage: "plus.rectangle.on.folder")
             }
             .help("Open image, folder or archive")
+            .keyboardShortcut("o", modifiers: .command)
         }
 
         if viewModel.pages.count > 1 {
