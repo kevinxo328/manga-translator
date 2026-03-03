@@ -30,6 +30,7 @@
 		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* ImageViewer.swift */; };
 		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061 /* TranslationSidebar.swift */; };
 		A10000010000000000000022 /* GlossaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000062 /* GlossaryService.swift */; };
+		A10000010000000000000024 /* GlossarySubstitution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000064 /* GlossarySubstitution.swift */; };
 		A10000010000000000000023 /* GlossaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000063 /* GlossaryView.swift */; };
 		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
 		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
@@ -76,6 +77,7 @@
 		A20000010000000000000060 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		A20000010000000000000061 /* TranslationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSidebar.swift; sourceTree = "<group>"; };
 		A20000010000000000000062 /* GlossaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryService.swift; sourceTree = "<group>"; };
+		A20000010000000000000064 /* GlossarySubstitution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossarySubstitution.swift; sourceTree = "<group>"; };
 		A20000010000000000000063 /* GlossaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryView.swift; sourceTree = "<group>"; };
 		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
 		D20000010000000000000001 /* ComicTextDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorService.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				A20000010000000000000038 /* ClaudeTranslationService.swift */,
 				A20000010000000000000039 /* CacheService.swift */,
 				A20000010000000000000062 /* GlossaryService.swift */,
+				A20000010000000000000064 /* GlossarySubstitution.swift */,
 				A20000010000000000000040 /* KeychainService.swift */,
 				A20000010000000000000041 /* PreferencesService.swift */,
 				A20000010000000000000042 /* FileInputService.swift */,
@@ -326,6 +329,7 @@
 				A10000010000000000000020 /* ImageViewer.swift in Sources */,
 				A10000010000000000000021 /* TranslationSidebar.swift in Sources */,
 				A10000010000000000000022 /* GlossaryService.swift in Sources */,
+				A10000010000000000000024 /* GlossarySubstitution.swift in Sources */,
 				A10000010000000000000023 /* GlossaryView.swift in Sources */,
 				D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */,
 				D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */,

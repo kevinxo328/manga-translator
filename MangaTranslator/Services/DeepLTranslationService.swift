@@ -18,13 +18,16 @@ struct DeepLTranslationService: TranslationService {
             throw TranslationError.missingAPIKey(.deepL)
         }
 
+        let (substituted, mapping) = GlossarySubstitution.apply(to: bubbles, terms: context.glossaryTerms)
+
         var results: [TranslatedBubble] = []
-        for (index, bubble) in bubbles.enumerated() {
-            let translated = try await translateText(
+        for (index, bubble) in substituted.enumerated() {
+            var translated = try await translateText(
                 bubble.text, from: source, to: target, apiKey: apiKey
             )
+            translated = GlossarySubstitution.revert(translated, mapping: mapping)
             results.append(TranslatedBubble(
-                bubble: bubble,
+                bubble: bubbles[index],
                 translatedText: translated,
                 index: index
             ))
