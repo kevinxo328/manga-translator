@@ -18,16 +18,16 @@ struct GoogleTranslationService: TranslationService {
             throw TranslationError.missingAPIKey(.google)
         }
 
-        let (substituted, mapping) = GlossarySubstitution.apply(to: bubbles, terms: context.glossaryTerms)
-
+        let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
-        for (index, bubble) in substituted.enumerated() {
+        for (index, bubble) in bubbles.enumerated() {
+            let textToSend = GlossarySubstitution.applyHTML(to: bubble.text, terms: terms)
             var translated = try await translateText(
-                bubble.text, from: source, to: target, apiKey: apiKey
+                textToSend, from: source, to: target, apiKey: apiKey, useHTML: !terms.isEmpty
             )
-            translated = GlossarySubstitution.revert(translated, mapping: mapping)
+            translated = GlossarySubstitution.revertHTML(translated, terms: terms)
             results.append(TranslatedBubble(
-                bubble: bubbles[index],
+                bubble: bubble,
                 translatedText: translated,
                 index: index
             ))
@@ -36,7 +36,7 @@ struct GoogleTranslationService: TranslationService {
     }
 
     private func translateText(
-        _ text: String, from source: Language, to target: Language, apiKey: String
+        _ text: String, from source: Language, to target: Language, apiKey: String, useHTML: Bool
     ) async throws -> String {
         var components = URLComponents(string: "https://translation.googleapis.com/language/translate/v2")!
         components.queryItems = [
@@ -51,7 +51,7 @@ struct GoogleTranslationService: TranslationService {
             "q": text,
             "source": googleLanguageCode(source),
             "target": googleLanguageCode(target),
-            "format": "text"
+            "format": useHTML ? "html" : "text"
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

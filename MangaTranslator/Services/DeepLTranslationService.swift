@@ -18,16 +18,16 @@ struct DeepLTranslationService: TranslationService {
             throw TranslationError.missingAPIKey(.deepL)
         }
 
-        let (substituted, mapping) = GlossarySubstitution.apply(to: bubbles, terms: context.glossaryTerms)
-
+        let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
-        for (index, bubble) in substituted.enumerated() {
+        for (index, bubble) in bubbles.enumerated() {
+            let textToSend = GlossarySubstitution.applyXML(to: bubble.text, terms: terms)
             var translated = try await translateText(
-                bubble.text, from: source, to: target, apiKey: apiKey
+                textToSend, from: source, to: target, apiKey: apiKey, useXML: !terms.isEmpty
             )
-            translated = GlossarySubstitution.revert(translated, mapping: mapping)
+            translated = GlossarySubstitution.revertXML(translated, terms: terms)
             results.append(TranslatedBubble(
-                bubble: bubbles[index],
+                bubble: bubble,
                 translatedText: translated,
                 index: index
             ))
@@ -36,7 +36,7 @@ struct DeepLTranslationService: TranslationService {
     }
 
     private func translateText(
-        _ text: String, from source: Language, to target: Language, apiKey: String
+        _ text: String, from source: Language, to target: Language, apiKey: String, useXML: Bool
     ) async throws -> String {
         let host = apiKey.hasSuffix(":fx") ? "api-free.deepl.com" : "api.deepl.com"
         let url = URL(string: "https://\(host)/v2/translate")!
@@ -45,11 +45,15 @@ struct DeepLTranslationService: TranslationService {
         request.setValue("DeepL-Auth-Key \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "text": [text],
             "source_lang": deepLLanguageCode(source),
             "target_lang": deepLLanguageCode(target)
         ]
+        if useXML {
+            body["tag_handling"] = "xml"
+            body["ignore_tags"] = ["x"]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
