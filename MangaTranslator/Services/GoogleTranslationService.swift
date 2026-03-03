@@ -11,8 +11,9 @@ struct GoogleTranslationService: TranslationService {
     func translate(
         bubbles: [BubbleCluster],
         from source: Language,
-        to target: Language
-    ) async throws -> [TranslatedBubble] {
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
         guard let apiKey = keychainService.retrieve(for: .google) else {
             throw TranslationError.missingAPIKey(.google)
         }
@@ -28,7 +29,7 @@ struct GoogleTranslationService: TranslationService {
                 index: index
             ))
         }
-        return results
+        return TranslationOutput(bubbles: results, detectedTerms: [])
     }
 
     private func translateText(

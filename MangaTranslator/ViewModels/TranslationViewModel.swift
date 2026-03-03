@@ -11,10 +11,54 @@ final class TranslationViewModel: ObservableObject {
     @Published var showMissingKeyAlert = false
     @Published var batchProgress: (completed: Int, total: Int) = (0, 0)
     @Published var preferences = PreferencesService()
+    @Published var activeGlossaryID: String? = nil
+    @Published var glossaries: [Glossary] = []
 
     private let ocrRouter = OCRRouter()
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
+
+    private var glossaryService: GlossaryService { cacheService.glossaryService }
+    var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
+    private var recentPageTranslations: [String] = []
+
+    init() {
+        glossaries = cacheService.glossaryService.listGlossaries()
+    }
+
+    func loadGlossaries() {
+        glossaries = glossaryService.listGlossaries()
+    }
+
+    var activeGlossary: Glossary? {
+        guard let id = activeGlossaryID else { return nil }
+        return glossaries.first { $0.id == id }
+    }
+
+    private func buildTranslationContext() -> TranslationContext {
+        let terms: [GlossaryTerm]
+        if let id = activeGlossaryID {
+            terms = glossaryService.listTerms(glossaryID: id)
+        } else {
+            terms = []
+        }
+        return TranslationContext(glossaryTerms: terms, recentPageSummaries: recentPageTranslations)
+    }
+
+    private func appendToRecentContext(_ translated: [TranslatedBubble]) {
+        let summary = translated
+            .sorted { $0.index < $1.index }
+            .map { $0.translatedText }
+            .joined(separator: " ")
+        recentPageTranslations.append(summary)
+        if recentPageTranslations.count > 3 {
+            recentPageTranslations.removeFirst()
+        }
+    }
+
+    private func resetRecentContext() {
+        recentPageTranslations = []
+    }
 
     var currentPage: MangaPage? {
         guard pages.indices.contains(currentPageIndex) else { return nil }
@@ -54,7 +98,8 @@ final class TranslationViewModel: ObservableObject {
         if isSecurityScoped {
             url.stopAccessingSecurityScopedResource()
         }
-        
+
+        resetRecentContext()
         pages = [MangaPage(imageURL: processedURL)]
         currentPageIndex = 0
         await translatePage(at: 0)
@@ -69,6 +114,7 @@ final class TranslationViewModel: ObservableObject {
         if isSecurityScoped {
             url.stopAccessingSecurityScopedResource()
         }
+        resetRecentContext()
         currentPageIndex = 0
         batchProgress = (0, pages.count)
         cacheService.addHistory(path: url.path, pageCount: pages.count)
@@ -188,15 +234,24 @@ final class TranslationViewModel: ObservableObject {
                 let toTranslate = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
                 let punctuationOnly = ordered.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
 
-                let translatedResults = try await translationService.translate(
+                let context = buildTranslationContext()
+                let output = try await translationService.translate(
                     bubbles: toTranslate,
                     from: preferences.sourceLanguage,
-                    to: preferences.targetLanguage
+                    to: preferences.targetLanguage,
+                    context: context
                 )
 
+                if let glossaryID = activeGlossaryID, !output.detectedTerms.isEmpty {
+                    glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
+                    glossaries = glossaryService.listGlossaries()
+                }
+
                 let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
-                translated = (translatedResults + passthrough).sorted { $0.index < $1.index }
+                translated = (output.bubbles + passthrough).sorted { $0.index < $1.index }
             }
+
+            appendToRecentContext(translated)
 
             // Cache
             cacheService.store(

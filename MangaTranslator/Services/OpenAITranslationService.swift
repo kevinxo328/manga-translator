@@ -16,13 +16,14 @@ struct OpenAITranslationService: TranslationService {
     func translate(
         bubbles: [BubbleCluster],
         from source: Language,
-        to target: Language
-    ) async throws -> [TranslatedBubble] {
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
         guard let apiKey = keychainService.retrieve(for: .openAI) else {
             throw TranslationError.missingAPIKey(.openAI)
         }
 
-        let systemPrompt = LLMPrompt.systemPrompt(from: source, to: target)
+        let systemPrompt = LLMPrompt.systemPrompt(from: source, to: target, context: context)
         let userPrompt = LLMPrompt.userPrompt(bubbles: bubbles)
 
         for attempt in 0...maxRetries {
@@ -32,16 +33,18 @@ struct OpenAITranslationService: TranslationService {
                 apiKey: apiKey
             )
 
-            if let parsed = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
-                return parsed
+            if let (parsed, detected) = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
+                return TranslationOutput(bubbles: parsed, detectedTerms: detected)
             }
 
             if attempt == maxRetries {
-                return LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
+                let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
+                return TranslationOutput(bubbles: fallback, detectedTerms: [])
             }
         }
 
-        return LLMResponseParser.fallbackParse("", bubbles: bubbles)
+        let (fallback, _) = LLMResponseParser.fallbackParse("", bubbles: bubbles)
+        return TranslationOutput(bubbles: fallback, detectedTerms: [])
     }
 
     private func callAPI(systemPrompt: String, userPrompt: String, apiKey: String) async throws -> String {

@@ -101,11 +101,38 @@ struct MangaPage: Identifiable {
     var state: PageState = .pending
 }
 
+struct GlossaryTerm: Identifiable {
+    let id: String
+    let sourceTerm: String
+    let targetTerm: String
+    let autoDetected: Bool
+}
+
+struct Glossary: Identifiable {
+    let id: String
+    let name: String
+    let sourceLang: Language
+    let targetLang: Language
+}
+
+struct TranslationContext {
+    let glossaryTerms: [GlossaryTerm]
+    let recentPageSummaries: [String]
+
+    static let empty = TranslationContext(glossaryTerms: [], recentPageSummaries: [])
+}
+
+struct TranslationOutput {
+    let bubbles: [TranslatedBubble]
+    let detectedTerms: [GlossaryTerm]
+}
+
 protocol TranslationService {
     var engine: TranslationEngine { get }
     func translate(
         bubbles: [BubbleCluster],
         from source: Language,
-        to target: Language
-    ) async throws -> [TranslatedBubble]
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput
 }

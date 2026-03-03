@@ -4,6 +4,7 @@ import CryptoKit
 
 final class CacheService {
     private var db: OpaquePointer?
+    private(set) lazy var glossaryService: GlossaryService = GlossaryService(db: db)
 
     init() {
         openDatabase()
@@ -46,6 +47,24 @@ final class CacheService {
             file_path TEXT NOT NULL,
             page_count INTEGER,
             last_opened REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS glossaries (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            source_lang TEXT NOT NULL,
+            target_lang TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS glossary_terms (
+            id TEXT PRIMARY KEY,
+            glossary_id TEXT NOT NULL,
+            source_term TEXT NOT NULL,
+            target_term TEXT NOT NULL,
+            auto_detected INTEGER NOT NULL DEFAULT 1,
+            created_at REAL NOT NULL,
+            FOREIGN KEY (glossary_id) REFERENCES glossaries(id)
         );
         """
         sqlite3_exec(db, sql, nil, nil, nil)

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
     @State private var showFileImporter = false
+    @State private var showGlossarySheet = false
 
     var body: some View {
         HSplitView {
@@ -56,6 +57,9 @@ struct ContentView: View {
         }
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { providers in
             handlePaste(providers)
+        }
+        .sheet(isPresented: $showGlossarySheet) {
+            GlossaryView(viewModel: viewModel)
         }
         // Bubble Navigation Shortcuts
         .background(
@@ -260,6 +264,37 @@ struct ContentView: View {
 
         ToolbarItem(placement: .primaryAction) {
             HStack(spacing: 12) {
+                // Glossary picker
+                Menu {
+                    Button("None") { viewModel.activeGlossaryID = nil }
+                    Divider()
+                    ForEach(viewModel.glossaries) { glossary in
+                        Button(glossary.name) { viewModel.activeGlossaryID = glossary.id }
+                    }
+                    Divider()
+                    Button {
+                        showGlossarySheet = true
+                    } label: {
+                        Label("Manage Glossaries...", systemImage: "text.book.closed")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "text.book.closed")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(viewModel.activeGlossary?.name ?? "Glossary")
+                            .font(.subheadline)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(Capsule().stroke(
+                        viewModel.activeGlossaryID != nil ? Color.accentColor.opacity(0.4) : Color.secondary.opacity(0.2),
+                        lineWidth: viewModel.activeGlossaryID != nil ? 1 : 0.5
+                    ))
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.activeGlossaryID != nil ? "Active glossary: \(viewModel.activeGlossary?.name ?? "")" : "No glossary selected")
                 // Language Pair
                 HStack(spacing: 0) {
                     Menu {
