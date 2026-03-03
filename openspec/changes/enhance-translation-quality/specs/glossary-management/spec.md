@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Glossary persistence
-The system SHALL store glossaries and their terms in the existing SQLite cache database using two tables: `glossaries` (id, name, source_lang, target_lang, created_at) and `glossary_terms` (id, glossary_id, source_term, target_term, auto_detected, created_at). The system SHALL use `CREATE TABLE IF NOT EXISTS` to remain safe on existing installs.
+The system SHALL store glossaries and their terms in the existing SQLite cache database using two tables: `glossaries` (id, name, created_at) and `glossary_terms` (id, glossary_id, source_term, target_term, auto_detected, created_at). Glossaries are language-agnostic — there is no source/target language binding; the user chooses which glossary to apply regardless of the current translation direction. The system SHALL use `CREATE TABLE IF NOT EXISTS` to remain safe on existing installs.
 
 #### Scenario: Tables created on first launch after update
 - **WHEN** the app launches and the glossary tables do not exist
