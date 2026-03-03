@@ -8,6 +8,8 @@ A native macOS application that automatically detects, recognizes, and translate
 
 - **Manga-Optimized OCR** — Japanese uses bundled ONNX models (Manga-OCR encoder/decoder + YOLOv5-based comic text detector) with Apple Vision as a fallback. English and Traditional Chinese use Apple Vision directly, so the app can OCR manga in all three supported languages.
 - **Multiple Translation Engines** — Supports Claude (Anthropic), OpenAI-compatible APIs, DeepL, and Google Translate. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection.
+- **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all four engines. Claude and OpenAI auto-detect new proper nouns during translation and add them to the active glossary automatically.
+- **Cross-page Context** — When using Claude or OpenAI, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
 - **Batch Processing** — Load entire folders or CBZ/ZIP archives and translate all pages concurrently (up to 3 pages in parallel).
 - **Interactive Viewer** — Displays detected speech bubbles as overlays on the original image. Click or use keyboard arrows to navigate between bubbles and pages.
 - **Translation Caching** — SHA256-based content-addressable cache (SQLite) avoids redundant API calls when revisiting pages.
@@ -69,6 +71,7 @@ MangaTranslator/
 │   ├── ContentView.swift             # Main split-view layout
 │   ├── ImageViewer.swift             # Image display with bubble overlays
 │   ├── TranslationSidebar.swift      # Scrollable translation card list
+│   ├── GlossaryView.swift            # Glossary management sheet
 │   └── SettingsView.swift            # API keys, preferences, and about tabs
 ├── Services/
 │   ├── OCRRouter.swift               # OCR pipeline orchestrator
@@ -77,7 +80,10 @@ MangaTranslator/
 │   ├── BubbleDetector.swift          # Clusters text observations into bubbles
 │   ├── ReadingOrderSorter.swift      # Right-to-left, top-to-bottom ordering
 │   ├── Claude/OpenAI/DeepL/Google TranslationService.swift
-│   ├── CacheService.swift            # SQLite translation cache
+│   ├── GlossaryService.swift         # SQLite-backed glossary CRUD
+│   ├── GlossarySubstitution.swift    # API-native term preservation for DeepL/Google
+│   ├── LLMPrompt.swift               # Prompt builder (glossary + context injection)
+│   ├── CacheService.swift            # SQLite translation cache and glossary tables
 │   ├── KeychainService.swift         # Secure API key storage
 │   ├── FileInputService.swift        # Image/folder/archive loading
 │   └── PreferencesService.swift      # UserDefaults wrapper

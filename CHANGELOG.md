@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0 (2026-03-03)
+
+### New Features
+
+- **Glossary System** — Create named glossaries and define your own source → target term mappings. Active glossary terms are automatically injected into every translation request, so character names, technique names, and place names stay consistent across pages. The glossary picker lives in the main toolbar for quick access.
+- **Auto-detection of Proper Nouns** — When using Claude or OpenAI, the translator automatically detects new proper nouns during translation and saves them to your active glossary. Auto-detected terms are visually marked so you can review and edit them at any time.
+- **Glossary for DeepL and Google Translate** — Glossary terms now also apply when using DeepL or Google Translate. Source terms are wrapped using each API's native preservation mechanism before translation, so they survive the translation process reliably.
+- **Cross-page Context** — When using Claude or OpenAI, the translated content of the last 3 pages is included in each new translation request. This helps the model maintain narrative continuity — characters introduced on earlier pages are referenced consistently in later dialogue.
+
 ## v1.0.5 (2026-02-23)
 
 ### Bug Fixes
