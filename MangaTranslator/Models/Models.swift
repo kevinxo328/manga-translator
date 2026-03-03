@@ -111,8 +111,6 @@ struct GlossaryTerm: Identifiable {
 struct Glossary: Identifiable {
     let id: String
     let name: String
-    let sourceLang: Language
-    let targetLang: Language
 }
 
 struct TranslationContext {

@@ -200,11 +200,7 @@ struct GlossaryView: View {
                 Button("Create") {
                     let name = newGlossaryName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
-                    if let g = glossaryService.createGlossary(
-                        name: name,
-                        sourceLang: viewModel.preferences.sourceLanguage,
-                        targetLang: viewModel.preferences.targetLanguage
-                    ) {
+                    if let g = glossaryService.createGlossary(name: name) {
                         viewModel.loadGlossaries()
                         viewModel.activeGlossaryID = g.id
                         reloadTerms()

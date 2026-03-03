@@ -14,10 +14,10 @@ final class GlossaryService {
 
     // MARK: - Glossary CRUD
 
-    func createGlossary(name: String, sourceLang: Language, targetLang: Language) -> Glossary? {
+    func createGlossary(name: String) -> Glossary? {
         let id = UUID().uuidString
         let sql = """
-        INSERT INTO glossaries (id, name, source_lang, target_lang, created_at) VALUES (?, ?, ?, ?, ?)
+        INSERT INTO glossaries (id, name, source_lang, target_lang, created_at) VALUES (?, ?, '', '', ?)
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
@@ -25,16 +25,14 @@ final class GlossaryService {
 
         sqlite3_bind_text(stmt, 1, id, -1, transient)
         sqlite3_bind_text(stmt, 2, name, -1, transient)
-        sqlite3_bind_text(stmt, 3, sourceLang.rawValue, -1, transient)
-        sqlite3_bind_text(stmt, 4, targetLang.rawValue, -1, transient)
-        sqlite3_bind_double(stmt, 5, Date().timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 3, Date().timeIntervalSince1970)
 
         guard sqlite3_step(stmt) == SQLITE_DONE else { return nil }
-        return Glossary(id: id, name: name, sourceLang: sourceLang, targetLang: targetLang)
+        return Glossary(id: id, name: name)
     }
 
     func listGlossaries() -> [Glossary] {
-        let sql = "SELECT id, name, source_lang, target_lang FROM glossaries ORDER BY created_at"
+        let sql = "SELECT id, name FROM glossaries ORDER BY created_at"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
@@ -43,18 +41,9 @@ final class GlossaryService {
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard
                 let idC = sqlite3_column_text(stmt, 0),
-                let nameC = sqlite3_column_text(stmt, 1),
-                let srcC = sqlite3_column_text(stmt, 2),
-                let tgtC = sqlite3_column_text(stmt, 3)
+                let nameC = sqlite3_column_text(stmt, 1)
             else { continue }
-
-            let id = String(cString: idC)
-            let name = String(cString: nameC)
-            let srcRaw = String(cString: srcC)
-            let tgtRaw = String(cString: tgtC)
-
-            guard let src = Language(rawValue: srcRaw), let tgt = Language(rawValue: tgtRaw) else { continue }
-            glossaries.append(Glossary(id: id, name: name, sourceLang: src, targetLang: tgt))
+            glossaries.append(Glossary(id: String(cString: idC), name: String(cString: nameC)))
         }
         return glossaries
     }
