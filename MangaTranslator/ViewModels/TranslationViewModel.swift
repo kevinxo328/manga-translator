@@ -9,7 +9,6 @@ final class TranslationViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var errorMessage: String? = nil
     @Published var showMissingKeyAlert = false
-    @Published var batchProgress: (completed: Int, total: Int) = (0, 0)
     @Published var preferences = PreferencesService()
     @Published var activeGlossaryID: String? = nil
     @Published var glossaries: [Glossary] = []
@@ -116,7 +115,6 @@ final class TranslationViewModel: ObservableObject {
         }
         resetRecentContext()
         currentPageIndex = 0
-        batchProgress = (0, pages.count)
         cacheService.addHistory(path: url.path, pageCount: pages.count)
         await translateBatch()
     }
@@ -138,6 +136,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     private func translateBatch() async {
+        isProcessing = true
         await withTaskGroup(of: Void.self) { group in
             let maxConcurrent = 3
             var started = 0
@@ -151,16 +150,10 @@ final class TranslationViewModel: ObservableObject {
                 group.addTask { [weak self] in
                     guard let self else { return }
                     await self.translatePage(at: i)
-                    await MainActor.run {
-                        let count = self.pages.filter {
-                            if case .translated = $0.state { return true }
-                            return false
-                        }.count
-                        self.batchProgress.0 = count
-                    }
                 }
             }
         }
+        isProcessing = false
     }
 
     // MARK: - Translation pipeline
@@ -280,7 +273,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func retranslateAllPages() async {
-        batchProgress = (0, pages.count)
+        isProcessing = true
         await withTaskGroup(of: Void.self) { group in
             let maxConcurrent = 3
             var started = 0
@@ -294,16 +287,10 @@ final class TranslationViewModel: ObservableObject {
                 group.addTask { [weak self] in
                     guard let self else { return }
                     await self.translatePage(at: i, bypassCache: true)
-                    await MainActor.run {
-                        let count = self.pages.filter {
-                            if case .translated = $0.state { return true }
-                            return false
-                        }.count
-                        self.batchProgress.0 = count
-                    }
                 }
             }
         }
+        isProcessing = false
     }
 
     // MARK: - Navigation

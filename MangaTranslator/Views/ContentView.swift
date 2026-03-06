@@ -246,19 +246,6 @@ struct ContentView: View {
                 .background(Capsule().fill(Color.secondary.opacity(0.12)))
             }
 
-            ToolbarItem {
-                let (completed, total) = viewModel.batchProgress
-                if total > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("\(completed)/\(total)")
-                    }
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 4)
-                }
-            }
 
         }
 
