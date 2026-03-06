@@ -104,10 +104,11 @@ enum LLMResponseParser {
 
         let bubbles = decoded.compactMap { item -> TranslatedBubble? in
             guard item.index < bubbles.count else { return nil }
+            let originalBubble = bubbles[item.index]
             return TranslatedBubble(
-                bubble: bubbles[item.index],
+                bubble: originalBubble,
                 translatedText: item.translation,
-                index: item.index
+                index: originalBubble.index
             )
         }
 
@@ -125,11 +126,11 @@ enum LLMResponseParser {
             .components(separatedBy: .newlines)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-        let translatedBubbles = zip(lines, bubbles).enumerated().map { index, pair in
+        let translatedBubbles = zip(lines, bubbles).map { pair in
             TranslatedBubble(
                 bubble: pair.1,
                 translatedText: pair.0.trimmingCharacters(in: .whitespaces),
-                index: index
+                index: pair.1.index
             )
         }
         return (translatedBubbles, [])
