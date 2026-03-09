@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @MainActor
 final class TranslationViewModel: ObservableObject {
@@ -9,20 +10,25 @@ final class TranslationViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var errorMessage: String? = nil
     @Published var showMissingKeyAlert = false
-    @Published var preferences = PreferencesService()
+    @Published var preferences: PreferencesService
     @Published var activeGlossaryID: String? = nil
     @Published var glossaries: [Glossary] = []
 
     private let ocrRouter = OCRRouter()
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
+    private var cancellables = Set<AnyCancellable>()
 
     private var glossaryService: GlossaryService { cacheService.glossaryService }
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
     private var recentPageTranslations: [String] = []
 
-    init() {
+    init(preferences: PreferencesService) {
+        self.preferences = preferences
         glossaries = cacheService.glossaryService.listGlossaries()
+        preferences.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     func loadGlossaries() {

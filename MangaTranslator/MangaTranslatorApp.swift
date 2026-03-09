@@ -3,8 +3,15 @@ import Sparkle
 
 @main
 struct MangaTranslatorApp: App {
-    @StateObject private var viewModel = TranslationViewModel()
+    @StateObject private var preferences: PreferencesService
+    @StateObject private var viewModel: TranslationViewModel
     private let updateChecker = UpdateChecker()
+
+    init() {
+        let prefs = PreferencesService()
+        _preferences = StateObject(wrappedValue: prefs)
+        _viewModel = StateObject(wrappedValue: TranslationViewModel(preferences: prefs))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -30,7 +37,7 @@ struct MangaTranslatorApp: App {
         }
 
         Settings {
-            SettingsView(onClearCache: viewModel.clearCacheAndResetPages, updater: updateChecker.updater)
+            SettingsView(preferences: preferences, onClearCache: viewModel.clearCacheAndResetPages, updater: updateChecker.updater)
         }
     }
 }

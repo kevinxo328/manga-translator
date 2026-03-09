@@ -2,7 +2,7 @@ import SwiftUI
 import Sparkle
 
 struct SettingsView: View {
-    @StateObject private var preferences = PreferencesService()
+    @ObservedObject var preferences: PreferencesService
     private let keychainService = KeychainService()
     var onClearCache: (() -> Void)?
     private let updater: SPUUpdater?
@@ -12,11 +12,12 @@ struct SettingsView: View {
     @State private var openAIKey = ""
     @State private var claudeKey = ""
     @State private var showClearCacheAlert = false
-    
+
     @State private var selectedClaudeModel: String = ""
     @State private var customClaudeModel: String = ""
 
-    init(onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
+    init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
+        self.preferences = preferences
         self.onClearCache = onClearCache
         self.updater = updater
     }
