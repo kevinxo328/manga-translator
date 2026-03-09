@@ -49,6 +49,7 @@
 		D10000010000000000000016 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000016 /* tokenizer.json */; };
 		D10000010000000000000017 /* config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000017 /* config.json */; };
 		D10000010000000000000018 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000018 /* special_tokens_map.json */; };
+		T10000010000000000000001 /* LLMPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000001 /* LLMPromptTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -94,6 +95,8 @@
 		D20000010000000000000016 /* tokenizer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer.json; sourceTree = "<group>"; };
 		D20000010000000000000017 /* config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = config.json; sourceTree = "<group>"; };
 		D20000010000000000000018 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
+		T20000010000000000000001 /* LLMPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMPromptTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000010000000000000002 /* MangaTranslator */,
+				T40000010000000000000001 /* MangaTranslatorTests */,
 				A40000010000000000000009 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -193,8 +197,17 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000010 /* MangaTranslator.app */,
+				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		T40000010000000000000001 /* MangaTranslatorTests */ = {
+			isa = PBXGroup;
+			children = (
+				T20000010000000000000001 /* LLMPromptTests.swift */,
+			);
+			path = MangaTranslatorTests;
 			sourceTree = "<group>";
 		};
 		D40000010000000000000001 /* Resources */ = {
@@ -245,6 +258,22 @@
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
 			productType = "com.apple.product-type.application";
 		};
+		T50000010000000000000001 /* MangaTranslatorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorTests" */;
+			buildPhases = (
+				T60000010000000000000001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TD0000010000000000000001 /* PBXTargetDependency */,
+			);
+			name = MangaTranslatorTests;
+			productName = MangaTranslatorTests;
+			productReference = T20000010000000000000010 /* MangaTranslatorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -257,6 +286,10 @@
 				TargetAttributes = {
 					A50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					T50000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A50000010000000000000001;
 					};
 				};
 			};
@@ -278,6 +311,7 @@
 			projectRoot = "";
 			targets = (
 				A50000010000000000000001 /* MangaTranslator */,
+				T50000010000000000000001 /* MangaTranslatorTests */,
 			);
 		};
 /* End PBXProject section */
@@ -340,7 +374,33 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		T60000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				T10000010000000000000001 /* LLMPromptTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		TC0000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = MangaTranslator;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		TD0000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* MangaTranslator */;
+			targetProxy = TC0000010000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B10000010000000000000001 /* Debug */ = {
@@ -515,6 +575,40 @@
 			};
 			name = Release;
 		};
+		TB0000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Debug;
+		};
+		TB0000010000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -532,6 +626,15 @@
 			buildConfigurations = (
 				B10000010000000000000003 /* Debug */,
 				B10000010000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TB0000010000000000000001 /* Debug */,
+				TB0000010000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

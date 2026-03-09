@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1 (2026-03-09)
+
+### Bug Fixes
+
+- Fixed translations occasionally appearing in the wrong speech bubble when using Claude or OpenAI.
+- Fixed a loading indicator that sometimes stayed visible after batch translation finished.
+
 ## v1.1.0 (2026-03-03)
 
 ### New Features

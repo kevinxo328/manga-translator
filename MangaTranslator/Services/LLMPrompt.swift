@@ -13,7 +13,7 @@ struct LLMPrompt {
         - Translate naturally as a manga reader would expect, preserving tone, emotion, and character voice.
         - Maintain consistency in how characters address each other.
         - Keep onomatopoeia translations natural in the target language.
-        - If the reading order of bubbles seems incorrect based on dialogue flow (e.g., an answer appears before its question), reorder them.
+        - Echo back the "index" field exactly as given — do not change the index values.
 
         You will receive a JSON array of bubbles with their positions (x, y coordinates where origin is top-left).
         Manga reads right-to-left, top-to-bottom.
@@ -52,7 +52,7 @@ struct LLMPrompt {
           {"index": 1, "translation": "translated text here"}
         ]
 
-        The "index" field should reflect the corrected reading order (0 = first to read).
+        The "index" field must match exactly the index value from the input — do not change it.
         The "detected_terms" field is optional — include it only in the FIRST element of the array, listing any NEW proper nouns (character names, place names, technique names) found in this page that are NOT already in the glossary above.
         Do not include any other text outside the JSON array.
         """
@@ -61,9 +61,9 @@ struct LLMPrompt {
     }
 
     static func userPrompt(bubbles: [BubbleCluster]) -> String {
-        let bubblesJSON = bubbles.enumerated().map { i, bubble in
+        let bubblesJSON = bubbles.map { bubble in
             """
-            {"index": \(i), "x": \(Int(bubble.boundingBox.origin.x)), "y": \(Int(bubble.boundingBox.origin.y)), "width": \(Int(bubble.boundingBox.width)), "height": \(Int(bubble.boundingBox.height)), "text": "\(bubble.text.replacingOccurrences(of: "\"", with: "\\\""))"}
+            {"index": \(bubble.index), "x": \(Int(bubble.boundingBox.origin.x)), "y": \(Int(bubble.boundingBox.origin.y)), "width": \(Int(bubble.boundingBox.width)), "height": \(Int(bubble.boundingBox.height)), "text": "\(bubble.text.replacingOccurrences(of: "\"", with: "\\\""))"}
             """
         }.joined(separator: ",\n  ")
 
@@ -102,12 +102,13 @@ enum LLMResponseParser {
 
         let decoded = try JSONDecoder().decode([LLMTranslationResponse].self, from: data)
 
+        let bubbleByIndex = Dictionary(uniqueKeysWithValues: bubbles.map { ($0.index, $0) })
         let bubbles = decoded.compactMap { item -> TranslatedBubble? in
-            guard item.index < bubbles.count else { return nil }
+            guard let originalBubble = bubbleByIndex[item.index] else { return nil }
             return TranslatedBubble(
-                bubble: bubbles[item.index],
+                bubble: originalBubble,
                 translatedText: item.translation,
-                index: item.index
+                index: originalBubble.index
             )
         }
 
