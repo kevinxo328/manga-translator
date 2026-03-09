@@ -18,3 +18,12 @@ schema: spec-driven
 #       - Always include a "Non-goals" section
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
+#
+context: |
+  Tech stach: Swift, SwiftUI, Swift Testing
+rules:
+  tasks:
+    - Write the test first. Watch it fail. Write minimal code to pass.
+    - All edge cases covered
+    - Error scenarios tested
+    - Boundary conditions verified
