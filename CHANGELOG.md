@@ -6,6 +6,7 @@
 
 - Fixed translations occasionally appearing in the wrong speech bubble when using Claude or OpenAI.
 - Fixed a loading indicator that sometimes stayed visible after batch translation finished.
+- Fixed settings changes (language, engine, model) not taking effect until the app was restarted.
 
 ## v1.1.0 (2026-03-03)
 
