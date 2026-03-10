@@ -27,7 +27,7 @@ The system SHALL store translation service API keys (DeepL, Google, OpenAI) in t
 - **THEN** the system retrieves the DeepL API key from Keychain
 
 ### Requirement: Settings UI
-The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders.
+The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders. All language selection pickers SHALL display languages using international standard short codes (e.g., JA, EN, ZH-TW) for consistency and space efficiency.
 
 #### Scenario: Open settings
 - **WHEN** user presses Cmd+,
@@ -49,6 +49,10 @@ The system SHALL provide a settings view (accessible via Cmd+,) where users can 
 #### Scenario: UpdateSettingsView ViewModel survives parent re-render
 - **WHEN** `SettingsView` body is re-evaluated (e.g., due to preference change)
 - **THEN** `UpdateSettingsView` retains the same `CheckForUpdatesViewModel` instance
+
+#### Scenario: Language picker display codes
+- **WHEN** user opens the language selection picker in settings or the toolbar
+- **THEN** the options SHALL be displayed as JA, EN, and ZH-TW
 
 ### Requirement: Validate API key presence before translation
 The system SHALL check that the required API key exists before attempting translation. If the key is missing, the system SHALL prompt the user to enter it in settings.
