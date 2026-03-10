@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.3 (2026-03-10)
+
+### Bug Fixes
+
+- Fixed automatic update checks not running even when "Automatically check for updates" was enabled.
+
 ## v1.1.2 (2026-03-10)
 
 ### Improvements
