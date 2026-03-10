@@ -43,8 +43,6 @@ struct SettingsView: View {
                     }
             } header: {
                 Label("DeepL", systemImage: "globe.europe.africa")
-            } footer: {
-                Text("Required for DeepL translation.")
             }
 
             Section {
