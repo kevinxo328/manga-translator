@@ -7,6 +7,10 @@ struct TranslationSidebar: View {
     var isProcessing: Bool = false
     var onRetranslate: (() -> Void)? = nil
 
+    private var sortedTranslations: [(offset: Int, element: TranslatedBubble)] {
+        Array(translations.sorted { $0.index < $1.index }.enumerated())
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -42,14 +46,8 @@ struct TranslationSidebar: View {
                         if translations.isEmpty {
                             emptyState
                         } else {
-                            let sorted = translations.sorted(by: { $0.index < $1.index })
-                            ForEach(Array(sorted.enumerated()), id: \.element.id) { position, bubble in
-                                TranslationCard(
-                                    bubble: bubble,
-                                    displayNumber: position + 1,
-                                    isHighlighted: highlightedBubbleId == bubble.id
-                                )
-                                .onTapGesture {
+                            ForEach(sortedTranslations, id: \.element.id) { position, bubble in
+                                Button {
                                     withAnimation(.spring(response: 0.3)) {
                                         if highlightedBubbleId == bubble.id {
                                             highlightedBubbleId = nil
@@ -57,20 +55,28 @@ struct TranslationSidebar: View {
                                             highlightedBubbleId = bubble.id
                                         }
                                     }
+                                } label: {
+                                    TranslationCard(
+                                        bubble: bubble,
+                                        displayNumber: position + 1,
+                                        isHighlighted: highlightedBubbleId == bubble.id
+                                    )
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Bubble \(position + 1): \(bubble.translatedText)")
                             }
                         }
                     }
                     .padding(16)
                     .id(0)
                 }
-                .onChange(of: highlightedBubbleId) { newId in
+                .onChange(of: highlightedBubbleId) { _, newId in
                     guard let targetId = newId else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(targetId, anchor: .center)
                     }
                 }
-                .onChange(of: pageId) { _ in
+                .onChange(of: pageId) { _, _ in
                     withAnimation(.easeInOut(duration: 0.3)) {
                         proxy.scrollTo(0, anchor: .top)
                     }
@@ -143,5 +149,6 @@ struct TranslationCard: View {
                 .stroke(isHighlighted ? Color.accentColor : Color.clear, lineWidth: 2)
         )
         .scaleEffect(isHighlighted ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3), value: isHighlighted)
     }
 }

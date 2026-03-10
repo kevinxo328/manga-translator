@@ -164,43 +164,46 @@ struct ContentView: View {
             Color(nsColor: .controlBackgroundColor)
                 .ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.1))
-                        .frame(width: 120, height: 120)
-                    
-                    Image(systemName: "arrow.up.doc.on.clipboard")
-                        .font(.system(size: 48))
-                        .foregroundColor(.accentColor)
-                }
-
-                VStack(spacing: 8) {
-                    Text("Drag and Drop Manga Here")
-                        .font(.title2.bold())
-                        .foregroundColor(.primary)
-                    
-                    Text("Supports Images, Folders, CBZ, and ZIP")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                }
-
-                Text("Click here or press \u{2318}O to browse files")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 8)
-            }
-            .padding(40)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
-                    .foregroundColor(.secondary.opacity(0.3))
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button {
                 showFileImporter = true
+            } label: {
+                VStack(spacing: 20) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.1))
+                            .frame(width: 120, height: 120)
+
+                        Image(systemName: "arrow.up.doc.on.clipboard")
+                            .font(.system(size: 48))
+                            .foregroundColor(.accentColor)
+                    }
+
+                    VStack(spacing: 8) {
+                        Text("Drag and Drop Manga Here")
+                            .font(.title2.bold())
+                            .foregroundColor(.primary)
+
+                        Text("Supports Images, Folders, CBZ, and ZIP")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Text("Click here or press \u{2318}O to browse files")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                }
+                .padding(40)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
+                        .foregroundColor(.secondary.opacity(0.3))
+                )
+                .contentShape(Rectangle())
+                .padding(40)
             }
-            .padding(40)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open manga file")
         }
     }
 
@@ -371,7 +374,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 4)
             .controlSize(.small)
-            .onChange(of: viewModel.preferences.translationEngine) { _ in
+            .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 Task { await viewModel.retranslateCurrentPage() }
             }
         }

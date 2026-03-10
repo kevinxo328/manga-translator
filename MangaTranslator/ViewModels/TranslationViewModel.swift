@@ -104,7 +104,9 @@ final class TranslationViewModel: ObservableObject {
         }
 
         resetRecentContext()
-        pages = [MangaPage(imageURL: processedURL)]
+        var page = MangaPage(imageURL: processedURL)
+        page.image = NSImage(contentsOf: processedURL)
+        pages = [page]
         currentPageIndex = 0
         await translatePage(at: 0)
     }
@@ -114,7 +116,11 @@ final class TranslationViewModel: ObservableObject {
     func loadFolder(_ url: URL) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         let imageURLs = FileInputService.scanFolder(url)
-        pages = imageURLs.map { MangaPage(imageURL: $0) }
+        pages = imageURLs.map { imageURL in
+            var page = MangaPage(imageURL: imageURL)
+            page.image = NSImage(contentsOf: imageURL)
+            return page
+        }
         if isSecurityScoped {
             url.stopAccessingSecurityScopedResource()
         }

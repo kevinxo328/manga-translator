@@ -5,11 +5,14 @@ struct ImageViewer: View {
     let page: MangaPage
     let translations: [TranslatedBubble]
     @Binding var highlightedBubbleId: UUID?
-    @State private var imageSize: CGSize = .zero
+
+    private var sortedTranslations: [(offset: Int, element: TranslatedBubble)] {
+        Array(translations.sorted { $0.index < $1.index }.enumerated())
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            let image = page.image ?? NSImage(contentsOf: page.imageURL)
+            let image = page.image
             let originalSize = image?.size ?? CGSize(width: 1, height: 1)
             let scale = min(
                 geometry.size.width / originalSize.width,
@@ -25,18 +28,21 @@ struct ImageViewer: View {
 
             ZStack(alignment: .topLeading) {
                 if let image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: displaySize.width, height: displaySize.height)
-                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                        .onTapGesture {
-                            highlightedBubbleId = nil
-                        }
+                    Button {
+                        highlightedBubbleId = nil
+                    } label: {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: displaySize.width, height: displaySize.height)
+                    }
+                    .buttonStyle(.plain)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    .accessibilityLabel("Manga page image")
+                    .accessibilityHint("Tap to deselect bubble")
                 }
 
-                let sorted = translations.sorted(by: { $0.index < $1.index })
-                ForEach(Array(sorted.enumerated()), id: \.element.id) { position, bubble in
+                ForEach(sortedTranslations, id: \.element.id) { position, bubble in
                     let rect = scaledRect(
                         bubble.bubble.boundingBox,
                         imageSize: originalSize,
@@ -44,18 +50,21 @@ struct ImageViewer: View {
                         offset: CGPoint(x: offsetX, y: offsetY)
                     )
 
-                    BubbleOverlay(
-                        rect: rect,
-                        index: position,
-                        isHighlighted: highlightedBubbleId == bubble.id
-                    )
-                    .onTapGesture {
+                    Button {
                         if highlightedBubbleId == bubble.id {
                             highlightedBubbleId = nil
                         } else {
                             highlightedBubbleId = bubble.id
                         }
+                    } label: {
+                        BubbleOverlay(
+                            rect: rect,
+                            index: position,
+                            isHighlighted: highlightedBubbleId == bubble.id
+                        )
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Bubble \(position + 1)")
                 }
             }
         }

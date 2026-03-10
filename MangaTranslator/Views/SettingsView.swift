@@ -38,7 +38,7 @@ struct SettingsView: View {
             Section {
                 SecureField("API Key", text: $deepLKey)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: deepLKey) { newValue in
+                    .onChange(of: deepLKey) { _, newValue in
                         saveKey(newValue, for: .deepL)
                     }
             } header: {
@@ -48,7 +48,7 @@ struct SettingsView: View {
             Section {
                 SecureField("API Key", text: $googleKey)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: googleKey) { newValue in
+                    .onChange(of: googleKey) { _, newValue in
                         saveKey(newValue, for: .google)
                     }
             } header: {
@@ -58,7 +58,7 @@ struct SettingsView: View {
             Section {
                 SecureField("API Key", text: $openAIKey)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: openAIKey) { newValue in
+                    .onChange(of: openAIKey) { _, newValue in
                         saveKey(newValue, for: .openAI)
                     }
 
@@ -166,12 +166,12 @@ struct SettingsView: View {
 }
 
 private struct UpdateSettingsView: View {
-    @ObservedObject private var checkForUpdatesViewModel: CheckForUpdatesViewModel
+    @StateObject private var checkForUpdatesViewModel: CheckForUpdatesViewModel
     private let updater: SPUUpdater
 
     init(updater: SPUUpdater) {
         self.updater = updater
-        self.checkForUpdatesViewModel = CheckForUpdatesViewModel(updater: updater)
+        _checkForUpdatesViewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: updater))
     }
 
     var body: some View {
