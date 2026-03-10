@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.5 (2026-03-10)
+
+### Bug Fixes
+
+- Fixed language labels (like "ZH-TW") being cut off in the toolbar when the window is small.
+- Fixed the "Clear Cache" explanation text in Settings not aligning correctly.
+
 ## v1.1.4 (2026-03-10)
 
 ### Improvements
