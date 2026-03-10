@@ -10,11 +10,7 @@ struct SettingsView: View {
     @State private var deepLKey = ""
     @State private var googleKey = ""
     @State private var openAIKey = ""
-    @State private var claudeKey = ""
     @State private var showClearCacheAlert = false
-
-    @State private var selectedClaudeModel: String = ""
-    @State private var customClaudeModel: String = ""
 
     init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
         self.preferences = preferences
@@ -90,38 +86,6 @@ struct SettingsView: View {
             } header: {
                 Label("OpenAI Compatible", systemImage: "brain")
             }
-
-            Section {
-                SecureField("API Key", text: $claudeKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: claudeKey) { newValue in
-                        saveKey(newValue, for: .claude)
-                    }
-                
-                Picker("Model", selection: $selectedClaudeModel) {
-                    ForEach(TranslationEngine.claudeModels) { model in
-                        Text(model.displayName).tag(model.apiIdentifier)
-                    }
-                    Text("Custom...").tag("custom")
-                }
-                .onChange(of: selectedClaudeModel) { newValue in
-                    if newValue != "custom" {
-                        preferences.claudeModel = newValue
-                    } else {
-                        preferences.claudeModel = customClaudeModel
-                    }
-                }
-                
-                if selectedClaudeModel == "custom" {
-                    TextField("Model ID", text: $customClaudeModel)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: customClaudeModel) { newValue in
-                            preferences.claudeModel = newValue
-                        }
-                }
-            } header: {
-                Label("Anthropic (Claude)", systemImage: "sparkles")
-            }
         }
         .formStyle(.grouped)
         .padding()
@@ -192,15 +156,6 @@ struct SettingsView: View {
         deepLKey = keychainService.retrieve(for: .deepL) ?? ""
         googleKey = keychainService.retrieve(for: .google) ?? ""
         openAIKey = keychainService.retrieve(for: .openAI) ?? ""
-        claudeKey = keychainService.retrieve(for: .claude) ?? ""
-        
-        // Initialize Claude model selection state
-        if let _ = TranslationEngine.claudeModels.first(where: { $0.apiIdentifier == preferences.claudeModel }) {
-            selectedClaudeModel = preferences.claudeModel
-        } else {
-            selectedClaudeModel = "custom"
-            customClaudeModel = preferences.claudeModel
-        }
     }
 
     private func saveKey(_ key: String, for engine: TranslationEngine) {

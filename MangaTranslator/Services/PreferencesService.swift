@@ -17,10 +17,6 @@ final class PreferencesService: ObservableObject {
         didSet { UserDefaults.standard.set(translationEngine.rawValue, forKey: "translationEngine") }
     }
 
-    @Published var claudeModel: String {
-        didSet { UserDefaults.standard.set(claudeModel, forKey: "claudeModel") }
-    }
-
     @Published var openAIModel: String {
         didSet { UserDefaults.standard.set(openAIModel, forKey: "openAIModel") }
     }
@@ -32,15 +28,13 @@ final class PreferencesService: ObservableObject {
     init() {
         let sourceLang = UserDefaults.standard.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
         let targetLang = UserDefaults.standard.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
-        let engine = UserDefaults.standard.string(forKey: "translationEngine") ?? TranslationEngine.claude.rawValue
-        let claudeM = UserDefaults.standard.string(forKey: "claudeModel") ?? "claude-sonnet-4-5-20250929"
+        let engine = UserDefaults.standard.string(forKey: "translationEngine") ?? "openai"
         let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
         let openAIURL = UserDefaults.standard.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
 
         self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
-        self.translationEngine = TranslationEngine(rawValue: engine) ?? .claude
-        self.claudeModel = claudeM
+        self.translationEngine = TranslationEngine(rawValue: engine) ?? .openAI
         self.openAIModel = openAIM
         self.openAIBaseURL = openAIURL
     }

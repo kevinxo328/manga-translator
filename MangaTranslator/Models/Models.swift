@@ -24,7 +24,6 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
     case deepL = "deepl"
     case google = "google"
     case openAI = "openai"
-    case claude = "claude"
 
     var id: String { rawValue }
 
@@ -33,13 +32,12 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
         case .deepL: return "DeepL"
         case .google: return "Google Translate"
         case .openAI: return "OpenAI Compatible"
-        case .claude: return "Claude"
         }
     }
 
     var isLLM: Bool {
         switch self {
-        case .openAI, .claude: return true
+        case .openAI: return true
         case .deepL, .google: return false
         }
     }
@@ -55,13 +53,6 @@ struct LLMModel: Identifiable, Hashable, Codable {
         self.displayName = displayName
         self.apiIdentifier = apiIdentifier
     }
-}
-
-extension TranslationEngine {
-    static let claudeModels = [
-        LLMModel(displayName: "Claude Sonnet 4.5", apiIdentifier: "claude-sonnet-4-5-20250929"),
-        LLMModel(displayName: "Claude Haiku 3.5", apiIdentifier: "claude-3-5-haiku-20241022")
-    ]
 }
 
 struct TextObservation: Identifiable {

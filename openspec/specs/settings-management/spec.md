@@ -16,7 +16,7 @@ The system SHALL persist user preferences (default source language, default targ
 - **THEN** the app launches with the custom base URL pre-filled
 
 ### Requirement: Store API keys in Keychain
-The system SHALL store translation service API keys (DeepL, Google, OpenAI, Anthropic) in the macOS Keychain using the Security framework. Keys SHALL be stored per-service with the app's bundle ID as the service identifier.
+The system SHALL store translation service API keys (DeepL, Google, OpenAI) in the macOS Keychain using the Security framework. Keys SHALL be stored per-service with the app's bundle ID as the service identifier.
 
 #### Scenario: Save API key
 - **WHEN** user enters their DeepL API key in settings
@@ -50,7 +50,7 @@ The system SHALL provide a settings view (accessible via Cmd+,) where users can 
 The system SHALL check that the required API key exists before attempting translation. If the key is missing, the system SHALL prompt the user to enter it in settings.
 
 #### Scenario: Missing API key
-- **WHEN** user selects Claude engine but has not entered an Anthropic API key
+- **WHEN** user selects DeepL engine but has not entered an API key
 - **THEN** the system shows an alert directing the user to settings to enter the key
 
 ### Requirement: Settings changes apply immediately to active translation session
@@ -65,5 +65,5 @@ The system SHALL use a single shared `PreferencesService` instance across the Se
 - **THEN** the next translation run uses the updated engine
 
 #### Scenario: Model change applies to next translation
-- **WHEN** user changes the Claude or OpenAI model in Settings
+- **WHEN** user changes the OpenAI model in Settings
 - **THEN** the next translation run uses the updated model identifier
