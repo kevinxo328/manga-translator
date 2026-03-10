@@ -253,127 +253,139 @@ struct ContentView: View {
         }
 
         ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 12) {
-                // Glossary picker
-                Menu {
-                    Button("None") { viewModel.activeGlossaryID = nil }
-                    Divider()
-                    ForEach(viewModel.glossaries) { glossary in
-                        Button(glossary.name) { viewModel.activeGlossaryID = glossary.id }
-                    }
-                    Divider()
-                    Button {
-                        showGlossarySheet = true
-                    } label: {
-                        Label("Manage Glossaries...", systemImage: "text.book.closed")
-                    }
+            // Glossary picker
+            Menu {
+                Button("None") { viewModel.activeGlossaryID = nil }
+                Divider()
+                ForEach(viewModel.glossaries) { glossary in
+                    Button(glossary.name) { viewModel.activeGlossaryID = glossary.id }
+                }
+                Divider()
+                Button {
+                    showGlossarySheet = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "text.book.closed")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Text(viewModel.activeGlossary?.name ?? "Glossary")
-                            .font(.subheadline)
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(height: 28)
-                    .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
-                    .overlay(Capsule().stroke(
-                        viewModel.activeGlossaryID != nil ? Color.accentColor.opacity(0.4) : Color.secondary.opacity(0.2),
-                        lineWidth: viewModel.activeGlossaryID != nil ? 1 : 0.5
-                    ))
+                    Label("Manage Glossaries...", systemImage: "text.book.closed")
                 }
-                .buttonStyle(.plain)
-                .help(viewModel.activeGlossaryID != nil ? "Active glossary: \(viewModel.activeGlossary?.name ?? "")" : "No glossary selected")
-                // Language Pair
-                HStack(spacing: 0) {
-                    Menu {
-                        Picker("Source", selection: $viewModel.preferences.sourceLanguage) {
-                            ForEach(Language.allCases) { lang in
-                                Text(lang.displayName).tag(lang)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Text(viewModel.preferences.sourceLanguage.displayName)
-                            .font(.subheadline)
-                            .frame(width: 80, alignment: .center)
-                    }
-                    .buttonStyle(.plain)
-
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 0)
-
-                    Menu {
-                        Picker("Target", selection: $viewModel.preferences.targetLanguage) {
-                            ForEach(Language.allCases) { lang in
-                                Text(lang.displayName).tag(lang)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Text(viewModel.preferences.targetLanguage.displayName)
-                            .font(.subheadline.bold())
-                            .frame(width: 80, alignment: .center)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 8)
-                .frame(height: 28)
-                .background(
-                    Capsule()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
-                )
-
-                // Engine
-                HStack(spacing: 0) {
-                    Image(systemName: "cpu")
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "text.book.closed")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
-                        .padding(.leading, 10)
-                    
-                    Menu {
-                        Picker("Engine", selection: $viewModel.preferences.translationEngine) {
-                            ForEach(TranslationEngine.allCases) { engine in
-                                Text(engine.displayName).tag(engine)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Text(viewModel.preferences.translationEngine.displayName)
-                            .font(.subheadline)
-                            .frame(width: 85, alignment: .leading)
-                            .padding(.leading, 4)
-                    }
-                    .buttonStyle(.plain)
+                    Text(viewModel.activeGlossary?.name ?? "Glossary")
+                        .font(.subheadline)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                .frame(height: 28)
-                .background(
-                    Capsule()
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
-                )
-                // Re-translate All
-                Button {
-                    Task { await viewModel.retranslateAllPages() }
-                } label: {
-                    Image(systemName: "arrow.trianglehead.2.counterclockwise")
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.isProcessing)
-                .help("Re-translate all pages using current settings")
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay(Capsule().stroke(
+                    viewModel.activeGlossaryID != nil ? Color.accentColor.opacity(0.4) : Color.secondary.opacity(0.2),
+                    lineWidth: viewModel.activeGlossaryID != nil ? 1 : 0.5
+                ))
             }
-            .padding(.horizontal, 4)
+            .buttonStyle(.plain)
             .controlSize(.small)
+            .help(viewModel.activeGlossaryID != nil ? "Active glossary: \(viewModel.activeGlossary?.name ?? "")" : "No glossary selected")
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            // Language Pair
+            HStack(spacing: 0) {
+                Menu {
+                    Picker("Source", selection: $viewModel.preferences.sourceLanguage) {
+                        ForEach(Language.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text(viewModel.preferences.sourceLanguage.displayName)
+                        .font(.subheadline)
+                        .frame(width: 80, alignment: .center)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 0)
+
+                Menu {
+                    Picker("Target", selection: $viewModel.preferences.targetLanguage) {
+                        ForEach(Language.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text(viewModel.preferences.targetLanguage.displayName)
+                        .font(.subheadline.bold())
+                        .frame(width: 80, alignment: .center)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(
+                Capsule()
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+            )
+            .controlSize(.small)
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            // Engine
+            HStack(spacing: 0) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 10)
+                
+                Menu {
+                    Picker("Engine", selection: $viewModel.preferences.translationEngine) {
+                        ForEach(TranslationEngine.allCases) { engine in
+                            Text(engine.displayName).tag(engine)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text(viewModel.preferences.translationEngine.displayName)
+                        .font(.subheadline)
+                        .frame(width: 130, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.leading, 4)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(height: 24)
+            .background(
+                Capsule()
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+            )
+            .controlSize(.small)
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            // Re-translate All
+            Button {
+                Task { await viewModel.retranslateAllPages() }
+            } label: {
+                Image(systemName: "arrow.trianglehead.2.counterclockwise")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(viewModel.isProcessing)
+            .help("Re-translate all pages using current settings")
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 Task { await viewModel.retranslateCurrentPage() }
             }

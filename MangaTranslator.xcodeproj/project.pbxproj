@@ -24,16 +24,13 @@
 		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* KeychainService.swift */; };
 		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* PreferencesService.swift */; };
 		A10000010000000000000018 /* FileInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* FileInputService.swift */; };
-		F10000010000000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* UpdateChecker.swift */; };
 		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050 /* TranslationViewModel.swift */; };
 		A10000010000000000000020 /* ImageViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000060 /* ImageViewer.swift */; };
 		A10000010000000000000021 /* TranslationSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000061 /* TranslationSidebar.swift */; };
 		A10000010000000000000022 /* GlossaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000062 /* GlossaryService.swift */; };
-		A10000010000000000000024 /* GlossarySubstitution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000064 /* GlossarySubstitution.swift */; };
 		A10000010000000000000023 /* GlossaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000063 /* GlossaryView.swift */; };
+		A10000010000000000000024 /* GlossarySubstitution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000064 /* GlossarySubstitution.swift */; };
 		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
-		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
-		E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000010000000000000010 /* CheckForUpdatesView.swift */; };
 		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* ComicTextDetectorService.swift */; };
 		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002 /* MangaOCRTokenizer.swift */; };
 		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003 /* MangaOCRRecognizer.swift */; };
@@ -48,10 +45,23 @@
 		D10000010000000000000016 /* tokenizer.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000016 /* tokenizer.json */; };
 		D10000010000000000000017 /* config.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000017 /* config.json */; };
 		D10000010000000000000018 /* special_tokens_map.json in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000018 /* special_tokens_map.json */; };
+		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
+		E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000010000000000000010 /* CheckForUpdatesView.swift */; };
+		F10000010000000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* UpdateChecker.swift */; };
 		T10000010000000000000001 /* LLMPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000001 /* LLMPromptTests.swift */; };
 		T10000010000000000000002 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000002 /* PreferencesServiceTests.swift */; };
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		TC0000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = MangaTranslator;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A20000010000000000000001 /* MangaTranslatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorApp.swift; sourceTree = "<group>"; };
@@ -73,14 +83,12 @@
 		A20000010000000000000040 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
 		A20000010000000000000042 /* FileInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInputService.swift; sourceTree = "<group>"; };
-		F20000010000000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		A20000010000000000000050 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
 		A20000010000000000000060 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		A20000010000000000000061 /* TranslationSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSidebar.swift; sourceTree = "<group>"; };
 		A20000010000000000000062 /* GlossaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryService.swift; sourceTree = "<group>"; };
-		A20000010000000000000064 /* GlossarySubstitution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossarySubstitution.swift; sourceTree = "<group>"; };
 		A20000010000000000000063 /* GlossaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryView.swift; sourceTree = "<group>"; };
-		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
+		A20000010000000000000064 /* GlossarySubstitution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossarySubstitution.swift; sourceTree = "<group>"; };
 		D20000010000000000000001 /* ComicTextDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorService.swift; sourceTree = "<group>"; };
 		D20000010000000000000002 /* MangaOCRTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTokenizer.swift; sourceTree = "<group>"; };
 		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
@@ -95,6 +103,8 @@
 		D20000010000000000000016 /* tokenizer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tokenizer.json; sourceTree = "<group>"; };
 		D20000010000000000000017 /* config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = config.json; sourceTree = "<group>"; };
 		D20000010000000000000018 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
+		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
+		F20000010000000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		T20000010000000000000001 /* LLMPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMPromptTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000002 /* PreferencesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIViewCorrectnessTests.swift; sourceTree = "<group>"; };
@@ -203,16 +213,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		T40000010000000000000001 /* MangaTranslatorTests */ = {
-			isa = PBXGroup;
-			children = (
-				T20000010000000000000001 /* LLMPromptTests.swift */,
-				T20000010000000000000002 /* PreferencesServiceTests.swift */,
-				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
-			);
-			path = MangaTranslatorTests;
-			sourceTree = "<group>";
-		};
 		D40000010000000000000001 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -235,6 +235,16 @@
 				D20000010000000000000018 /* special_tokens_map.json */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		T40000010000000000000001 /* MangaTranslatorTests */ = {
+			isa = PBXGroup;
+			children = (
+				T20000010000000000000001 /* LLMPromptTests.swift */,
+				T20000010000000000000002 /* PreferencesServiceTests.swift */,
+				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
+			);
+			path = MangaTranslatorTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -388,16 +398,6 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXContainerItemProxy section */
-		TC0000010000000000000001 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A90000010000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A50000010000000000000001;
-			remoteInfo = MangaTranslator;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXTargetDependency section */
 		TD0000010000000000000001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -518,6 +518,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
