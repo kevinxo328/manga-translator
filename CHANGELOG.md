@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.2 (2026-03-10)
+
+### Improvements
+
+- The app no longer prompts macOS for Keychain access repeatedly during a session, reducing interruptions.
+- Settings panel is now taller, making it easier to browse all options without scrolling.
+
+### Changes
+
+- Removed Claude (Anthropic) as a translation engine option. Gemini, DeepL, and OpenAI remain available.
+
 ## v1.1.1 (2026-03-09)
 
 ### Bug Fixes
