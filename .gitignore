@@ -1,12 +1,26 @@
 # Xcode
+#
+# git ignores many of these files by default.
 build/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad
 xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+#
+# Add this line if you want to avoid committing the test-generated folder
+.build/
 
 # macOS
+#
+#
 .DS_Store
+*.swp
+*~
 
 # Python (legacy)
 .venv/
