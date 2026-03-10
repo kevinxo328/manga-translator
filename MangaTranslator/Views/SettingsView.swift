@@ -130,6 +130,10 @@ struct SettingsView: View {
                     Label("Cache", systemImage: "internaldrive")
                 } footer: {
                     Text("Removes all cached translations. Pages will be re-translated on next run.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
