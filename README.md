@@ -62,32 +62,15 @@ xcodebuild -project MangaTranslator.xcodeproj \
 
 ```
 MangaTranslator/
-├── MangaTranslatorApp.swift          # App entry point
-├── Models/
-│   └── Models.swift                  # Core data types (Language, TranslationEngine, BubbleCluster, etc.)
-├── ViewModels/
-│   └── TranslationViewModel.swift    # Central state management and orchestration
-├── Views/
-│   ├── ContentView.swift             # Main split-view layout
-│   ├── ImageViewer.swift             # Image display with bubble overlays
-│   ├── TranslationSidebar.swift      # Scrollable translation card list
-│   ├── GlossaryView.swift            # Glossary management sheet
-│   └── SettingsView.swift            # API keys, preferences, and about tabs
-├── Services/
-│   ├── OCRRouter.swift               # OCR pipeline orchestrator
-│   ├── MangaOCRService.swift         # Manga-OCR ONNX inference
-│   ├── ComicTextDetectorService.swift# YOLOv5 text region detection
-│   ├── BubbleDetector.swift          # Clusters text observations into bubbles
-│   ├── ReadingOrderSorter.swift      # Right-to-left, top-to-bottom ordering
-│   ├── OpenAI/DeepL/Google TranslationService.swift
-│   ├── GlossaryService.swift         # SQLite-backed glossary CRUD
-│   ├── GlossarySubstitution.swift    # API-native term preservation for DeepL/Google
-│   ├── LLMPrompt.swift               # Prompt builder (glossary + context injection)
-│   ├── CacheService.swift            # SQLite translation cache and glossary tables
-│   ├── KeychainService.swift         # Secure API key storage
-│   ├── FileInputService.swift        # Image/folder/archive loading
-│   └── PreferencesService.swift      # UserDefaults wrapper
-└── Resources/Models/                 # Bundled ONNX models and tokenizer files
+├── MangaTranslatorApp.swift  # App entry point
+├── Models/                   # Data structures and core types
+├── Services/                 # Core logic (OCR, Translation, Persistence)
+├── ViewModels/               # App state and orchestration
+├── Views/                    # SwiftUI interface components
+└── Resources/                # Bundled ML models and assets
+MangaTranslatorTests/         # Unit and integration tests
+openspec/                     # Technical specifications and change tracking
+scripts/                      # Build and release automation scripts
 ```
 
 ## Architecture Overview
