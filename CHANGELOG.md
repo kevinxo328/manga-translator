@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4 (2026-03-10)
+
+### Improvements
+
+- Refactored language selection pickers to use international standard short codes (JA, EN, ZH-TW) for better consistency and space efficiency.
+
 ## v1.1.3 (2026-03-10)
 
 ### Bug Fixes
