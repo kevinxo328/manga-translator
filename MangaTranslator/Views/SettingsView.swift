@@ -67,7 +67,7 @@ struct SettingsView: View {
                 HStack {
                     TextField("Base URL", text: $preferences.openAIBaseURL)
                         .textFieldStyle(.roundedBorder)
-                    Button("Reset to Default") {
+                    Button("Reset") {
                         preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
                     }
                     .buttonStyle(.borderless)
@@ -77,7 +77,7 @@ struct SettingsView: View {
                 HStack {
                     TextField("Model", text: $preferences.openAIModel)
                         .textFieldStyle(.roundedBorder)
-                    Button("Reset to Default") {
+                    Button("Reset") {
                         preferences.openAIModel = PreferencesService.defaultOpenAIModel
                     }
                     .buttonStyle(.borderless)

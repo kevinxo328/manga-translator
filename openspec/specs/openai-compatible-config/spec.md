@@ -16,7 +16,7 @@ The system SHALL allow users to configure a base URL for the OpenAI-compatible t
 - **THEN** the system SHALL use `https://my-local-llm.example.com/v1/chat/completions` for API requests
 
 #### Scenario: Reset base URL to default
-- **WHEN** user clicks the "Reset to Default" button next to the Base URL field
+- **WHEN** user clicks the "Reset" button next to the Base URL field
 - **THEN** the Base URL field SHALL be restored to `https://api.openai.com/v1`
 
 ### Requirement: Configurable model name for OpenAI-compatible API
@@ -31,7 +31,7 @@ The system SHALL allow users to enter any model name as free text. The default m
 - **THEN** the system SHALL use `llama-3-70b` in the API request body
 
 #### Scenario: Reset model to default
-- **WHEN** user clicks the "Reset to Default" button next to the Model field
+- **WHEN** user clicks the "Reset" button next to the Model field
 - **THEN** the Model field SHALL be restored to `gpt-5`
 
 ### Requirement: Input sanitization for base URL and model
