@@ -29,7 +29,7 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 450, height: 350)
+        .frame(width: 450, height: 500)
         .onAppear { loadKeys() }
     }
 
