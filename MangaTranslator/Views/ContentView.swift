@@ -7,7 +7,7 @@ struct ContentView: View {
     @State private var showGlossarySheet = false
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             // Left: Image viewer
             ZStack {
                 if let page = viewModel.currentPage {
@@ -17,6 +17,8 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 500)
+
+            Divider()
 
             // Right: Sidebar
             TranslationSidebar(
