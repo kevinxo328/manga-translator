@@ -51,6 +51,8 @@
 		T10000010000000000000001 /* LLMPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000001 /* LLMPromptTests.swift */; };
 		T10000010000000000000002 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000002 /* PreferencesServiceTests.swift */; };
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
+		T10000010000000000000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000004 /* KeychainServiceTests.swift */; };
+		T10000010000000000000005 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000005 /* ModelsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +110,8 @@
 		T20000010000000000000001 /* LLMPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMPromptTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000002 /* PreferencesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIViewCorrectnessTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000005 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -243,6 +247,8 @@
 				T20000010000000000000001 /* LLMPromptTests.swift */,
 				T20000010000000000000002 /* PreferencesServiceTests.swift */,
 				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
+				T20000010000000000000004 /* KeychainServiceTests.swift */,
+				T20000010000000000000005 /* ModelsTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -393,6 +399,8 @@
 				T10000010000000000000001 /* LLMPromptTests.swift in Sources */,
 				T10000010000000000000002 /* PreferencesServiceTests.swift in Sources */,
 				T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */,
+				T10000010000000000000004 /* KeychainServiceTests.swift in Sources */,
+				T10000010000000000000005 /* ModelsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
