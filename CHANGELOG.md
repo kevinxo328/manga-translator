@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.6 (2026-03-12)
+
+### Bug Fixes
+
+- Fixed visual layout and spacing issues across the app.
+
 ## v1.1.5 (2026-03-10)
 
 ### Bug Fixes
