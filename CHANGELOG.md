@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.7 (2026-03-12)
+
+### Improvements
+
+- Toolbar buttons (Glossary, language picker, translation engine) now match the native macOS style — no more mismatched borders or backgrounds.
+- The divider between the image and the translation panel is now a clean, subtle line instead of a heavy split-view handle.
+- The translation panel background now blends seamlessly with the rest of the window.
+
 ## v1.1.6 (2026-03-12)
 
 ### Bug Fixes
