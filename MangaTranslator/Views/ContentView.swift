@@ -275,22 +275,16 @@ struct ContentView: View {
                         .font(.subheadline)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .padding(.horizontal, 8)
-                .frame(height: 24)
-                .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(Capsule().stroke(
-                    viewModel.activeGlossaryID != nil ? Color.accentColor.opacity(0.4) : Color.secondary.opacity(0.2),
-                    lineWidth: viewModel.activeGlossaryID != nil ? 1 : 0.5
-                ))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .padding(.horizontal, 8)
             .controlSize(.small)
             .help(viewModel.activeGlossaryID != nil ? "Active glossary: \(viewModel.activeGlossary?.name ?? "")" : "No glossary selected")
         }
 
         ToolbarItem(placement: .primaryAction) {
             // Language Pair
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 Menu {
                     Picker("Source", selection: $viewModel.preferences.sourceLanguage) {
                         ForEach(Language.allCases) { lang in
@@ -301,7 +295,6 @@ struct ContentView: View {
                 } label: {
                     Text(viewModel.preferences.sourceLanguage.displayName)
                         .font(.subheadline)
-                        .frame(width: 80, alignment: .center)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.plain)
@@ -309,7 +302,6 @@ struct ContentView: View {
                 Image(systemName: "arrow.right")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 0)
 
                 Menu {
                     Picker("Target", selection: $viewModel.preferences.targetLanguage) {
@@ -321,32 +313,21 @@ struct ContentView: View {
                 } label: {
                     Text(viewModel.preferences.targetLanguage.displayName)
                         .font(.subheadline.bold())
-                        .frame(width: 80, alignment: .center)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
-            .frame(height: 24)
-            .background(
-                Capsule()
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
-            )
             .controlSize(.small)
         }
 
         ToolbarItem(placement: .primaryAction) {
             // Engine
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 Image(systemName: "cpu")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
-                    .padding(.leading, 10)
-                
+
                 Menu {
                     Picker("Engine", selection: $viewModel.preferences.translationEngine) {
                         ForEach(TranslationEngine.allCases) { engine in
@@ -357,21 +338,11 @@ struct ContentView: View {
                 } label: {
                     Text(viewModel.preferences.translationEngine.displayName)
                         .font(.subheadline)
-                        .frame(width: 130, alignment: .leading)
                         .fixedSize(horizontal: true, vertical: false)
-                        .padding(.leading, 4)
                 }
                 .buttonStyle(.plain)
             }
-            .frame(height: 24)
-            .background(
-                Capsule()
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
-            )
+            .padding(.horizontal, 8)
             .controlSize(.small)
         }
 

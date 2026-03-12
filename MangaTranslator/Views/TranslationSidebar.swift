@@ -37,7 +37,7 @@ struct TranslationSidebar: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(.ultraThinMaterial)
+            .background(Color(nsColor: .windowBackgroundColor))
             .zIndex(1)
 
             ScrollViewReader { proxy in
@@ -83,7 +83,7 @@ struct TranslationSidebar: View {
                 }
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 300, idealWidth: 350)
     }
 
