@@ -6,6 +6,9 @@ struct TranslationSidebar: View {
     var pageId: UUID? = nil
     var isProcessing: Bool = false
     var onRetranslate: (() -> Void)? = nil
+    var onMove: ((Int, Int) -> Void)? = nil
+
+    @State private var draggingBubbleId: String? = nil
 
     private var sortedTranslations: [(offset: Int, element: TranslatedBubble)] {
         Array(translations.sorted { $0.index < $1.index }.enumerated())
@@ -64,6 +67,36 @@ struct TranslationSidebar: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Bubble \(position + 1): \(bubble.translatedText)")
+                                .draggable(bubble.id.uuidString) {
+                                    TranslationCard(
+                                        bubble: bubble,
+                                        displayNumber: position + 1,
+                                        isHighlighted: true
+                                    )
+                                    .frame(width: 280)
+                                    .opacity(0.8)
+                                }
+                                .dropDestination(for: String.self) { droppedItems, _ in
+                                    guard let droppedId = droppedItems.first,
+                                          let fromPosition = sortedTranslations.first(where: { $0.element.id.uuidString == droppedId })?.offset,
+                                          fromPosition != position else {
+                                        return false
+                                    }
+                                    onMove?(fromPosition, position)
+                                    return true
+                                } isTargeted: { isTargeted in
+                                    if isTargeted {
+                                        draggingBubbleId = bubble.id.uuidString
+                                    } else if draggingBubbleId == bubble.id.uuidString {
+                                        draggingBubbleId = nil
+                                    }
+                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.accentColor, lineWidth: 2)
+                                        .opacity(draggingBubbleId == bubble.id.uuidString ? 1 : 0)
+                                        .animation(.easeInOut(duration: 0.15), value: draggingBubbleId)
+                                )
                             }
                         }
                     }

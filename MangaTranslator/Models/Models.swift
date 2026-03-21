@@ -116,6 +116,22 @@ struct TranslationOutput {
     let detectedTerms: [GlossaryTerm]
 }
 
+enum BubbleReorder {
+    static func move(bubbles: [TranslatedBubble], from: Int, to: Int) -> [TranslatedBubble] {
+        var sorted = bubbles.sorted { $0.index < $1.index }
+        guard from >= 0, from < sorted.count, to >= 0, to < sorted.count, from != to else {
+            return sorted.enumerated().map { i, b in
+                TranslatedBubble(bubble: b.bubble, translatedText: b.translatedText, index: i)
+            }
+        }
+        let item = sorted.remove(at: from)
+        sorted.insert(item, at: to)
+        return sorted.enumerated().map { i, b in
+            TranslatedBubble(bubble: b.bubble, translatedText: b.translatedText, index: i)
+        }
+    }
+}
+
 protocol TranslationService {
     var engine: TranslationEngine { get }
     func translate(

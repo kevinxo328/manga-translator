@@ -28,6 +28,9 @@ struct ContentView: View {
                 isProcessing: viewModel.isCurrentPageProcessing,
                 onRetranslate: {
                     Task { await viewModel.retranslateCurrentPage() }
+                },
+                onMove: { from, to in
+                    viewModel.moveBubble(from: from, to: to)
                 }
             )
         }

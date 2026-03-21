@@ -279,8 +279,28 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Bubble reorder
+
+    func moveBubble(from: Int, to: Int) {
+        guard pages.indices.contains(currentPageIndex),
+              case .translated(let bubbles) = pages[currentPageIndex].state else { return }
+        let reordered = BubbleReorder.move(bubbles: bubbles, from: from, to: to)
+        pages[currentPageIndex].state = .translated(reordered)
+        if let imageHash = pages[currentPageIndex].imageHash {
+            cacheService.store(
+                imageHash: imageHash,
+                source: preferences.sourceLanguage,
+                target: preferences.targetLanguage,
+                engine: preferences.translationEngine,
+                bubbles: reordered
+            )
+        }
+    }
+
+    // MARK: - Re-translate (no re-OCR)
+
     func retranslateCurrentPage() async {
-        await translatePage(at: currentPageIndex, bypassCache: true)
+        await retranslatePage(at: currentPageIndex)
     }
 
     func retranslateAllPages() async {
@@ -297,11 +317,74 @@ final class TranslationViewModel: ObservableObject {
 
                 group.addTask { [weak self] in
                     guard let self else { return }
-                    await self.translatePage(at: i, bypassCache: true)
+                    await self.retranslatePage(at: i)
                 }
             }
         }
         isProcessing = false
+    }
+
+    private func retranslatePage(at index: Int) async {
+        guard pages.indices.contains(index) else { return }
+
+        // If page is not yet translated, fall back to full OCR + translate pipeline
+        guard case .translated(let existing) = pages[index].state else {
+            await translatePage(at: index, bypassCache: true)
+            return
+        }
+
+        let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+
+        // If source == target, nothing to re-translate
+        guard needsTranslation else { return }
+
+        guard keychainService.hasKey(for: preferences.translationEngine) else {
+            showMissingKeyAlert = true
+            return
+        }
+
+        pages[index].state = .processing
+
+        do {
+            // Extract BubbleClusters from existing translation, preserving manual order
+            let ordered = existing.sorted { $0.index < $1.index }.map(\.bubble)
+
+            let toTranslate = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+            let punctuationOnly = ordered.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+
+            let context = buildTranslationContext()
+            let output = try await translationService.translate(
+                bubbles: toTranslate,
+                from: preferences.sourceLanguage,
+                to: preferences.targetLanguage,
+                context: context
+            )
+
+            if let glossaryID = activeGlossaryID, !output.detectedTerms.isEmpty {
+                glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
+                glossaries = glossaryService.listGlossaries()
+            }
+
+            let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+            let translated = (output.bubbles + passthrough).sorted { $0.index < $1.index }
+
+            appendToRecentContext(translated)
+
+            if let imageHash = pages[index].imageHash {
+                cacheService.store(
+                    imageHash: imageHash,
+                    source: preferences.sourceLanguage,
+                    target: preferences.targetLanguage,
+                    engine: preferences.translationEngine,
+                    bubbles: translated
+                )
+            }
+
+            pages[index].state = .translated(translated)
+        } catch {
+            // On failure, restore previous translation instead of showing error
+            pages[index].state = .translated(existing)
+        }
     }
 
     // MARK: - Navigation
