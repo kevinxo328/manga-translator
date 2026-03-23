@@ -9,6 +9,8 @@ You are writing a user-facing changelog entry for a macOS manga translation app.
 
 Ask the user: "What version number is this release? (e.g. v1.2.0)"
 
+If the user provides an increment like `0.0.1` or `+0.0.1`, compute the next version by applying it to the latest tag. For example: latest tag `v1.1.7` + increment `0.0.1` = `v1.1.8`.
+
 ## Step 2: Gather commits
 
 Run the following to find commits since the last tag:
@@ -92,4 +94,13 @@ Only include sections that have entries. If there are no bug fixes, omit the `##
 
 Insert the new block at the top of CHANGELOG.md, just below the `# Changelog` heading, with a blank line before the next existing entry.
 
-Then show the user the new entry and say: "Added to CHANGELOG.md. Review and edit if needed."
+Show the user the new entry and say: "Added to CHANGELOG.md. Review and edit if needed."
+
+## Step 7: Commit and tag
+
+Run in this exact order:
+
+1. `git add CHANGELOG.md && git commit -m "docs: add changelog entry for v<VERSION>"`
+2. `git tag v<VERSION>`
+
+Then ask the user: "Push to remote? (`git push && git push origin v<VERSION>`)"
