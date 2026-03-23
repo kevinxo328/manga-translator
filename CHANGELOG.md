@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.8 (2026-03-23)
+
+### Bug Fixes
+
+- Fixed the page indicator pill showing an unexpected background.
+
 ## v1.1.7 (2026-03-12)
 
 ### Improvements
