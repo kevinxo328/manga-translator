@@ -246,9 +246,8 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
                 .font(.subheadline.monospacedDigit())
-                .padding(.horizontal, 12) // Increased from 8
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                .padding(.horizontal, 8)
+                .controlSize(.small)
             }
 
 
