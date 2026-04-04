@@ -279,6 +279,11 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
+    func dismissError(at index: Int) {
+        guard pages.indices.contains(index), case .error = pages[index].state else { return }
+        pages[index].state = .pending
+    }
+
     func retranslateCurrentPage() async {
         await translatePage(at: currentPageIndex, bypassCache: true)
     }

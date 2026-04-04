@@ -140,6 +140,17 @@ struct ContentView: View {
             
             case .error(let message):
                 VStack(spacing: 8) {
+                    HStack(alignment: .top) {
+                        Spacer()
+                        Button {
+                            viewModel.dismissError(at: viewModel.currentPageIndex)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.largeTitle)
                         .foregroundColor(.orange)
