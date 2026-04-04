@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.9 (2026-04-04)
+
+### Improvements
+
+- You can now dismiss the error message that appears when a page fails to translate, instead of having it stay on screen.
+
 ## v1.1.8 (2026-03-23)
 
 ### Bug Fixes
