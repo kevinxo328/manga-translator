@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.0 (2026-04-07)
+
+### New Features
+
+- **GitHub Copilot Support** — You can now use GitHub Copilot as a translation engine. Select it in Settings to translate manga pages using your existing Copilot subscription — no separate API key needed. Choose from available Copilot models to suit your needs.
+
 ## v1.1.9 (2026-04-04)
 
 ### Improvements
