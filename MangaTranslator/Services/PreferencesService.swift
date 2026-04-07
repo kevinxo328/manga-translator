@@ -3,6 +3,7 @@ import Foundation
 final class PreferencesService: ObservableObject {
     static let defaultOpenAIBaseURL = "https://api.openai.com/v1"
     static let defaultOpenAIModel = "gpt-5"
+    static let defaultCopilotModel = "gpt-5-mini"
 
 
     @Published var sourceLanguage: Language {
@@ -25,17 +26,23 @@ final class PreferencesService: ObservableObject {
         didSet { UserDefaults.standard.set(openAIBaseURL, forKey: "openAIBaseURL") }
     }
 
+    @Published var copilotModel: String {
+        didSet { UserDefaults.standard.set(copilotModel, forKey: "copilotModel") }
+    }
+
     init() {
         let sourceLang = UserDefaults.standard.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
         let targetLang = UserDefaults.standard.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
         let engine = UserDefaults.standard.string(forKey: "translationEngine") ?? "openai"
         let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
         let openAIURL = UserDefaults.standard.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
+        let copilotM = UserDefaults.standard.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
 
         self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
         self.translationEngine = TranslationEngine(rawValue: engine) ?? .openAI
         self.openAIModel = openAIM
         self.openAIBaseURL = openAIURL
+        self.copilotModel = copilotM
     }
 }
