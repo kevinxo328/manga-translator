@@ -35,6 +35,9 @@ struct SettingsView: View {
         .onAppear { loadKeys() }
         .task {
             copilotAvailability = CopilotEnvironment.check()
+            if !copilotAvailability.isAvailable && preferences.translationEngine == .githubCopilot {
+                preferences.translationEngine = .openAI
+            }
             if case .available(let token) = copilotAvailability {
                 copilotModels = (try? await CopilotEnvironment.fetchModels(token: token)) ?? []
             }

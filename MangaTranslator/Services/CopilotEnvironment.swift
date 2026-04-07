@@ -39,7 +39,7 @@ struct CopilotEnvironment {
     // MARK: - Internal (internal for testing)
 
     static func filterChatModels(_ ids: [String]) -> [String] {
-        ids.filter { !$0.hasPrefix("text-embedding") }
+        ids.filter { !$0.hasPrefix("text-embedding") }.sorted()
     }
 
     static func binaryPath(searchingIn paths: [String]) -> String? {
@@ -51,8 +51,13 @@ struct CopilotEnvironment {
     // MARK: - Private
 
     private static var defaultSearchPaths: [String] {
-        (ProcessInfo.processInfo.environment["PATH"] ?? "")
+        var paths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
             .components(separatedBy: ":")
+        let extraPaths = ["/usr/local/bin", "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/sbin"]
+        for path in extraPaths where !paths.contains(path) {
+            paths.append(path)
+        }
+        return paths
     }
 
     private static func readKeychainToken() -> String? {

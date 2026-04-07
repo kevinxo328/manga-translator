@@ -10,10 +10,10 @@ struct CopilotEnvironmentTests {
         #expect(result == nil)
     }
 
-    @Test("fetchModels filters embedding models")
+    @Test("fetchModels filters embedding models and sorts alphabetically")
     func fetchModelsFiltersEmbeddingModels() {
         let all = ["gpt-5-mini", "text-embedding-3-small", "claude-sonnet-4.6", "text-embedding-ada-002"]
         let filtered = CopilotEnvironment.filterChatModels(all)
-        #expect(filtered == ["gpt-5-mini", "claude-sonnet-4.6"])
+        #expect(filtered == ["claude-sonnet-4.6", "gpt-5-mini"])
     }
 }
