@@ -53,6 +53,10 @@
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
 		T10000010000000000000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000004 /* KeychainServiceTests.swift */; };
 		T10000010000000000000005 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000005 /* ModelsTests.swift */; };
+		T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000006 /* CopilotEnvironmentTests.swift */; };
+		T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000007 /* CopilotTranslationServiceTests.swift */; };
+		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
+		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +100,10 @@
 		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
 		D20000010000000000000004 /* MangaOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRService.swift; sourceTree = "<group>"; };
 		D20000010000000000000005 /* OCRRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouter.swift; sourceTree = "<group>"; };
+		G20000010000000000000001 /* CopilotEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironment.swift; sourceTree = "<group>"; };
+		G20000010000000000000002 /* CopilotTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationService.swift; sourceTree = "<group>"; };
+		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000007 /* CopilotTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationServiceTests.swift; sourceTree = "<group>"; };
 		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
 		D20000010000000000000011 /* encoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = encoder_model.onnx; sourceTree = "<group>"; };
 		D20000010000000000000012 /* decoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = decoder_model.onnx; sourceTree = "<group>"; };
@@ -204,6 +212,8 @@
 				D20000010000000000000004 /* MangaOCRService.swift */,
 				D20000010000000000000005 /* OCRRouter.swift */,
 				F20000010000000000000001 /* UpdateChecker.swift */,
+				G20000010000000000000001 /* CopilotEnvironment.swift */,
+				G20000010000000000000002 /* CopilotTranslationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -249,6 +259,8 @@
 				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
 				T20000010000000000000004 /* KeychainServiceTests.swift */,
 				T20000010000000000000005 /* ModelsTests.swift */,
+				T20000010000000000000006 /* CopilotEnvironmentTests.swift */,
+				T20000010000000000000007 /* CopilotTranslationServiceTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -360,6 +372,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				G10000010000000000000001 /* CopilotEnvironment.swift in Sources */,
+				G10000010000000000000002 /* CopilotTranslationService.swift in Sources */,
 				A10000010000000000000001 /* MangaTranslatorApp.swift in Sources */,
 				A10000010000000000000002 /* ContentView.swift in Sources */,
 				A10000010000000000000003 /* SettingsView.swift in Sources */,
@@ -401,6 +415,8 @@
 				T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */,
 				T10000010000000000000004 /* KeychainServiceTests.swift in Sources */,
 				T10000010000000000000005 /* ModelsTests.swift in Sources */,
+				T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */,
+				T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
