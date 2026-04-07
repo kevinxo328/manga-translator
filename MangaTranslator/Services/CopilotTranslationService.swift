@@ -50,7 +50,7 @@ struct CopilotTranslationService: TranslationService {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
+        request.setValue("copilot-developer-cli", forHTTPHeaderField: "Copilot-Integration-Id")
 
         let body: [String: Any] = [
             "model": model,
