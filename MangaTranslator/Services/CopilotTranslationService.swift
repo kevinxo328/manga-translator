@@ -51,7 +51,6 @@ struct CopilotTranslationService: TranslationService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
 
         let body: [String: Any] = [
             "model": model,
