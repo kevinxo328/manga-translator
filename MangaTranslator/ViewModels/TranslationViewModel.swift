@@ -85,7 +85,7 @@ final class TranslationViewModel: ObservableObject {
         case .deepL: return DeepLTranslationService(keychainService: keychainService)
         case .google: return GoogleTranslationService(keychainService: keychainService)
         case .openAI: return OpenAITranslationService(model: preferences.openAIModel, baseURL: preferences.openAIBaseURL, keychainService: keychainService)
-        case .githubCopilot: fatalError("CopilotTranslationService not yet implemented")
+        case .githubCopilot: return CopilotTranslationService(model: preferences.copilotModel)
         }
     }
 
@@ -178,7 +178,7 @@ final class TranslationViewModel: ObservableObject {
         let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
 
         do {
-            if needsTranslation {
+            if needsTranslation && preferences.translationEngine != .githubCopilot {
                 guard keychainService.hasKey(for: preferences.translationEngine) else {
                     showMissingKeyAlert = true
                     pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
