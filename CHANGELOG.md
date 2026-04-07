@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.3 (2026-04-07)
+
+### Bug Fixes
+
+- Fixed GitHub Copilot showing "no models available" after upgrading to v1.2.1 or v1.2.2.
+
 ## v1.2.2 (2026-04-07)
 
 ### New Features
