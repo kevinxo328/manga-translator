@@ -45,6 +45,11 @@ struct MangaTranslatorApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updateChecker.updater)
             }
+
+            CommandGroup(after: .toolbar) {
+                Toggle("Show Path Bar", isOn: $preferences.showPathBar)
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+            }
         }
 
         Settings {

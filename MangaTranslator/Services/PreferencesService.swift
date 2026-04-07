@@ -30,6 +30,10 @@ final class PreferencesService: ObservableObject {
         didSet { UserDefaults.standard.set(copilotModel, forKey: "copilotModel") }
     }
 
+    @Published var showPathBar: Bool {
+        didSet { UserDefaults.standard.set(showPathBar, forKey: "showPathBar") }
+    }
+
     init() {
         let sourceLang = UserDefaults.standard.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
         let targetLang = UserDefaults.standard.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
@@ -37,6 +41,7 @@ final class PreferencesService: ObservableObject {
         let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
         let openAIURL = UserDefaults.standard.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
         let copilotM = UserDefaults.standard.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
+        let showP = UserDefaults.standard.object(forKey: "showPathBar") as? Bool ?? true
 
         self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
@@ -44,5 +49,6 @@ final class PreferencesService: ObservableObject {
         self.openAIModel = openAIM
         self.openAIBaseURL = openAIURL
         self.copilotModel = copilotM
+        self.showPathBar = showP
     }
 }

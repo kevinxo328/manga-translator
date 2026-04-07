@@ -13,6 +13,7 @@ final class TranslationViewModel: ObservableObject {
     @Published var preferences: PreferencesService
     @Published var activeGlossaryID: String? = nil
     @Published var glossaries: [Glossary] = []
+    @Published var sourcePath: String? = nil
 
     private let ocrRouter = OCRRouter()
     private let cacheService = CacheService()
@@ -93,6 +94,7 @@ final class TranslationViewModel: ObservableObject {
 
     func loadImage(_ url: URL) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
+        self.sourcePath = url.path
         // Copy to temp to ensure accessibility after security scope is revoked
         let processedURL: URL
         do {
@@ -116,6 +118,7 @@ final class TranslationViewModel: ObservableObject {
 
     func loadFolder(_ url: URL) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
+        self.sourcePath = url.path
         let imageURLs = FileInputService.scanFolder(url)
         pages = imageURLs.map { imageURL in
             var page = MangaPage(imageURL: imageURL)
@@ -133,12 +136,15 @@ final class TranslationViewModel: ObservableObject {
 
     func loadArchive(_ url: URL) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
+        self.sourcePath = url.path
         do {
             let extractedURL = try FileInputService.extractArchive(url)
             if isSecurityScoped {
                 url.stopAccessingSecurityScopedResource()
             }
             await loadFolder(extractedURL)
+            // Re-set source path because loadFolder overrides it with temp path
+            self.sourcePath = url.path
         } catch {
             if isSecurityScoped {
                 url.stopAccessingSecurityScopedResource()

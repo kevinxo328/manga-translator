@@ -31,6 +31,11 @@ struct ContentView: View {
                 }
             )
         }
+        .safeAreaInset(edge: .bottom) {
+            if viewModel.preferences.showPathBar, let path = viewModel.sourcePath {
+                pathBar(path: path)
+            }
+        }
         .frame(minWidth: 800, minHeight: 600)
         .toolbar { toolbarContent }
         .fileImporter(
@@ -406,6 +411,27 @@ struct ContentView: View {
         provider.loadItem(forTypeIdentifier: "public.file-url") { item, _ in
             guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
             Task { @MainActor in await handleInput(url) }
+        }
+    }
+
+    @ViewBuilder
+    private func pathBar(path: String) -> some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "folder")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Text(path)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+            }
+            .padding(.horizontal, 20) // 增加左右邊距，避開圓角
+            .padding(.vertical, 8)   // 增加上下邊距，讓空間更開闊
+            .background(.ultraThinMaterial)
         }
     }
 }
