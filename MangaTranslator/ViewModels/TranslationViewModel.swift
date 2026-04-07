@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 @MainActor
 final class TranslationViewModel: ObservableObject {
@@ -14,6 +15,11 @@ final class TranslationViewModel: ObservableObject {
     @Published var activeGlossaryID: String? = nil
     @Published var glossaries: [Glossary] = []
     @Published var sourcePath: String? = nil
+    @Published var showFileImporter = false
+
+    var allowedTypes: [UTType] {
+        [.image, .folder, .zip, UTType(filenameExtension: "cbz") ?? .zip]
+    }
 
     private let ocrRouter = OCRRouter()
     private let cacheService = CacheService()
@@ -87,6 +93,21 @@ final class TranslationViewModel: ObservableObject {
         case .google: return GoogleTranslationService(keychainService: keychainService)
         case .openAI: return OpenAITranslationService(model: preferences.openAIModel, baseURL: preferences.openAIBaseURL, keychainService: keychainService)
         case .githubCopilot: return CopilotTranslationService(model: preferences.copilotModel)
+        }
+    }
+
+    // MARK: - Input Handling
+
+    func handleInput(_ url: URL) async {
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        let ext = url.pathExtension.lowercased()
+
+        if isDirectory {
+            await loadFolder(url)
+        } else if ext == "zip" || ext == "cbz" {
+            await loadArchive(url)
+        } else {
+            await loadImage(url)
         }
     }
 

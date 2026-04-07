@@ -24,6 +24,13 @@ struct MangaTranslatorApp: App {
             ContentView(viewModel: viewModel)
         }
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Open...") {
+                    viewModel.showFileImporter = true
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+
             CommandGroup(replacing: .appInfo) {
                 Button("About MangaTranslator") {
                     if let existing = windows.aboutWindow {

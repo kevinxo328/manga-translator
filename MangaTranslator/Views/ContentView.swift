@@ -3,7 +3,6 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
-    @State private var showFileImporter = false
     @State private var showGlossarySheet = false
 
     var body: some View {
@@ -39,14 +38,14 @@ struct ContentView: View {
         .frame(minWidth: 800, minHeight: 600)
         .toolbar { toolbarContent }
         .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: allowedTypes,
+            isPresented: $viewModel.showFileImporter,
+            allowedContentTypes: viewModel.allowedTypes,
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
                 let granted = url.startAccessingSecurityScopedResource()
                 Task {
-                    await handleInput(url)
+                    await viewModel.handleInput(url)
                     if granted { url.stopAccessingSecurityScopedResource() }
                 }
             }
@@ -183,7 +182,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             Button {
-                showFileImporter = true
+                viewModel.showFileImporter = true
             } label: {
                 VStack(spacing: 20) {
                     ZStack {
@@ -228,7 +227,7 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button(action: { showFileImporter = true }) {
+            Button(action: { viewModel.showFileImporter = true }) {
                 Label("Open", systemImage: "plus.rectangle.on.folder")
             }
             .help("Open image, folder or archive")
@@ -380,28 +379,11 @@ struct ContentView: View {
         }
     }
 
-    private var allowedTypes: [UTType] {
-        [.image, .folder, .zip, UTType(filenameExtension: "cbz") ?? .zip]
-    }
-
-    private func handleInput(_ url: URL) async {
-        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-        let ext = url.pathExtension.lowercased()
-
-        if isDirectory {
-            await viewModel.loadFolder(url)
-        } else if ext == "zip" || ext == "cbz" {
-            await viewModel.loadArchive(url)
-        } else {
-            await viewModel.loadImage(url)
-        }
-    }
-
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first else { return false }
         provider.loadItem(forTypeIdentifier: "public.file-url") { item, _ in
             guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in await handleInput(url) }
+            Task { @MainActor in await viewModel.handleInput(url) }
         }
         return true
     }
@@ -410,7 +392,7 @@ struct ContentView: View {
         guard let provider = providers.first else { return }
         provider.loadItem(forTypeIdentifier: "public.file-url") { item, _ in
             guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in await handleInput(url) }
+            Task { @MainActor in await viewModel.handleInput(url) }
         }
     }
 
