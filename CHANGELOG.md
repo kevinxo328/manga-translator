@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.1 (2026-04-07)
+
+### Improvements
+
+- GitHub Copilot models are now grouped by tier (Premium, Lite, Standard) so you can easily pick the right one for your needs. The app also falls back to your organization's Copilot endpoint automatically if the personal one isn't available.
+
 ## v1.2.0 (2026-04-07)
 
 ### New Features
