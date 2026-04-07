@@ -10,7 +10,7 @@ struct CopilotEnvironmentTests {
         #expect(result == nil)
     }
 
-    @Test("parseModels includes only model_picker_enabled models")
+    @Test("parseModels excludes only model_picker_enabled=false models")
     func parseModelsFiltersPickerEnabled() throws {
         let json = """
         {
@@ -31,14 +31,18 @@ struct CopilotEnvironmentTests {
               "name": "Claude Opus 4.5",
               "model_picker_enabled": true,
               "model_picker_category": "powerful"
+            },
+            {
+              "id": "gpt-4o",
+              "name": "GPT-4o"
             }
           ]
         }
         """.data(using: .utf8)!
 
         let models = try CopilotEnvironment.parseModels(json)
-        #expect(models.count == 2)
-        #expect(models.map(\.id).sorted() == ["claude-opus-4.5", "claude-sonnet-4.5"])
+        #expect(models.count == 3)
+        #expect(models.map(\.id).sorted() == ["claude-opus-4.5", "claude-sonnet-4.5", "gpt-4o"])
     }
 
     @Test("parseModels sorts by name")

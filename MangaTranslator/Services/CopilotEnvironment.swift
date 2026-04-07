@@ -42,8 +42,7 @@ struct CopilotEnvironment {
     static func fetchModelsFromEndpoint(token: String, urlString: String) async throws -> [CopilotModel] {
         var request = URLRequest(url: URL(string: urlString)!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue("copilot-developer-cli", forHTTPHeaderField: "Copilot-Integration-Id")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
@@ -74,7 +73,7 @@ struct CopilotEnvironment {
 
         let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
         return decoded.data
-            .filter { $0.modelPickerEnabled == true }
+            .filter { $0.modelPickerEnabled != false }
             .map { model in
                 CopilotModel(
                     id: model.id,
