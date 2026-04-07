@@ -24,6 +24,7 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
     case deepL = "deepl"
     case google = "google"
     case openAI = "openai"
+    case githubCopilot = "github-copilot"
 
     var id: String { rawValue }
 
@@ -32,12 +33,13 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
         case .deepL: return "DeepL"
         case .google: return "Google Translate"
         case .openAI: return "OpenAI Compatible"
+        case .githubCopilot: return "GitHub Copilot"
         }
     }
 
     var isLLM: Bool {
         switch self {
-        case .openAI: return true
+        case .openAI, .githubCopilot: return true
         case .deepL, .google: return false
         }
     }
