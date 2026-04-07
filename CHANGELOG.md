@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.2 (2026-04-07)
+
+### New Features
+
+- **System Menu Support** — Open images directly from the macOS menu bar for a more seamless workflow.
+- **Path Bar Footer** — Toggle a new footer bar at the bottom of the window to see exactly where your current image is stored.
+
 ## v1.2.1 (2026-04-07)
 
 ### Improvements
