@@ -7,7 +7,7 @@ A native macOS application that automatically detects, recognizes, and translate
 ## Core Features
 
 - **Manga-Optimized OCR** — Japanese uses bundled ONNX models (Manga-OCR encoder/decoder + YOLOv5-based comic text detector) with Apple Vision as a fallback. English and Traditional Chinese use Apple Vision directly, so the app can OCR manga in all three supported languages.
-- **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, and Google Translate. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection.
+- **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
 - **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible backend auto-detects new proper nouns during translation and adds them to the active glossary automatically.
 - **Cross-page Context** — When using the OpenAI-compatible engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
 - **Batch Processing** — Load entire folders or CBZ/ZIP archives and translate all pages concurrently (up to 3 pages in parallel).
@@ -80,7 +80,7 @@ Image Input ─► ComicTextDetector (YOLO) ─► BubbleDetector ─► Reading
                                                 │
                                     MangaOCR / Vision OCR
                                                 │
-                                    TranslationService (OpenAI / DeepL / Google)
+                                    TranslationService (OpenAI / DeepL / Google / Copilot)
                                                 │
                                          CacheService (SQLite)
                                                 │

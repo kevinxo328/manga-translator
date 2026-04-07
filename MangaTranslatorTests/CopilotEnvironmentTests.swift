@@ -10,10 +10,57 @@ struct CopilotEnvironmentTests {
         #expect(result == nil)
     }
 
-    @Test("fetchModels filters embedding models and sorts alphabetically")
-    func fetchModelsFiltersEmbeddingModels() {
-        let all = ["gpt-5-mini", "text-embedding-3-small", "claude-sonnet-4.6", "text-embedding-ada-002"]
-        let filtered = CopilotEnvironment.filterChatModels(all)
-        #expect(filtered == ["claude-sonnet-4.6", "gpt-5-mini"])
+    @Test("parseModels includes only model_picker_enabled models")
+    func parseModelsFiltersPickerEnabled() throws {
+        let json = """
+        {
+          "data": [
+            {
+              "id": "claude-sonnet-4.5",
+              "name": "Claude Sonnet 4.5",
+              "model_picker_enabled": true,
+              "model_picker_category": "versatile"
+            },
+            {
+              "id": "gpt-3.5-turbo",
+              "name": "GPT 3.5 Turbo",
+              "model_picker_enabled": false
+            },
+            {
+              "id": "claude-opus-4.5",
+              "name": "Claude Opus 4.5",
+              "model_picker_enabled": true,
+              "model_picker_category": "powerful"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let models = try CopilotEnvironment.parseModels(json)
+        #expect(models.count == 2)
+        #expect(models.map(\.id).sorted() == ["claude-opus-4.5", "claude-sonnet-4.5"])
+    }
+
+    @Test("parseModels sorts by name")
+    func parseModelsSortsByName() throws {
+        let json = """
+        {
+          "data": [
+            { "id": "z", "name": "Z Model", "model_picker_enabled": true },
+            { "id": "a", "name": "A Model", "model_picker_enabled": true }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let models = try CopilotEnvironment.parseModels(json)
+        #expect(models.map(\.name) == ["A Model", "Z Model"])
+    }
+
+    @Test("CopilotModel displayLabel uses category")
+    func copilotModelDisplayLabel() {
+        #expect(CopilotModel(id: "a", name: "Claude Sonnet 4.5", category: "versatile").displayLabel == "Claude Sonnet 4.5 (Standard)")
+        #expect(CopilotModel(id: "b", name: "Claude Opus 4.5", category: "powerful").displayLabel == "Claude Opus 4.5 (Premium)")
+        #expect(CopilotModel(id: "c", name: "GPT-5 mini", category: "lightweight").displayLabel == "GPT-5 mini (Lite)")
+        #expect(CopilotModel(id: "d", name: "Unknown", category: nil).displayLabel == "Unknown")
     }
 }

@@ -45,6 +45,23 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+struct CopilotModel: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let category: String?
+
+    var displayLabel: String {
+        guard let category else { return name }
+        let label: String
+        switch category {
+        case "powerful":   label = "Premium"
+        case "lightweight": label = "Lite"
+        default:           label = "Standard"
+        }
+        return "\(name) (\(label))"
+    }
+}
+
 struct LLMModel: Identifiable, Hashable, Codable {
     let id: String
     let displayName: String

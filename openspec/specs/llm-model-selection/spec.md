@@ -6,7 +6,7 @@ Enable users to select specific LLM models for translation providers (OpenAI Com
 ## Requirements
 
 ### Requirement: Model picker UI in API Keys tab
-Each LLM provider (OpenAI Compatible) displays a model picker below its API key input in the Settings API Keys tab.
+Each LLM provider (OpenAI Compatible, GitHub Copilot) displays a model picker in the Settings API Keys tab. The GitHub Copilot model picker is populated dynamically by fetching models from the Copilot API using the stored OAuth token; embedding models are filtered out. The OpenAI Compatible model picker shows a curated predefined list plus a "Custom..." option.
 
 #### Scenario: User views API Keys tab
 - **WHEN** the user opens Settings and selects the API Keys tab
@@ -17,6 +17,11 @@ Each LLM provider (OpenAI Compatible) displays a model picker below its API key 
 - **WHEN** the user picks a model from the OpenAI model picker
 - **THEN** the selection is persisted immediately
 - **THEN** subsequent translations using the OpenAI engine use the newly selected model
+
+#### Scenario: User selects a GitHub Copilot model
+- **WHEN** the Copilot CLI is available and user picks a model from the Copilot model picker
+- **THEN** the selection is persisted to `copilotModel` in UserDefaults
+- **THEN** subsequent translations using the GitHub Copilot engine use the selected model
 
 ### Requirement: Model selection persistence
 Selected models are stored in UserDefaults and restored on app launch.
@@ -29,6 +34,7 @@ Selected models are stored in UserDefaults and restored on app launch.
 #### Scenario: Default model on first launch
 - **WHEN** no model preference has been saved (first launch)
 - **THEN** OpenAI defaults to `gpt-4o-mini`
+- **THEN** GitHub Copilot defaults to `gpt-5-mini`
 
 ### Requirement: Predefined model list
 Each LLM provider (OpenAI Compatible) has a curated list of available models.

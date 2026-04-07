@@ -12,7 +12,8 @@ struct SettingsView: View {
     @State private var openAIKey = ""
     @State private var showClearCacheAlert = false
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
-    @State private var copilotModels: [String] = []
+    @State private var copilotModels: [CopilotModel] = []
+    @State private var isLoadingCopilotModels = false
 
     init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
         self.preferences = preferences
@@ -39,7 +40,9 @@ struct SettingsView: View {
                 preferences.translationEngine = .openAI
             }
             if case .available(let token) = copilotAvailability {
+                isLoadingCopilotModels = true
                 copilotModels = (try? await CopilotEnvironment.fetchModels(token: token)) ?? []
+                isLoadingCopilotModels = false
             }
         }
     }
@@ -101,11 +104,17 @@ struct SettingsView: View {
                 case .available:
                     Label("Copilot CLI detected", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    if copilotModels.isEmpty {
+                    if isLoadingCopilotModels {
                         ProgressView()
+                    } else if copilotModels.isEmpty {
+                        Text("No models available")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
                     } else {
                         Picker("Model", selection: $preferences.copilotModel) {
-                            ForEach(copilotModels, id: \.self) { Text($0).tag($0) }
+                            ForEach(copilotModels) { model in
+                                Text(model.displayLabel).tag(model.id)
+                            }
                         }
                     }
                 case .notInstalled:

@@ -23,23 +23,66 @@ struct CopilotEnvironment {
 
     // MARK: - Model fetching
 
-    static func fetchModels(token: String) async throws -> [String] {
-        var request = URLRequest(url: URL(string: "https://api.individual.githubcopilot.com/models")!)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("copilot-developer-cli", forHTTPHeaderField: "Copilot-Integration-Id")
-        let (data, _) = try await URLSession.shared.data(for: request)
-        struct Response: Decodable {
-            struct Model: Decodable { let id: String }
-            let data: [Model]
+    static func fetchModels(token: String) async throws -> [CopilotModel] {
+        let endpoints = [
+            "https://api.individual.githubcopilot.com/models",
+            "https://api.githubcopilot.com/models"
+        ]
+        for endpoint in endpoints {
+            if let models = try? await fetchModelsFromEndpoint(token: token, urlString: endpoint),
+               !models.isEmpty {
+                return models
+            }
         }
-        let decoded = try JSONDecoder().decode(Response.self, from: data)
-        return filterChatModels(decoded.data.map(\.id))
+        return []
     }
 
     // MARK: - Internal (internal for testing)
 
-    static func filterChatModels(_ ids: [String]) -> [String] {
-        ids.filter { !$0.hasPrefix("text-embedding") }.sorted()
+    static func fetchModelsFromEndpoint(token: String, urlString: String) async throws -> [CopilotModel] {
+        var request = URLRequest(url: URL(string: urlString)!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        if let raw = String(data: data, encoding: .utf8) {
+            print("[CopilotEnv] raw models response:\n\(raw)")
+        }
+        return try parseModels(data)
+    }
+
+    static func parseModels(_ data: Data) throws -> [CopilotModel] {
+        struct APIResponse: Decodable {
+            struct Model: Decodable {
+                let id: String
+                let name: String?
+                let modelPickerEnabled: Bool?
+                let modelPickerCategory: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case id, name
+                    case modelPickerEnabled = "model_picker_enabled"
+                    case modelPickerCategory = "model_picker_category"
+                }
+            }
+            let data: [Model]
+        }
+
+        let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+        return decoded.data
+            .filter { $0.modelPickerEnabled == true }
+            .map { model in
+                CopilotModel(
+                    id: model.id,
+                    name: model.name ?? model.id,
+                    category: model.modelPickerCategory
+                )
+            }
+            .sorted { $0.name < $1.name }
     }
 
     static func binaryPath(searchingIn paths: [String]) -> String? {

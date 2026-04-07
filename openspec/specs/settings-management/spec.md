@@ -5,7 +5,7 @@ User preferences persistence and settings UI.
 ## Requirements
 
 ### Requirement: Store user preferences in UserDefaults
-The system SHALL persist user preferences (default source language, default target language, default translation engine, concurrent translation limit, OpenAI base URL, OpenAI model name) using UserDefaults.
+The system SHALL persist user preferences (default source language, default target language, default translation engine, concurrent translation limit, OpenAI base URL, OpenAI model name, GitHub Copilot model name) using UserDefaults.
 
 #### Scenario: Preferences persist across launches
 - **WHEN** user sets default language pair to Japanese → Traditional Chinese and quits the app
@@ -27,7 +27,7 @@ The system SHALL store translation service API keys (DeepL, Google, OpenAI) in t
 - **THEN** the system retrieves the DeepL API key from Keychain
 
 ### Requirement: Settings UI
-The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders. All language selection pickers SHALL display languages using international standard short codes (e.g., JA, EN, ZH-TW) for consistency and space efficiency.
+The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders. All language selection pickers SHALL display languages using international standard short codes (e.g., JA, EN, ZH-TW) for consistency and space efficiency. The API Keys tab SHALL include a GitHub Copilot section that displays the availability status of the Copilot CLI and, when available, a model picker populated from the Copilot API. The engine picker in the Preferences tab SHALL only show the GitHub Copilot option when the Copilot CLI is installed and logged in.
 
 #### Scenario: Open settings
 - **WHEN** user presses Cmd+,
@@ -53,6 +53,22 @@ The system SHALL provide a settings view (accessible via Cmd+,) where users can 
 #### Scenario: Language picker display codes
 - **WHEN** user opens the language selection picker in settings or the toolbar
 - **THEN** the options SHALL be displayed as JA, EN, and ZH-TW
+
+#### Scenario: GitHub Copilot section — CLI detected
+- **WHEN** user opens the API Keys tab and the Copilot CLI is installed and logged in
+- **THEN** a green checkmark label "Copilot CLI detected" is shown with a model picker populated from the Copilot API
+
+#### Scenario: GitHub Copilot section — CLI not installed
+- **WHEN** user opens the API Keys tab and the Copilot CLI binary is not found
+- **THEN** a label "GitHub Copilot CLI not found" is shown with installation instructions
+
+#### Scenario: GitHub Copilot section — not logged in
+- **WHEN** user opens the API Keys tab and the CLI is installed but no keychain token exists
+- **THEN** a warning "Not logged in" is shown with instructions to run `copilot login`
+
+#### Scenario: Engine picker hides Copilot when unavailable
+- **WHEN** user opens the engine picker in the Preferences tab and Copilot CLI is not installed or not logged in
+- **THEN** the "GitHub Copilot" option is not shown in the picker
 
 ### Requirement: Validate API key presence before translation
 The system SHALL check that the required API key exists before attempting translation. If the key is missing, the system SHALL prompt the user to enter it in settings.
