@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var googleKey = ""
     @State private var openAIKey = ""
     @State private var showClearCacheAlert = false
+    @State private var copilotAvailability: CopilotAvailability = .notInstalled
+    @State private var copilotModels: [String] = []
 
     init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
         self.preferences = preferences
@@ -31,6 +33,12 @@ struct SettingsView: View {
         }
         .frame(width: 450, height: 500)
         .onAppear { loadKeys() }
+        .task {
+            copilotAvailability = CopilotEnvironment.check()
+            if case .available(let token) = copilotAvailability {
+                copilotModels = (try? await CopilotEnvironment.fetchModels(token: token)) ?? []
+            }
+        }
     }
 
     private var apiKeysTab: some View {
@@ -84,6 +92,33 @@ struct SettingsView: View {
             } header: {
                 Label("OpenAI Compatible", systemImage: "brain")
             }
+
+            Section {
+                switch copilotAvailability {
+                case .available:
+                    Label("Copilot CLI detected", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    if copilotModels.isEmpty {
+                        ProgressView()
+                    } else {
+                        Picker("Model", selection: $preferences.copilotModel) {
+                            ForEach(copilotModels, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
+                case .notInstalled:
+                    Label("GitHub Copilot CLI not found", systemImage: "xmark.circle")
+                        .foregroundStyle(.secondary)
+                    Text("Install from github.com/github/copilot-cli")
+                        .font(.caption).foregroundStyle(.secondary)
+                case .notLoggedIn:
+                    Label("Not logged in", systemImage: "exclamationmark.circle")
+                        .foregroundStyle(.orange)
+                    Text("Run `copilot login` in Terminal")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Label("GitHub Copilot", systemImage: "sparkles")
+            }
         }
         .formStyle(.grouped)
         .padding()
@@ -103,7 +138,9 @@ struct SettingsView: View {
                     }
                 }
                 Picker("Translation Engine", selection: $preferences.translationEngine) {
-                    ForEach(TranslationEngine.allCases) { engine in
+                    ForEach(TranslationEngine.allCases.filter {
+                        $0 != .githubCopilot || copilotAvailability.isAvailable
+                    }) { engine in
                         Text(engine.displayName).tag(engine)
                     }
                 }
