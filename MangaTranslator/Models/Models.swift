@@ -11,9 +11,9 @@ enum Language: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .ja: return "JA"
-        case .en: return "EN"
-        case .zhHant: return "ZH-TW"
+        case .ja: return "🇯🇵 Japanese"
+        case .en: return "🇺🇸 English"
+        case .zhHant: return "🇹🇼 Traditional Chinese"
         }
     }
 
