@@ -10,8 +10,6 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -65,13 +63,10 @@ jobs:
           ./scripts/generate_appcast.sh "$VERSION" "$DMG_PATH" "$ED_SIGNATURE" "$FILE_SIZE"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            build/MangaTranslator-*.dmg
-            appcast.xml
-          draft: false
-          prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            build/MangaTranslator-*.dmg \
+            appcast.xml \
+            --generate-notes
