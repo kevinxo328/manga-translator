@@ -137,9 +137,9 @@ final class TranslationViewModel: ObservableObject {
 
     // MARK: - Batch
 
-    func loadFolder(_ url: URL) async {
+    func loadFolder(_ url: URL, displayPath: String? = nil) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
-        self.sourcePath = url.path
+        self.sourcePath = displayPath ?? url.path
         let imageURLs = FileInputService.scanFolder(url)
         pages = imageURLs.map { imageURL in
             var page = MangaPage(imageURL: imageURL)
@@ -157,15 +157,12 @@ final class TranslationViewModel: ObservableObject {
 
     func loadArchive(_ url: URL) async {
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
-        self.sourcePath = url.path
         do {
             let extractedURL = try FileInputService.extractArchive(url)
             if isSecurityScoped {
                 url.stopAccessingSecurityScopedResource()
             }
-            await loadFolder(extractedURL)
-            // Re-set source path because loadFolder overrides it with temp path
-            self.sourcePath = url.path
+            await loadFolder(extractedURL, displayPath: url.path)
         } catch {
             if isSecurityScoped {
                 url.stopAccessingSecurityScopedResource()
