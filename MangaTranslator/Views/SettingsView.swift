@@ -35,7 +35,7 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 450, height: 500)
+        .frame(width: 450, height: 600)
         .onAppear { loadKeys() }
         .task {
             copilotAvailability = CopilotEnvironment.check()
