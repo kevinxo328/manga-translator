@@ -5,19 +5,22 @@ struct SettingsView: View {
     @ObservedObject var preferences: PreferencesService
     private let keychainService = KeychainService()
     var onClearCache: (() -> Void)?
+    var onFetchCacheSize: (() -> Int64)?
     private let updater: SPUUpdater?
 
     @State private var deepLKey = ""
     @State private var googleKey = ""
     @State private var openAIKey = ""
     @State private var showClearCacheAlert = false
+    @State private var cacheSizeBytes: Int64 = 0
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
     @State private var copilotModels: [CopilotModel] = []
     @State private var isLoadingCopilotModels = false
 
-    init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, updater: SPUUpdater? = nil) {
+    init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, onFetchCacheSize: (() -> Int64)? = nil, updater: SPUUpdater? = nil) {
         self.preferences = preferences
         self.onClearCache = onClearCache
+        self.onFetchCacheSize = onFetchCacheSize
         self.updater = updater
     }
 
@@ -170,6 +173,10 @@ struct SettingsView: View {
 
             if onClearCache != nil {
                 Section {
+                    LabeledContent("Cache Size") {
+                        Text(ByteCountFormatter.string(fromByteCount: cacheSizeBytes, countStyle: .file))
+                            .foregroundStyle(.secondary)
+                    }
                     Button(role: .destructive) {
                         showClearCacheAlert = true
                     } label: {
@@ -184,6 +191,9 @@ struct SettingsView: View {
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .onAppear {
+                    cacheSizeBytes = onFetchCacheSize?() ?? 0
+                }
             }
         }
         .formStyle(.grouped)
@@ -192,6 +202,7 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
                 onClearCache?()
+                cacheSizeBytes = 0
             }
         } message: {
             Text("This will delete all cached translation results. This action cannot be undone.")

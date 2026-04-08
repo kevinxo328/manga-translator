@@ -134,6 +134,14 @@ final class CacheService {
         sqlite3_exec(db, "DELETE FROM translation_cache", nil, nil, nil)
     }
 
+    func translationCacheSize() -> Int64 {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT SUM(LENGTH(bubbles_json)) FROM translation_cache", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return sqlite3_column_int64(stmt, 0)
+    }
+
     func addHistory(path: String, pageCount: Int?) {
         let sql = """
         INSERT OR REPLACE INTO history (file_path, page_count, last_opened)

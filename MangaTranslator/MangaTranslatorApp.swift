@@ -60,7 +60,7 @@ struct MangaTranslatorApp: App {
         }
 
         Settings {
-            SettingsView(preferences: preferences, onClearCache: viewModel.clearCacheAndResetPages, updater: updateChecker.updater)
+            SettingsView(preferences: preferences, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater)
         }
     }
 }
