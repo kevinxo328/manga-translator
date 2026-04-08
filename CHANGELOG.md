@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.4 (2026-04-08)
+
+### New Features
+
+- **Cache Size Display** — You can now see how much disk space the translation cache is using, right in Settings.
+
+### Bug Fixes
+
+- Fixed the path bar showing a temporary folder path instead of your file's actual location while a translation was in progress.
+
+### Improvements
+
+- Languages are now shown with their flag and full name instead of short language codes, making it easier to pick the right language.
+
 ## v1.2.3 (2026-04-07)
 
 ### Bug Fixes
