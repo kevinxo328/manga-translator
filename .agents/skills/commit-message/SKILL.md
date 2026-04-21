@@ -7,6 +7,8 @@ description: >-
   git commit, how do I commit this, what should my commit say, or when the user pastes
   a diff or describes what they changed. Always use this skill proactively, even if the
   user just describes what they changed without explicitly asking for a commit message.
+metadata:
+  version: "1.0.0"
 ---
 
 # Commit Message Skill
