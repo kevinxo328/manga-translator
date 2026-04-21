@@ -268,7 +268,7 @@ struct AboutView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("© 2026 Chun-Wei Liu. All rights reserved.")
+            Text("© 2026 kevinxo328. All rights reserved.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
