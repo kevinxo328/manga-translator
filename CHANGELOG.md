@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.5 (2026-04-22)
+
+### Bug Fixes
+
+- Fixed high-resolution manga scans (e.g. 600 DPI) appearing tiny in the viewer and showing bubble indicators in the wrong positions.
+
 ## v1.2.4 (2026-04-08)
 
 ### New Features
