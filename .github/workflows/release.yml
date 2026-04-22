@@ -62,6 +62,22 @@ jobs:
           # Generate appcast.xml
           ./scripts/generate_appcast.sh "$VERSION" "$DMG_PATH" "$ED_SIGNATURE" "$FILE_SIZE"
 
+      - name: Extract changelog for this version
+        run: |
+          # Extract the section for the current version from CHANGELOG.md
+          VERSION_TAG="${{ github.ref_name }}"
+          NOTES=$(awk "
+            /^## ${VERSION_TAG} / { found=1; next }
+            found && /^## v[0-9]/ { exit }
+            found { print }
+          " CHANGELOG.md | sed '/^[[:space:]]*$/d' | awk 'NR>1 || NF')
+          if [ -z "$NOTES" ]; then
+            echo "⚠️  No changelog entry found for ${VERSION_TAG}, falling back to empty notes."
+            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+          # Write to file to preserve newlines
+          echo "$NOTES" > /tmp/release_notes.md
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,4 +85,4 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             build/MangaTranslator-*.dmg \
             appcast.xml \
-            --generate-notes
+            --notes-file /tmp/release_notes.md
