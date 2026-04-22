@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.0 (2026-04-22)
+
+### New Features
+
+- **Improved Text Recognition** — Upgraded the built-in Japanese text recognition engine to the latest 2025 version for better accuracy.
+
 ## v1.2.5 (2026-04-22)
 
 ### Bug Fixes
