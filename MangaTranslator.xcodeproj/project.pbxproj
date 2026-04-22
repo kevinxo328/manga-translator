@@ -56,7 +56,7 @@
 		T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000006 /* CopilotEnvironmentTests.swift */; };
 		T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000007 /* CopilotTranslationServiceTests.swift */; };
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
-		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
+		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
 		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
 /* End PBXBuildFile section */
 
@@ -106,7 +106,7 @@
 		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000007 /* CopilotTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
-		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
+		T20000010000000000000009 /* MangaOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTests.swift; sourceTree = "<group>"; };		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
 		D20000010000000000000011 /* encoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = encoder_model.onnx; sourceTree = "<group>"; };
 		D20000010000000000000012 /* decoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = decoder_model.onnx; sourceTree = "<group>"; };
 		D20000010000000000000013 /* vocab.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = vocab.txt; sourceTree = "<group>"; };
@@ -264,9 +264,9 @@
 				T20000010000000000000006 /* CopilotEnvironmentTests.swift */,
 				T20000010000000000000007 /* CopilotTranslationServiceTests.swift */,
 				T20000010000000000000008 /* ImageViewerTests.swift */,
-			);
-			path = MangaTranslatorTests;
-			sourceTree = "<group>";
+				T20000010000000000000009 /* MangaOCRTests.swift */,
+				);
+				path = MangaTranslatorTests;			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -421,10 +421,10 @@
 				T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */,
 				T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */,
 				T10000010000000000000008 /* ImageViewerTests.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
+				T10000010000000000000009 /* MangaOCRTests.swift in Sources */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+				};/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		TD0000010000000000000001 /* PBXTargetDependency */ = {
