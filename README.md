@@ -6,7 +6,7 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ## Core Features
 
-- **Manga-Optimized OCR** — Japanese uses bundled ONNX models (Manga-OCR encoder/decoder + YOLOv5-based comic text detector) with Apple Vision as a fallback. English and Traditional Chinese use Apple Vision directly, so the app can OCR manga in all three supported languages.
+- **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. (Apple Vision is used as a secondary fallback).
 - **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
 - **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible backend auto-detects new proper nouns during translation and adds them to the active glossary automatically.
 - **Cross-page Context** — When using the OpenAI-compatible engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
@@ -106,3 +106,8 @@ git push origin v1.0.0
 - **API key handling** — Never log or persist API keys outside of Keychain. The `KeychainService` is the single source of truth.
 - **Concurrency** — Batch translation uses Swift concurrency (`async/await` with `TaskGroup`), capped at 3 concurrent pages to avoid API rate limits.
 - **Cache invalidation** — The cache is keyed by image content hash (SHA256), so re-translating the same image with a different engine or language will create a separate cache entry.
+
+## Credits & Resources
+
+- **Manga-OCR (2025)** — Based on the original work by [kha-white](https://github.com/kha-white/manga-ocr), updated with [2025 fine-tuned weights](https://huggingface.co/jzhang533/manga-ocr-base-2025) and optimized for ONNX by [l0wgear](https://huggingface.co/l0wgear/manga-ocr-2025-onnx).
+- **Text Detection** — Comic text detector based on YOLOv5.
