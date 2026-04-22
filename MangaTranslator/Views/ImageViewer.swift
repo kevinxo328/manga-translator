@@ -1,6 +1,37 @@
 import SwiftUI
 import AppKit
 
+// Returns the image's actual pixel dimensions from NSBitmapImageRep.
+// NSImage.size reports points (pixels × 72 / DPI), which is smaller than pixel count
+// for high-DPI images (e.g. 600 DPI scans). Using pixel dimensions ensures zoom-to-fit
+// works correctly and bubble overlay coordinates align with the OCR pipeline output.
+func imagePixelSize(of image: NSImage) -> CGSize {
+    if let rep = image.representations.first as? NSBitmapImageRep,
+       rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+        return CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+    }
+    return image.size
+}
+
+// Pure scale-and-offset mapping from image pixel coordinates to display coordinates.
+// Both OCR pipelines (Vision and ComicTextDetector) produce bounding boxes in pixel space,
+// so imagePixelSize must be used as the reference when computing overlay positions.
+func scaledBubbleRect(
+    _ rect: CGRect,
+    imagePixelSize: CGSize,
+    displaySize: CGSize,
+    offset: CGPoint
+) -> CGRect {
+    let scaleX = displaySize.width / imagePixelSize.width
+    let scaleY = displaySize.height / imagePixelSize.height
+    return CGRect(
+        x: rect.origin.x * scaleX + offset.x,
+        y: rect.origin.y * scaleY + offset.y,
+        width: rect.width * scaleX,
+        height: rect.height * scaleY
+    )
+}
+
 struct ImageViewer: View {
     let page: MangaPage
     let translations: [TranslatedBubble]
@@ -13,11 +44,10 @@ struct ImageViewer: View {
     var body: some View {
         GeometryReader { geometry in
             let image = page.image
-            let originalSize = image?.size ?? CGSize(width: 1, height: 1)
+            let originalSize = image.map { imagePixelSize(of: $0) } ?? CGSize(width: 1, height: 1)
             let scale = min(
                 geometry.size.width / originalSize.width,
-                geometry.size.height / originalSize.height,
-                1.0
+                geometry.size.height / originalSize.height
             )
             let displaySize = CGSize(
                 width: originalSize.width * scale,
@@ -43,9 +73,9 @@ struct ImageViewer: View {
                 }
 
                 ForEach(sortedTranslations, id: \.element.id) { position, bubble in
-                    let rect = scaledRect(
+                    let rect = scaledBubbleRect(
                         bubble.bubble.boundingBox,
-                        imageSize: originalSize,
+                        imagePixelSize: originalSize,
                         displaySize: displaySize,
                         offset: CGPoint(x: offsetX, y: offsetY)
                     )
@@ -70,22 +100,7 @@ struct ImageViewer: View {
         }
     }
 
-    private func scaledRect(
-        _ rect: CGRect,
-        imageSize: CGSize,
-        displaySize: CGSize,
-        offset: CGPoint
-    ) -> CGRect {
-        let scaleX = displaySize.width / imageSize.width
-        let scaleY = displaySize.height / imageSize.height
 
-        return CGRect(
-            x: rect.origin.x * scaleX + offset.x,
-            y: rect.origin.y * scaleY + offset.y,
-            width: rect.width * scaleX,
-            height: rect.height * scaleY
-        )
-    }
 }
 
 struct BubbleOverlay: View {
