@@ -111,3 +111,6 @@ git push origin v1.0.0
 
 - **Manga-OCR (2025)** — Based on the original work by [kha-white](https://github.com/kha-white/manga-ocr), updated with [2025 fine-tuned weights](https://huggingface.co/jzhang533/manga-ocr-base-2025) and optimized for ONNX by [l0wgear](https://huggingface.co/l0wgear/manga-ocr-2025-onnx).
 - **Text Detection** — Comic text detector based on YOLOv5.
+- **PaddleOCR-VL-For-Manga** — High-accuracy OCR model by [jzhang533](https://huggingface.co/jzhang533/PaddleOCR-VL-For-Manga), licensed under Apache 2.0. Used as an optional downloadable model for Apple Silicon.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for full license details.

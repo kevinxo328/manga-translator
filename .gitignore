@@ -26,3 +26,9 @@ xcuserdata/
 .venv/
 __pycache__/
 *.pyc
+
+# Model conversion artifacts
+**/.hf_cache/
+**/mlx_output/
+scripts/**/*.zip
+

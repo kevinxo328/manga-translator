@@ -4,7 +4,7 @@ The current OCR pipeline achieves ~27% full-sentence accuracy on manga text. A f
 
 ## What Changes
 
-- Add a downloadable high-accuracy OCR model (4-bit quantized, ~700MB) for Apple Silicon users
+- Add a downloadable high-accuracy OCR model (8-bit quantized, ~1052MB) for Apple Silicon users
 - Add model download, verification, and deletion management
 - Add device capability detection (Apple Silicon vs Intel, RAM check)
 - Extend OCR routing to use the high-accuracy recognizer when available and enabled

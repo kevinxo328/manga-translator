@@ -134,7 +134,7 @@ The system SHALL load the quantized MLX model from Application Support and run t
 ---
 
 ### Requirement: Reproducible model conversion script
-The repo SHALL include a self-contained Python script at `scripts/convert_model/` that converts the original HuggingFace model to 4-bit MLX format. The environment SHALL use `uv` and store all downloads in `scripts/convert_model/.hf_cache/`. Running `teardown.sh` SHALL completely remove `.venv/` and `.hf_cache/`, leaving no artifacts outside the project directory.
+The repo SHALL include a self-contained Python script at `scripts/convert_model/` that converts the original HuggingFace model to 8-bit MLX format. (4-bit quantization is unusable for this model architecture — it produces only newlines.) The environment SHALL use `uv` and store all downloads in `scripts/convert_model/.hf_cache/`. Running `teardown.sh` SHALL completely remove `.venv/` and `.hf_cache/`, leaving no artifacts outside the project directory.
 
 #### Scenario: Setup and conversion
 - **WHEN** a developer runs `setup.sh` followed by `convert.py`

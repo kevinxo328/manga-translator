@@ -4,7 +4,7 @@ The app currently runs two OCR pipelines:
 - **Japanese**: `ComicTextDetectorService` (YOLOv5 ONNX) → `MangaOCRRecognizer` (encoder/decoder ONNX via OnnxRuntimeBindings)
 - **Other languages**: Apple Vision framework
 
-All ONNX models are bundled in the app (~224MB total). The app is a Universal Binary (arm64 + x86_64). The new high-accuracy OCR is powered by a 4-bit quantized MLX model (~700MB), which is only feasible on Apple Silicon via `mlx-swift`. Intel users continue using the existing pipeline unchanged.
+All ONNX models are bundled in the app (~224MB total). The app is a Universal Binary (arm64 + x86_64). The new high-accuracy OCR is powered by an 8-bit quantized MLX model (~1052MB), which is only feasible on Apple Silicon via `mlx-swift`. (4-bit quantization produces only newlines for this model architecture and is unusable.) Intel users continue using the existing pipeline unchanged.
 
 ## Goals / Non-Goals
 
@@ -60,7 +60,7 @@ Even on 16GB machines, simultaneous workloads can exhaust RAM. A fixed "always l
 
 ### D5: Model download to Application Support, not app bundle
 
-Bundling a 700MB model would increase the app download size unacceptably.
+Bundling a ~1052MB model would increase the app download size unacceptably.
 
 **Decision**: Model files live in `~/Library/Application Support/MangaTranslator/Models/PaddleOCR-VL/`. Download is triggered by user action in Settings. SHA256 checksum verified after download. `UserDefaults` tracks download state and checksum.
 
@@ -98,6 +98,6 @@ No data migration required. The feature is additive:
 
 ## Open Questions
 
-- Final quantized model size (to be determined after conversion in Phase 0)
-- HuggingFace repo URL for the quantized model (to be set up after Phase 0)
+- ~~Final quantized model size~~ **Resolved: 1051.7 MB (8-bit, SHA256 `a9654f592cd82c18e0e1f7f997a38c6bd09d412a091e7bfd08365d6fbe06c71a`)**
+- HuggingFace repo URL for the quantized model (to be set up in Task 0.8)
 - Whether `mlx-swift` requires a minimum macOS version beyond macOS 14 (verify during Phase 1 setup)
