@@ -99,5 +99,5 @@ No data migration required. The feature is additive:
 ## Open Questions
 
 - ~~Final quantized model size~~ **Resolved: 1051.7 MB (8-bit, SHA256 `a9654f592cd82c18e0e1f7f997a38c6bd09d412a091e7bfd08365d6fbe06c71a`)**
-- HuggingFace repo URL for the quantized model (to be set up in Task 0.8)
+- ~~HuggingFace repo URL for the quantized model~~ **Resolved: `https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx/resolve/main/model.zip` (SHA256 `0b3e9af74838e1430170155c924420efeaaddf132d0341bbfca59ee91856ca53`)**
 - Whether `mlx-swift` requires a minimum macOS version beyond macOS 14 (verify during Phase 1 setup)

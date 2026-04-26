@@ -7,7 +7,7 @@
 - [x] 0.5 Write `verify.py`: compare BF16 original vs quantized on test images, exit non-zero if CER delta > 5%
 - [x] 0.6 Add `.venv/`, `scripts/convert_model/.hf_cache/`, and `mlx_output/` to `.gitignore`
 - [x] 0.7 Run conversion and verify: 8-bit model size 1051.7 MB, SHA256 `a9654f592cd82c18e0e1f7f997a38c6bd09d412a091e7bfd08365d6fbe06c71a`. Full 12-image test with `temperature=0`, ngram loop deduplication (`min_phrase_len=8`, `max_gap=100`), and Unicode normalization (`…`↔`...`, `！`↔`!`, `？`↔`?`): **9/12 PASS, avg CER delta 8.25%**. Remaining failures: 002.jpg (49.56%, quantized hallucinates repeated dialogue — inherent 8-bit limit), 001.jpg (25.4%, reading order differs), 010.jpg (17.7%, quantized misses one trailing line). Inference: ~15s/image on M3 Pro (full-page); production cropped-region inference estimated <1s. 4-bit quantization produces only newlines and is unusable. Accepted as inherent limitation of 8-bit quantization for this model architecture.
-- [ ] 0.8 Upload quantized model to HuggingFace and record the download URL
+- [x] 0.8 Upload quantized model to HuggingFace and record the download URL — `https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx/resolve/main/model.zip` (SHA256 `0b3e9af74838e1430170155c924420efeaaddf132d0341bbfca59ee91856ca53`)
 
 ## 1. Phase 1: Xcode Project Setup
 

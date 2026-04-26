@@ -31,4 +31,7 @@ __pycache__/
 **/.hf_cache/
 **/mlx_output/
 scripts/**/*.zip
+scripts/**/*.tar.gz
+scripts/**/*.sha256
+scripts/convert_model/.env
 
