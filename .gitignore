@@ -30,6 +30,7 @@ __pycache__/
 # Model conversion artifacts
 **/.hf_cache/
 **/mlx_output/
+**/sweep_runs/
 scripts/**/*.zip
 scripts/**/*.tar.gz
 scripts/**/*.sha256

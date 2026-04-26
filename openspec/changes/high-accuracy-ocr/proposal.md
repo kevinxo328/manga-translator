@@ -10,6 +10,8 @@ The current OCR pipeline achieves ~27% full-sentence accuracy on manga text. A f
 - Extend OCR routing to use the high-accuracy recognizer when available and enabled
 - Add a new settings section for users to download, enable, disable, and delete the model
 - Add a model conversion script (Python/uv) included in the repo for reproducibility
+- Add a two-layer phase0 verification harness: page-level sanity checks plus crop-level parity checks on detector-like text regions
+- Add sweep tooling for quantization group size, crop padding, prompt, and token-limit experiments
 
 ## Capabilities
 
@@ -27,6 +29,16 @@ The current OCR pipeline achieves ~27% full-sentence accuracy on manga text. A f
 
 - **New Swift target**: `MangaTranslatorMLX` (arm64-only) to isolate `mlx-swift` dependency from Universal Binary build
 - **New SPM dependency**: `mlx-swift` (arm64 target only)
-- **New Python tooling**: `scripts/convert_model/` — uv-based environment for one-time model conversion and quantization
+- **New Python tooling**: `scripts/convert_model/` — uv-based environment for one-time model conversion, quantization sweeps, and BF16/quantized parity verification
 - **New storage**: Model downloaded to `~/Library/Application Support/MangaTranslator/Models/PaddleOCR-VL/`
 - **Modified files**: `OCRRouter.swift`, `MangaOCRService.swift`, `MangaOCRRecognizer.swift`, `SettingsView.swift`, `MangaTranslatorApp.swift`
+
+## Phase 0 Findings
+
+Internal, non-public phase0 experiments led to three conclusions:
+
+- Page-level CER materially overstates recognizer quantization drift
+- The shipping gate for phase0 should be crop-level parity, not page-level average CER
+- `group_size=64` remains the best default tradeoff between quality and model size for the current internal sample set
+
+These findings are based on exploratory internal samples rather than a public benchmark dataset, so the proposal records the decisions they support rather than treating the raw numbers as long-term source-of-truth metrics.

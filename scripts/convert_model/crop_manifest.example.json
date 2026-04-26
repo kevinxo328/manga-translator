@@ -1,0 +1,24 @@
+{
+  "samples": [
+    {
+      "id": "sample-001",
+      "image": "../../test_images/001.jpg",
+      "crop": [640, 120, 240, 320],
+      "reference_text": "PLACEHOLDER_TEXT",
+      "metadata": {
+        "page": "001",
+        "note": "Replace with your own detector-like crop"
+      }
+    },
+    {
+      "id": "sample-002",
+      "image": "../../test_images/002.jpg",
+      "crop": [1040, 60, 220, 320],
+      "reference_text": "PLACEHOLDER_TEXT",
+      "metadata": {
+        "page": "002",
+        "note": "Replace with your own detector-like crop"
+      }
+    }
+  ]
+}

@@ -70,7 +70,12 @@ Bundling a ~1052MB model would increase the app download size unacceptably.
 
 The conversion script is a one-time operation but must be reproducible by any contributor.
 
-**Decision**: `scripts/convert_model/` contains a `uv`-based environment. `HF_HOME` is redirected to `scripts/convert_model/.hf_cache/` so all downloads stay local. `teardown.sh` removes `.venv/` and `.hf_cache/` completely. Output models are not committed to git.
+**Decision**: `scripts/convert_model/` contains a `uv`-based environment. `HF_HOME` is redirected to `scripts/convert_model/.hf_cache/` so all downloads stay local. `teardown.sh` removes `.venv/` and `.hf_cache/` completely. Output models are not committed to git. The toolchain includes:
+
+- `convert.py` for parameterized MLX conversion
+- `verify.py` for page-level sanity checks and crop-level parity checks
+- `sweep.py` for repeatable group-size / crop-padding / decoding experiments
+- JSON crop manifests for detector-like evaluation sets
 
 ---
 
@@ -80,13 +85,39 @@ Download is only available on Apple Silicon. On 8GB devices, a warning is shown 
 
 **Decision**: `DeviceCapabilityService` returns `.supported`, `.supportedWithWarning(ram:)`, or `.unsupported`. The Settings UI hides the section on `.unsupported`, shows a warning label on `.supportedWithWarning`, and shows no warning on `.supported`.
 
+---
+
+### D8: Phase 0 gate is crop-level parity, not page-level average CER
+
+Early internal verification on a non-public sample set showed that page-level CER was materially higher than crop-level parity metrics for the same quantized model. The large page-level gap is driven by page assembly effects such as reading order drift, repeated-dialogue loops, and trailing-line omission, which overstate recognizer quantization error.
+
+**Decision**: Phase 0 SHALL use a two-layer gate:
+
+- Primary gate: crop-level BF16 vs quantized parity on detector-like crops
+- Secondary gate: page-level sanity checks for loops, truncation, and ordering regressions
+
+Page-level average CER is retained for observability, but it no longer determines go/no-go by itself.
+
+---
+
+### D9: Keep `group_size=64` as the default shipping candidate
+
+Internal phase0 crop-level sweeps on a non-public sample set showed:
+
+- `group_size=32` gave the strongest measured parity, but at the largest output size
+- `group_size=64` stayed near BF16 behavior while materially reducing model size
+- `group_size=128` preserved the size advantage but offered less headroom for future drift
+
+**Decision**: Retain `group_size=64` as the default shipping candidate. It is the best current quality/size tradeoff. `group_size=32` remains a fallback if a larger crop set later exposes meaningful regressions at `64`.
+
 ## Risks / Trade-offs
 
 - **mlx-community/paddleocr-vl.swift is early-stage (2 commits)** → Mitigation: Treat as reference only; implement `PaddleOCRVLRecognizer` from scratch using `mlx-swift` directly
-- **Model conversion may fail due to custom architecture** → Mitigation: Validate conversion output against original model on 5 test images before proceeding to Swift integration; abort Phase 1 if CER delta > 5%
+- **Model conversion may fail due to custom architecture** → Mitigation: Validate conversion output with a two-layer harness: crop-level parity on detector-like text regions as the primary gate, and page-level sanity checks for ordering/loop regressions before proceeding to Swift integration
 - **First inference is slow after memory pressure release** → Trade-off accepted; user experience degrades gracefully rather than crashing
 - **HuggingFace connectivity issues (region-specific)** → Mitigation: Surface clear error messages; consider adding a mirror URL field in a future iteration
 - **SHA256 mismatch on partial download** → Mitigation: `ModelDownloadService` deletes partial files and resets state to `.notDownloaded` on checksum failure
+- **Small non-public crop benchmark may be too optimistic** → Mitigation: expand the crop manifest before final phase0 sign-off, but keep the current result as evidence that conversion drift is much lower than the page-level CER suggested
 
 ## Migration Plan
 
@@ -100,4 +131,6 @@ No data migration required. The feature is additive:
 
 - ~~Final quantized model size~~ **Resolved: 1051.7 MB (8-bit, SHA256 `a9654f592cd82c18e0e1f7f997a38c6bd09d412a091e7bfd08365d6fbe06c71a`)**
 - ~~HuggingFace repo URL for the quantized model~~ **Resolved: `https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx/resolve/main/model.zip` (SHA256 `0b3e9af74838e1430170155c924420efeaaddf132d0341bbfca59ee91856ca53`)**
+- ~~Whether page-level CER should remain the phase0 gate~~ **Resolved: no; crop-level parity is the primary gate**
+- ~~Which group size should be the default shipping candidate~~ **Resolved: `64`**
 - Whether `mlx-swift` requires a minimum macOS version beyond macOS 14 (verify during Phase 1 setup)

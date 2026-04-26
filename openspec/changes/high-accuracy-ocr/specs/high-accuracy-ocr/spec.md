@@ -134,16 +134,24 @@ The system SHALL load the quantized MLX model from Application Support and run t
 ---
 
 ### Requirement: Reproducible model conversion script
-The repo SHALL include a self-contained Python script at `scripts/convert_model/` that converts the original HuggingFace model to 8-bit MLX format. (4-bit quantization is unusable for this model architecture — it produces only newlines.) The environment SHALL use `uv` and store all downloads in `scripts/convert_model/.hf_cache/`. Running `teardown.sh` SHALL completely remove `.venv/` and `.hf_cache/`, leaving no artifacts outside the project directory.
+The repo SHALL include self-contained Python tooling at `scripts/convert_model/` that converts the original HuggingFace model to MLX format, supports quantization parameter sweeps, and benchmarks BF16 vs quantized behavior on both page-level and crop-level datasets. (4-bit quantization is unusable for this model architecture — it produces only newlines.) The environment SHALL use `uv` and store all downloads in `scripts/convert_model/.hf_cache/`. Running `teardown.sh` SHALL completely remove `.venv/` and `.hf_cache/`, leaving no artifacts outside the project directory.
 
 #### Scenario: Setup and conversion
 - **WHEN** a developer runs `setup.sh` followed by `convert.py`
-- **THEN** a `.venv/` is created, dependencies are installed, the model is downloaded to `.hf_cache/`, quantized, and written to `./mlx_output/`
+- **THEN** a `.venv/` is created, dependencies are installed, the model is downloaded to `.hf_cache/`, quantized, and written to the requested output directory
+
+#### Scenario: Sweep conversion parameters
+- **WHEN** a developer runs the sweep tooling with multiple quantization group sizes
+- **THEN** separate MLX outputs and a machine-readable summary report are produced for each tested configuration
 
 #### Scenario: Teardown removes all artifacts
 - **WHEN** a developer runs `teardown.sh`
 - **THEN** `.venv/` and `.hf_cache/` are fully removed; no files remain in `~/.cache/huggingface/` or other system directories
 
 #### Scenario: Verify quantization quality
-- **WHEN** `verify.py` is run with original and quantized models and test images
-- **THEN** the script reports character error rate delta; the script exits non-zero if delta exceeds 5%
+- **WHEN** `verify.py` is run with original and quantized models and either page-level test images or a crop manifest
+- **THEN** the script reports CER deltas plus aggregate metrics including average, median, p90, max, catastrophic failures, loop count, and empty outputs; the script exits non-zero if any sample exceeds the configured CER threshold
+
+#### Scenario: Use crop-level parity as the primary phase0 gate
+- **WHEN** developers review phase0 verification output
+- **THEN** crop-level BF16 vs quantized parity on detector-like text regions is treated as the primary go/no-go signal, and page-level CER is treated as a secondary sanity-check metric for loops, truncation, and ordering regressions

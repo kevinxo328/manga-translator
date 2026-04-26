@@ -16,4 +16,7 @@ rm -rf .hf_cache
 echo "==> Removing MLX output..."
 rm -rf mlx_output
 
+echo "==> Removing sweep run artifacts..."
+rm -rf sweep_runs
+
 echo "==> Teardown complete. All artifacts removed."
