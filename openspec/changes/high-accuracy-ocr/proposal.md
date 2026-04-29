@@ -19,6 +19,7 @@ The current OCR pipeline achieves ~27% full-sentence accuracy on manga text. A f
 - Add a model conversion script (Python/uv) included in the repo for reproducibility
 - Add a two-layer phase0 verification harness: page-level sanity checks plus crop-level parity checks on detector-like text regions
 - Add sweep tooling for quantization group size, crop padding, prompt, and token-limit experiments
+- Add an explicit integration-research gate before native MLX inference implementation so architecture, dependency compatibility, artifact contract, and parity criteria are confirmed first
 
 ## Capabilities
 

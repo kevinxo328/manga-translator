@@ -174,6 +174,178 @@ Non-blocking launch is required, but integrity verification policy must be expli
 
 **Decision**: `verifyOnLaunch()` performs full SHA256 when integrity evidence is stale or suspicious (checksum missing, checksum changed, app/model version marker changed, prior failed verification, or missing files). Otherwise it may use a fast-path existence/metadata check and defer full hash to the next required point.
 
+---
+
+### D18: Integration research gate before implementing native MLX inference
+
+The current `DefaultPaddleOCREngine` is intentionally fail-fast (`inferenceNotImplemented`) to avoid silent success with empty OCR output. Before implementing full native inference, we need a bounded research gate so integration decisions are evidence-driven.
+
+**Decision**: Add an explicit integration-research phase with six required tracks and exit criteria:
+
+1. **Reference architecture mapping**
+   - Analyze `mlx-community/paddleocr-vl.swift` internals (`VisionEncoder`, `LanguageModel`, `ImageProcessor`, `Generator`, `Pipeline`) as reference-only.
+   - Produce a mapping from those layers to local components (`PaddleOCRVLRecognizer`, `PaddleOCREngine`, `ModelDownloadService`, OCR routing).
+
+2. **Dependency and ABI compatibility**
+   - Verify `mlx-swift` version compatibility between this repo and required PaddleOCR-VL implementation APIs.
+   - Validate whether `swift-transformers` can be added only to `MangaTranslatorMLX` without breaking Universal Binary and Intel build behavior.
+   - Lock minimum macOS and Swift constraints with evidence.
+
+3. **Model artifact contract verification**
+   - Define mandatory model files for runtime load (weights, config, tokenizer artifacts, generation config).
+   - Verify converted `model.zip` content from phase0 exactly matches runtime expectations.
+   - Specify deterministic load-time validation failures and user-facing error mapping.
+
+4. **Preprocessing/tokenization/generation parity**
+   - Reproduce Python phase0 inference settings in Swift (task prompt, crop handling, normalization, decode settings, max token policy).
+   - Run crop-level BF16 vs quantized parity checks through Swift runtime and compare to phase0 baseline characteristics.
+   - Define stop conditions for looped output, truncation, and catastrophic empty output.
+
+5. **Performance and memory envelope**
+   - Measure first-load latency, per-crop latency, and peak memory on representative devices (8GB and 16GB Apple Silicon).
+   - Define thresholds for acceptable UX and required mitigation behavior (lazy load, unload, retry guidance).
+
+6. **Licensing and attribution completeness**
+   - Confirm Apache 2.0 attribution content for PaddleOCR-VL-For-Manga and any additional runtime dependencies introduced by native inference.
+   - Ensure notices align with shipped artifacts and downloaded model behavior.
+
+**Exit criteria**: native MLX inference implementation starts only when all six tracks are documented with concrete outcomes in this change, and unresolved blockers are explicitly listed in tasks.
+
+---
+
+### D19: Integration research outcome — reference architecture mapping (Task 10.1)
+
+We completed a first-pass mapping between `mlx-community/paddleocr-vl.swift` (reference-only) and local integration surfaces.
+
+| Reference layer (`paddleocr-vl.swift`) | Responsibility | Local integration target | Current status |
+| --- | --- | --- | --- |
+| `PaddleOCRVLPipeline` | Orchestrates config/model/tokenizer/image processor/generator | `DefaultPaddleOCREngine` | **Missing**: local engine is fail-fast (`inferenceNotImplemented`) |
+| `PaddleOCRVLImageProcessor` | Resize/pad/normalize to model pixel tensor | `DefaultPaddleOCREngine` internal preprocessing module | **Missing** |
+| `PaddleOCRVLGenerator` | Prompt construction + autoregressive decode loop | `DefaultPaddleOCREngine` internal generation module | **Missing** |
+| `PaddleOCRVLModel` + `LanguageModel` + `VisionEncoder` | Model forward and cache-based generation | `DefaultPaddleOCREngine` internal model runtime | **Missing** |
+| `AutoTokenizer` (`swift-transformers`) | Tokenization and token decode | New tokenizer adapter in `MangaTranslatorMLX` | **Missing** |
+| `PaddleOCRVLRecognizer` | App-facing OCRRecognizing adapter | Existing `PaddleOCRVLRecognizer` | **Present** (wiring/scaffolding only) |
+
+**Decision**: Keep `PaddleOCRVLRecognizer` as app-facing adapter and implement the full runtime entirely inside `DefaultPaddleOCREngine` via explicit subcomponents (`ModelRuntime`, `ImagePreprocessor`, `TokenizerAdapter`, `GeneratorRuntime`) to preserve current architecture boundaries.
+
+---
+
+### D20: Integration research outcome — dependency/toolchain compatibility matrix (Task 10.2)
+
+We compared current project constraints with the reference package requirements.
+
+| Item | Current repo | Reference package | Compatibility result | Action |
+| --- | --- | --- | --- | --- |
+| `mlx-swift` | `0.21.2` resolved (`minimumVersion=0.21.0`) | `upToNextMinor(from: 0.29.1)` | **Incompatible baseline** | Upgrade `MangaTranslatorMLX` MLX stack to a version range that supports required APIs for vision/runtime/generation paths |
+| `swift-transformers` | Not present | `upToNextMinor(from: 0.1.21)` | **Missing dependency** | Add only to `MangaTranslatorMLX` target and keep main app target free of tokenizer dependency |
+| MLX products | `MLX`, `MLXNN` only | `MLX`, `MLXNN`, `MLXRandom`, `MLXFast` | **Insufficient products** | Add required MLX products to `MangaTranslatorMLX` once version upgraded |
+| Deployment target | macOS 14.0 | macOS 14.0 | **Compatible** | Keep macOS 14 floor unless upgraded dependency enforces higher floor |
+| Universal Binary strategy | arm64-only MLX target + guarded linkage | arm64-only implied by MLX usage | **Compatible pattern** | Preserve current split-target approach to avoid x86_64 build breakage |
+
+**Decision**: Before implementing native inference, dependency upgrade and product expansion are mandatory prerequisites. The `MangaTranslatorMLX` target remains the only place where `swift-transformers` and expanded MLX products are linked.
+
+---
+
+### D21: Integration research outcome — runtime model artifact contract and validation checklist (Task 10.3)
+
+Based on the reference runtime loading behavior (`PaddleOCRVLConfig.load`, `PaddleOCRVLModel.load`, tokenizer folder loading) and current conversion/upload scripts, we define the runtime artifact contract for downloaded `model.zip`.
+
+**Required artifacts (must exist):**
+
+1. `config.json` — contains `vision_config`, `text_config`, and vision token IDs.
+2. At least one `*.safetensors` file — model weights loaded by the MLX runtime.
+3. Tokenizer artifacts required by `swift-transformers` `AutoTokenizer.from(modelFolder:)`, at minimum:
+   - `tokenizer.json`
+   - `tokenizer_config.json`
+   - `special_tokens_map.json`
+4. Generation metadata for deterministic decoding policy:
+   - `generation_config.json`
+
+**Optional but accepted:**
+
+- `SHA256SUMS` in the converted output directory (build-time artifact).
+- Additional processor metadata files that do not affect minimal loadability.
+
+**Deterministic validation checklist (pre-inference):**
+
+1. Verify model root exists and is readable.
+2. Verify `config.json` exists and parses.
+3. Verify one or more `*.safetensors` exist.
+4. Verify tokenizer artifact set exists.
+5. Verify `generation_config.json` exists.
+6. If any check fails, stop before inference and emit a stable mapped error (`paddleocr.model_unavailable` or `paddleocr.verify_failed` depending on phase).
+
+**Decision**: Extend local model validation beyond weights-only checks (`weights.npz`/`model.safetensors`) to contract-level validation so download success does not imply runtime readiness unless all required inference artifacts are present.
+
+---
+
+### D22: Integration research outcome — licensing readiness for native inference (Task 10.7)
+
+We reviewed current notices and prospective dependencies for the native runtime path.
+
+**Current notice state:**
+
+- `THIRD_PARTY_NOTICES.md` already includes `PaddleOCR-VL-For-Manga` (Apache-2.0).
+
+**Dependencies that must be reflected when native inference ships:**
+
+1. `swift-transformers` — Apache-2.0 (Hugging Face).
+2. `mlx-swift` and additional MLX products used by runtime (`MLXRandom`, `MLXFast`) — MIT.
+3. If code from `mlx-community/paddleocr-vl.swift` is reused directly, include MIT attribution for that project as well.
+
+**Readiness conclusion:**
+
+- Licensing path is clear and compatible with shipping.
+- `10.7` is considered complete as readiness confirmation.
+- Actual notice-file edits remain tracked by implementation task `9.7`.
+
+---
+
+### D23: Integration research outcome — Swift parity spike blocker snapshot (Task 10.4)
+
+We ran a local Swift integration spike with:
+
+- model artifacts: `scripts/convert_model/mlx_output`
+- test image: `test_images/001.jpg`
+- runtime path: `DefaultPaddleOCREngine` through `PaddleOCRVLPipeline`
+
+**Observed failure:**
+
+- Pipeline initialization fails before inference with:
+  - `Unhandled keys ["biases", "scales"] in vision_model.layers.0.mlp.fc1 ... VisionMLP.Linear`
+
+**Interpretation:**
+
+- Current converted artifact key shape does not fully match the loader expectation used by the current Swift runtime stack.
+- This blocks parity comparison work because decode/generation behavior cannot be reached yet.
+
+**Decision:**
+
+- Keep task `10.4` open.
+- Track this as the first concrete compatibility blocker to resolve before claiming native parity.
+- Keep spike coverage behind explicit opt-in (`ENABLE_PADDLEOCR_SPIKE_TESTS=1`) so default CI/local suites remain stable while the blocker is being fixed.
+
+---
+
+### D24: Error mapping layer for failure taxonomy (Task 10.5, partial)
+
+Implemented `PaddleOCRVLRecognizer.mapEngineError(_:)` to classify engine-layer errors into user-facing `PaddleOCRError` codes:
+
+**Mapping rules:**
+- `PaddleOCREngineError.modelUnavailable` → `PaddleOCRError.modelUnavailable`
+- `PaddleOCREngineError.invalidInputImage` → `PaddleOCRError.inferenceFailed("Invalid input image")`
+- `PaddleOCREngineError.runtimeFailure` with quantized-key mismatch (`Unhandled keys ["biases", "scales"]`) → `PaddleOCRError.verifyFailed` (indicate model artifact issue, not inference logic)
+- Other `PaddleOCREngineError.runtimeFailure` → `PaddleOCRError.inferenceFailed(message)`
+
+**Test coverage:**
+- New test: `quantizedKeyMismatchMapsToVerifyFailed()` validates specific quantization incompatibility path.
+- Existing mock-based tests continue to validate general failure propagation.
+
+**Remaining for 10.5:**
+- Forced truncation/looping scenarios (requires inference to reach generation stage; blocked by 10.4).
+- Empty output taxonomy (can be tested when inference works).
+- Load failure scenarios (partially covered via model artifact checks).
+
 ## Risks / Trade-offs
 
 - **mlx-community/paddleocr-vl.swift is early-stage (2 commits)** → Mitigation: Treat as reference only; implement `PaddleOCRVLRecognizer` from scratch using `mlx-swift` directly
@@ -184,6 +356,8 @@ Non-blocking launch is required, but integrity verification policy must be expli
 - **Small non-public crop benchmark may be too optimistic** → Mitigation: expand the crop manifest before final phase0 sign-off, but keep the current result as evidence that conversion drift is much lower than the page-level CER suggested
 - **Launch-time verification overhead** → Mitigation: run verification asynchronously and keep startup non-blocking
 - **Strict mode exposes more user-visible failures** → Trade-off accepted to preserve explicit user intent and avoid silent quality downgrade
+- **Dependency drift between current repo and reference implementation** → Mitigation: complete D18 dependency/ABI compatibility track before integrating tokenizer/generator stack
+- **Converted model artifact shape may differ from runtime assumptions** → Mitigation: enforce artifact-contract verification and fail-fast validation before inference starts
 
 ## Migration Plan
 

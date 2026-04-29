@@ -61,8 +61,34 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
         do {
             return try engine.infer(image: cropped)
         } catch {
-            throw PaddleOCRError.inferenceFailed(error.localizedDescription)
+            throw Self.mapEngineError(error)
         }
+    }
+
+    private static func mapEngineError(_ error: Error) -> PaddleOCRError {
+        if let paddleError = error as? PaddleOCRError {
+            return paddleError
+        }
+        if let engineError = error as? PaddleOCREngineError {
+            switch engineError {
+            case .modelUnavailable:
+                return .modelUnavailable
+            case .invalidInputImage:
+                return .inferenceFailed("Invalid input image")
+            case .runtimeFailure(let message):
+                if isIncompatibleQuantizedWeights(message) {
+                    return .verifyFailed
+                }
+                return .inferenceFailed(message)
+            }
+        }
+        return .inferenceFailed(error.localizedDescription)
+    }
+
+    private static func isIncompatibleQuantizedWeights(_ message: String) -> Bool {
+        message.contains("Unhandled keys")
+            && message.contains("\"biases\"")
+            && message.contains("\"scales\"")
     }
 }
 #endif

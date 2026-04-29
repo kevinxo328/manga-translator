@@ -51,7 +51,7 @@
 - [x] 4.2 Write boundary tests: region exceeds image bounds (clamped, no crash); region with zero width/height (empty string or throws, no crash); all-white/all-black input (low confidence, no crash); 4K+ image (no OOM crash)
 - [x] 4.3 Write memory pressure test: model is `nil` after `NSApplication.didReceiveMemoryWarningNotification`; inference after memory pressure reloads and succeeds
 - [x] 4.4 Write explicit unload/reset hook test: model resources are released on app-driven unload path
-- [x] 4.5 Implement `PaddleOCRVLRecognizer` conforming to `OCRRecognizing` with lazy load, memory pressure handling, and explicit unload hook to pass all tests
+- [ ] 4.5 Implement native `DefaultPaddleOCREngine` inference pipeline (tokenizer + preprocess + generation) and wire it through `PaddleOCRVLRecognizer` so high-accuracy OCR performs real text recognition (not fail-fast `inferenceNotImplemented`)
 
 ## 5. Phase 2: OCRRecognizing Protocol — TDD
 
@@ -92,10 +92,29 @@
 ## 9. Integration & Final Validation
 
 - [ ] 9.1 Run full OCR pipeline on `test_images/` with high-accuracy model enabled; verify non-empty results for all images
+  - **Blocked by 10.4 spike**: cannot reach inference until quantized model compatibility resolved.
 - [ ] 9.2 Run full OCR pipeline with high-accuracy model disabled; verify existing MangaOCR pipeline unchanged
+  - **Blocked by 10.4 spike**: spike must complete to validate strict-mode isolation.
 - [ ] 9.3 Test delete → re-download flow end-to-end
+  - **Blocked by 10.4 spike**: end-to-end inference validation required.
 - [ ] 9.4 Test memory pressure scenario: send `NSApplication.didReceiveMemoryWarningNotification` manually and verify model released then reloaded on next inference
+  - **Blocked by 10.4 spike**: requires working inference.
 - [ ] 9.5 Build Universal Binary; verify Intel build runs correctly with no MLX symbols and PaddleOCR section hidden in Settings
+  - **Partially testable**: architecture builds work; full validation blocked by spike.
 - [ ] 9.6 Test strict-mode failure end-to-end: force PaddleOCR error and verify user-visible error with no fallback execution
+  - **Partially testable**: mocked failures work; real inference failures blocked by spike.
 - [ ] 9.6a Assert strict-mode no-fallback invariants in E2E via engine invocation spies or equivalent call-count assertions (Manga/Vision path call count remains zero)
-- [ ] 9.7 Add Apache 2.0 attribution for PaddleOCR-VL-For-Manga to the app's Third-Party Notices
+  - **Partially testable**: mock-based assertions pass.
+- [x] 9.7 Add Apache 2.0 attribution for PaddleOCR-VL-For-Manga and dependencies (swift-transformers, paddleocr-vl.swift, mlx-swift) to THIRD_PARTY_NOTICES.md
+
+## 10. Integration Research Gate (Before Native MLX Inference Implementation)
+
+- [x] 10.1 Reference architecture study: document how `mlx-community/paddleocr-vl.swift` layers (`VisionEncoder`, `ImageProcessor`, `Generator`, tokenizer pipeline) map to this repo architecture
+- [x] 10.2 Compatibility matrix: verify `mlx-swift` and `swift-transformers` version/toolchain compatibility in `MangaTranslatorMLX`, and record Universal Binary/Intel impact
+- [x] 10.3 Runtime artifact contract: define required model files and add a deterministic validation checklist for converted `model.zip` contents
+- [ ] 10.4 Swift parity spike: reproduce phase0 prompt/preprocess/decode settings in Swift and compare crop-level behavior against phase0 baseline characteristics
+  - Current blocker (2026-04-30): local spike fails during pipeline initialization with `Unhandled keys ["biases", "scales"]` for `vision_model.layers.0.mlp.fc1`, indicating converted artifact key format mismatch vs current Swift runtime loader assumptions.
+- [~] 10.5 Failure taxonomy check: force looped output, truncation, empty output, and load failures; verify each path maps to stable `PaddleOCRError` codes without silent fallback
+  - **Partial (2026-04-30):** Error mapping layer implemented in `PaddleOCRVLRecognizer.mapEngineError(_:)` with test coverage for quantized-key mismatch → `verifyFailed`. Remaining scenarios (truncation, looping, empty output) blocked by 10.4 spike completion.
+- [ ] 10.6 Performance envelope report: measure cold-load latency, per-crop latency, and peak memory on 8GB/16GB Apple Silicon devices with pass/fail thresholds
+- [x] 10.7 Licensing readiness: confirm Apache 2.0 attribution and any additional dependency notices needed for final native inference ship

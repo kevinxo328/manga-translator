@@ -38,17 +38,29 @@ private func makeModelDirectoryWithWeights() throws -> URL {
     return directory
 }
 
+private func makeModelDirectoryWithRuntimeArtifacts() throws -> URL {
+    let directory = try makeModelDirectoryWithWeights()
+    try Data("{\"vision_config\":{},\"text_config\":{}}".utf8).write(to: directory.appendingPathComponent("config.json"))
+    try Data("{\"max_new_tokens\":1024}".utf8).write(to: directory.appendingPathComponent("generation_config.json"))
+    try Data("{\"version\":\"1.0\",\"truncation\":null,\"padding\":null}".utf8).write(to: directory.appendingPathComponent("tokenizer_config.json"))
+    try Data("{\"unk_token\":\"<unk>\"}".utf8).write(to: directory.appendingPathComponent("special_tokens_map.json"))
+    try Data("{\"version\":\"1.0\",\"truncation\":null,\"padding\":null,\"added_tokens\":[],\"normalizer\":null,\"pre_tokenizer\":null,\"post_processor\":null,\"decoder\":null,\"model\":{\"type\":\"BPE\",\"vocab\":{},\"merges\":[]}}".utf8).write(to: directory.appendingPathComponent("tokenizer.json"))
+    return directory
+}
+
 #if arch(arm64)
 // MARK: - Mock engine
 
 private final class MockOCREngine: PaddleOCRInferencing {
     var result: (text: String, confidence: Float) = ("テスト", 0.95)
-    var shouldThrow = false
+    var errorToThrow: (any Error)?
     var callCount = 0
 
     func infer(image: CGImage) throws -> (text: String, confidence: Float) {
         callCount += 1
-        if shouldThrow { throw PaddleOCRError.inferenceFailed("mock error") }
+        if let errorToThrow {
+            throw errorToThrow
+        }
         return result
     }
 }
@@ -131,6 +143,23 @@ struct PaddleOCRVLRecognizerTests {
         guard let image = makeSolidCGImage(width: 80, height: 40) else { return }
         _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 80, height: 40))
         #expect(enginePath?.resolvingSymlinksInPath().path == rootDir.resolvingSymlinksInPath().path)
+    }
+
+    @Test("Quantized-key mismatch maps to PaddleOCRError.verifyFailed")
+    func quantizedKeyMismatchMapsToVerifyFailed() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mockEngine = MockOCREngine()
+        mockEngine.errorToThrow = PaddleOCREngineError.runtimeFailure(
+            "Unhandled keys [\"biases\", \"scales\"] in vision_model.layers.0.mlp.fc1"
+        )
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in mockEngine }
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+
+        #expect(throws: PaddleOCRError.verifyFailed) {
+            _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
+        }
     }
 
     // MARK: - Task 34: Boundary tests
@@ -257,6 +286,66 @@ struct PaddleOCRVLRecognizerTests {
         recognizer.unload()
         // Should not crash
         #expect(Bool(true))
+    }
+
+    @Test("Default engine reports explicit inference failure instead of silent empty result")
+    func defaultEngineReturnsExplicitFailure() throws {
+        let dir = try makeModelDirectoryWithRuntimeArtifacts()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir)
+        guard let image = makeSolidCGImage(width: 120, height: 60) else { return }
+
+        do {
+            _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 120, height: 60))
+            Issue.record("Expected default engine to throw")
+        } catch let error as PaddleOCRError {
+            switch error {
+            case .inferenceFailed(let message):
+                #expect(!message.isEmpty)
+            default:
+                Issue.record("Expected inferenceFailed, got \(error)")
+            }
+        } catch {
+            Issue.record("Expected PaddleOCRError, got \(error)")
+        }
+    }
+}
+
+@Suite("DefaultPaddleOCREngine")
+@MainActor
+struct DefaultPaddleOCREngineTests {
+    @Test("infer throws runtimeFailure when model artifacts cannot be fully loaded")
+    func inferThrowsRuntimeFailure() throws {
+        let dir = try makeModelDirectoryWithRuntimeArtifacts()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let engine = try DefaultPaddleOCREngine(modelDirectory: dir)
+        guard let image = makeSolidCGImage(width: 80, height: 40) else { return }
+
+        do {
+            _ = try engine.infer(image: image)
+            Issue.record("Expected runtimeFailure")
+        } catch let error as PaddleOCREngineError {
+            switch error {
+            case .runtimeFailure(let message):
+                #expect(!message.isEmpty)
+            default:
+                Issue.record("Expected runtimeFailure, got \(error)")
+            }
+        } catch {
+            Issue.record("Expected PaddleOCREngineError, got \(error)")
+        }
+    }
+
+    @Test("init throws modelUnavailable when weights are missing")
+    func initThrowsWhenWeightsMissing() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        #expect(throws: PaddleOCREngineError.modelUnavailable) {
+            _ = try DefaultPaddleOCREngine(modelDirectory: dir)
+        }
     }
 }
 #endif
