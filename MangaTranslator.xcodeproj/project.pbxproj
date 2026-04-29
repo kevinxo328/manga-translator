@@ -58,6 +58,9 @@
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
 		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
 		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
+		M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* MangaTranslatorMLX.swift */; };
+		M10000010000000000000002 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
+		M10000010000000000000003 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -123,6 +126,8 @@
 		T20000010000000000000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000005 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		M20000010000000000000001 /* MangaTranslatorMLX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorMLX.swift; sourceTree = "<group>"; };
+		M20000010000000000000010 /* MangaTranslatorMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MangaTranslatorMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +140,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		M30000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M10000010000000000000002 /* MLX in Frameworks */,
+				M10000010000000000000003 /* MLXNN in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -142,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000010000000000000002 /* MangaTranslator */,
+				M40000010000000000000001 /* MangaTranslatorMLX */,
 				T40000010000000000000001 /* MangaTranslatorTests */,
 				A40000010000000000000009 /* Products */,
 			);
@@ -225,6 +240,7 @@
 			children = (
 				A20000010000000000000010 /* MangaTranslator.app */,
 				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
+				M20000010000000000000010 /* MangaTranslatorMLX.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -251,6 +267,14 @@
 				D20000010000000000000018 /* special_tokens_map.json */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		M40000010000000000000001 /* MangaTranslatorMLX */ = {
+			isa = PBXGroup;
+			children = (
+				M20000010000000000000001 /* MangaTranslatorMLX.swift */,
+			);
+			path = MangaTranslatorMLX;
 			sourceTree = "<group>";
 		};
 		T40000010000000000000001 /* MangaTranslatorTests */ = {
@@ -292,6 +316,26 @@
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
 			productType = "com.apple.product-type.application";
 		};
+		M50000010000000000000001 /* MangaTranslatorMLX */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = MA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorMLX" */;
+			buildPhases = (
+				M60000010000000000000001 /* Sources */,
+				M30000010000000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MangaTranslatorMLX;
+			packageProductDependencies = (
+				ML0000010000000000000002 /* MLX */,
+				ML0000010000000000000003 /* MLXNN */,
+			);
+			productName = MangaTranslatorMLX;
+			productReference = M20000010000000000000010 /* MangaTranslatorMLX.framework */;
+			productType = "com.apple.product-type.framework";
+		};
 		T50000010000000000000001 /* MangaTranslatorTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = TA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorTests" */;
@@ -321,6 +365,9 @@
 					A50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
+					M50000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
 					T50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = A50000010000000000000001;
@@ -339,12 +386,15 @@
 			packageReferences = (
 				C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
 				E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */,
 			);
 			productRefGroup = A40000010000000000000009 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				A50000010000000000000001 /* MangaTranslator */,
+				M50000010000000000000001 /* MangaTranslatorMLX */,
 				T50000010000000000000001 /* MangaTranslatorTests */,
 			);
 		};
@@ -406,6 +456,14 @@
 				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
 				D10000010000000000000005 /* OCRRouter.swift in Sources */,
 				F10000010000000000000001 /* UpdateChecker.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		M60000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -493,6 +551,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -549,6 +608,7 @@
 				ONLY_ACTIVE_ARCH = NO;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 			};
 			name = Release;
 		};
@@ -608,6 +668,58 @@
 			};
 			name = Release;
 		};
+		MB0000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorMLX;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		MB0000010000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorMLX;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
 		TB0000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -663,6 +775,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		MA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorMLX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				MB0000010000000000000001 /* Debug */,
+				MB0000010000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		TA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -691,6 +812,22 @@
 				minimumVersion = 2.6.0;
 			};
 		};
+		ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.21.0;
+			};
+		};
+		SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-numerics";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -703,6 +840,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		ML0000010000000000000002 /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		ML0000010000000000000003 /* MLXNN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXNN;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

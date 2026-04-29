@@ -15,6 +15,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "M50000010000000000000001"
+               BuildableName = "MangaTranslatorMLX.framework"
+               BlueprintName = "MangaTranslatorMLX"
+               ReferencedContainer = "container:MangaTranslator.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "A50000010000000000000001"
                BuildableName = "MangaTranslator.app"
                BlueprintName = "MangaTranslator"

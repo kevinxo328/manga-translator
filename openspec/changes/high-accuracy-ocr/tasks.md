@@ -16,11 +16,11 @@
 
 ## 1. Phase 1: Xcode Project Setup
 
-- [ ] 1.1 Create `MangaTranslatorMLX` Swift target in Xcode with `ARCHS = arm64` build setting
-- [ ] 1.2 Add `mlx-swift` as SPM dependency to `MangaTranslatorMLX` target only
-- [ ] 1.3 Verify and codify minimum supported macOS version required by `mlx-swift` in project settings
-- [ ] 1.4 Verify Universal Binary build succeeds: arm64 builds with MLX, x86_64 builds without
-- [ ] 1.5 Verify Intel build produces a working app with no MLX symbols linked
+- [x] 1.1 Create `MangaTranslatorMLX` Swift target in Xcode with `ARCHS = arm64` build setting
+- [x] 1.2 Add `mlx-swift` as SPM dependency to `MangaTranslatorMLX` target only
+- [x] 1.3 Verify and codify minimum supported macOS version required by `mlx-swift` in project settings
+- [x] 1.4 Verify Universal Binary build succeeds: arm64 builds with MLX, x86_64 builds without
+- [x] 1.5 Verify Intel build produces a working app with no MLX symbols linked
 
 ## 2. Phase 1: DeviceCapabilityService — TDD
 
