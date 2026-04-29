@@ -24,34 +24,34 @@
 
 ## 2. Phase 1: DeviceCapabilityService — TDD
 
-- [ ] 2.1 Write tests: `.supported` for 16GB Apple Silicon, `.supportedWithWarning(ram: 8)` for 8GB, `.unsupported` for Intel, `.unsupported` for 0GB (boundary)
-- [ ] 2.2 Implement `DeviceCapabilityService.checkPaddleOCRCapability()` to pass all tests
+- [x] 2.1 Write tests: `.supported` for 16GB Apple Silicon, `.supportedWithWarning(ram: 8)` for 8GB, `.unsupported` for Intel, `.unsupported` for 0GB (boundary)
+- [x] 2.2 Implement `DeviceCapabilityService.checkPaddleOCRCapability()` to pass all tests
 
 ## 3. Phase 1: ModelDownloadService — TDD
 
-- [ ] 3.1 Write tests for successful download: state transitions, file written to Application Support, SHA256 verified, `UserDefaults` written
-- [ ] 3.2 Write tests for error cases: SHA256 mismatch (file deleted, state `.failed`), disk space insufficient, network interrupted, download directory not writable
-- [ ] 3.3 Write tests for cancellation: partial files deleted, state `.notDownloaded`
-- [ ] 3.4 Write tests for duplicate `download()` call: second call ignored, state remains `.downloading`
-- [ ] 3.5 Write tests for `delete()`: files removed, `UserDefaults` cleared, state `.notDownloaded`, preference set to `false`
-- [ ] 3.6 Write tests for `delete()` when file absent: no throw, state `.notDownloaded`
-- [ ] 3.7 Write tests for `verify()`: returns `true` when file present and SHA256 matches, `false` when file absent, `false` when SHA256 mismatch
-- [ ] 3.8 Write tests for `verifyOnLaunch()`: resets state when `UserDefaults` says downloaded but file missing; deletes and resets when file present but SHA256 mismatch
-- [ ] 3.8a Write launch verification policy tests: full SHA256 required when checksum/metadata evidence is stale or suspicious; fast-path allowed only when integrity evidence is fresh
-- [ ] 3.8b Write state-machine transition tests for `ModelDownloadState` + `paddleocr.enabled` (including invalid-combination correction and concurrent operation convergence)
-- [ ] 3.9 Write concurrency tests for `delete()` during active `PaddleOCRVLRecognizer` inference: deletion waits for in-flight inference, then removes files and resets state
-- [ ] 3.10 Write security tests for archive extraction: reject path traversal entries and clean temporary artifacts
-- [ ] 3.11 Write atomic install tests: failed extraction/install does not overwrite prior valid model directory
-- [ ] 3.12 Write non-blocking launch tests: `verifyOnLaunch()` runs asynchronously and does not block initial UI availability
-- [ ] 3.13 Implement `ModelDownloadService` (`download()`, `delete()`, `verify()`, `verifyOnLaunch()`) with secure extraction, atomic replacement, and deletion/inference coordination to pass all tests
+- [x] 3.1 Write tests for successful download: state transitions, file written to Application Support, SHA256 verified, `UserDefaults` written
+- [x] 3.2 Write tests for error cases: SHA256 mismatch (file deleted, state `.failed`), disk space insufficient, network interrupted, download directory not writable
+- [x] 3.3 Write tests for cancellation: partial files deleted, state `.notDownloaded`
+- [x] 3.4 Write tests for duplicate `download()` call: second call ignored, state remains `.downloading`
+- [x] 3.5 Write tests for `delete()`: files removed, `UserDefaults` cleared, state `.notDownloaded`, preference set to `false`
+- [x] 3.6 Write tests for `delete()` when file absent: no throw, state `.notDownloaded`
+- [x] 3.7 Write tests for `verify()`: returns `true` when file present and SHA256 matches, `false` when file absent, `false` when SHA256 mismatch
+- [x] 3.8 Write tests for `verifyOnLaunch()`: resets state when `UserDefaults` says downloaded but file missing; deletes and resets when file present but SHA256 mismatch
+- [x] 3.8a Write launch verification policy tests: full SHA256 required when checksum/metadata evidence is stale or suspicious; fast-path allowed only when integrity evidence is fresh
+- [x] 3.8b Write state-machine transition tests for `ModelDownloadState` + `paddleocr.enabled` (including invalid-combination correction and concurrent operation convergence)
+- [x] 3.9 Write concurrency tests for `delete()` during active `PaddleOCRVLRecognizer` inference: deletion waits for in-flight inference, then removes files and resets state
+- [x] 3.10 Write security tests for archive extraction: reject path traversal entries and clean temporary artifacts
+- [x] 3.11 Write atomic install tests: failed extraction/install does not overwrite prior valid model directory
+- [x] 3.12 Write non-blocking launch tests: `verifyOnLaunch()` runs asynchronously and does not block initial UI availability
+- [x] 3.13 Implement `ModelDownloadService` (`download()`, `delete()`, `verify()`, `verifyOnLaunch()`) with secure extraction, atomic replacement, and deletion/inference coordination to pass all tests
 
 ## 4. Phase 1: PaddleOCRVLRecognizer — TDD (arm64 only)
 
-- [ ] 4.1 Write tests: successful inference completes without crash and returns structured output (text may be empty, confidence may be 0 on difficult inputs); model file deleted before inference throws descriptive error
-- [ ] 4.2 Write boundary tests: region exceeds image bounds (clamped, no crash); region with zero width/height (empty string or throws, no crash); all-white/all-black input (low confidence, no crash); 4K+ image (no OOM crash)
-- [ ] 4.3 Write memory pressure test: model is `nil` after `NSApplication.didReceiveMemoryWarningNotification`; inference after memory pressure reloads and succeeds
-- [ ] 4.4 Write explicit unload/reset hook test: model resources are released on app-driven unload path
-- [ ] 4.5 Implement `PaddleOCRVLRecognizer` conforming to `OCRRecognizing` with lazy load, memory pressure handling, and explicit unload hook to pass all tests
+- [x] 4.1 Write tests: successful inference completes without crash and returns structured output (text may be empty, confidence may be 0 on difficult inputs); model file deleted before inference throws descriptive error
+- [x] 4.2 Write boundary tests: region exceeds image bounds (clamped, no crash); region with zero width/height (empty string or throws, no crash); all-white/all-black input (low confidence, no crash); 4K+ image (no OOM crash)
+- [x] 4.3 Write memory pressure test: model is `nil` after `NSApplication.didReceiveMemoryWarningNotification`; inference after memory pressure reloads and succeeds
+- [x] 4.4 Write explicit unload/reset hook test: model resources are released on app-driven unload path
+- [x] 4.5 Implement `PaddleOCRVLRecognizer` conforming to `OCRRecognizing` with lazy load, memory pressure handling, and explicit unload hook to pass all tests
 
 ## 5. Phase 2: OCRRecognizing Protocol — TDD
 
