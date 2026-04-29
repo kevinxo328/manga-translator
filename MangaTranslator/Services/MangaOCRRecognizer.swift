@@ -191,3 +191,5 @@ final class MangaOCRRecognizer {
         return Data(bytes: &floatData, count: floatData.count * MemoryLayout<Float>.size)
     }
 }
+
+extension MangaOCRRecognizer: OCRRecognizing {}

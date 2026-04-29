@@ -36,6 +36,12 @@
 		D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000003 /* MangaOCRRecognizer.swift */; };
 		D10000010000000000000004 /* MangaOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000004 /* MangaOCRService.swift */; };
 		D10000010000000000000005 /* OCRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000005 /* OCRRouter.swift */; };
+		PH1000000100000000000001 /* OCRRecognizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000001 /* OCRRecognizing.swift */; };
+		PH1000000100000000000002 /* PaddleOCRError.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000002 /* PaddleOCRError.swift */; };
+		PH1000000100000000000003 /* DeviceCapabilityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000003 /* DeviceCapabilityService.swift */; };
+		PH1000000100000000000004 /* ModelDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000004 /* ModelDownloadService.swift */; };
+		TH1000000100000000000001 /* OCRRecognizingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH2000000100000000000001 /* OCRRecognizingTests.swift */; };
+		TH1000000100000000000002 /* OCRRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH2000000100000000000002 /* OCRRouterTests.swift */; };
 		D10000010000000000000010 /* comic-text-detector.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000010 /* comic-text-detector.onnx */; };
 		D10000010000000000000011 /* encoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000011 /* encoder_model.onnx */; };
 		D10000010000000000000012 /* decoder_model.onnx in Resources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000012 /* decoder_model.onnx */; };
@@ -104,6 +110,12 @@
 		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
 		D20000010000000000000004 /* MangaOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRService.swift; sourceTree = "<group>"; };
 		D20000010000000000000005 /* OCRRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouter.swift; sourceTree = "<group>"; };
+		PH2000000100000000000001 /* OCRRecognizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRecognizing.swift; sourceTree = "<group>"; };
+		PH2000000100000000000002 /* PaddleOCRError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRError.swift; sourceTree = "<group>"; };
+		PH2000000100000000000003 /* DeviceCapabilityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilityService.swift; sourceTree = "<group>"; };
+		PH2000000100000000000004 /* ModelDownloadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadService.swift; sourceTree = "<group>"; };
+		TH2000000100000000000001 /* OCRRecognizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRecognizingTests.swift; sourceTree = "<group>"; };
+		TH2000000100000000000002 /* OCRRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouterTests.swift; sourceTree = "<group>"; };
 		G20000010000000000000001 /* CopilotEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironment.swift; sourceTree = "<group>"; };
 		G20000010000000000000002 /* CopilotTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationService.swift; sourceTree = "<group>"; };
 		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
@@ -228,6 +240,10 @@
 				D20000010000000000000003 /* MangaOCRRecognizer.swift */,
 				D20000010000000000000004 /* MangaOCRService.swift */,
 				D20000010000000000000005 /* OCRRouter.swift */,
+				PH2000000100000000000001 /* OCRRecognizing.swift */,
+				PH2000000100000000000002 /* PaddleOCRError.swift */,
+				PH2000000100000000000003 /* DeviceCapabilityService.swift */,
+				PH2000000100000000000004 /* ModelDownloadService.swift */,
 				F20000010000000000000001 /* UpdateChecker.swift */,
 				G20000010000000000000001 /* CopilotEnvironment.swift */,
 				G20000010000000000000002 /* CopilotTranslationService.swift */,
@@ -289,6 +305,8 @@
 				T20000010000000000000007 /* CopilotTranslationServiceTests.swift */,
 				T20000010000000000000008 /* ImageViewerTests.swift */,
 				T20000010000000000000009 /* MangaOCRTests.swift */,
+				TH2000000100000000000001 /* OCRRecognizingTests.swift */,
+				TH2000000100000000000002 /* OCRRouterTests.swift */,
 				);
 				path = MangaTranslatorTests;			sourceTree = "<group>";
 		};
@@ -455,6 +473,10 @@
 				D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */,
 				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
 				D10000010000000000000005 /* OCRRouter.swift in Sources */,
+				PH1000000100000000000001 /* OCRRecognizing.swift in Sources */,
+				PH1000000100000000000002 /* PaddleOCRError.swift in Sources */,
+				PH1000000100000000000003 /* DeviceCapabilityService.swift in Sources */,
+				PH1000000100000000000004 /* ModelDownloadService.swift in Sources */,
 				F10000010000000000000001 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -480,6 +502,8 @@
 				T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */,
 				T10000010000000000000008 /* ImageViewerTests.swift in Sources */,
 				T10000010000000000000009 /* MangaOCRTests.swift in Sources */,
+				TH1000000100000000000001 /* OCRRecognizingTests.swift in Sources */,
+				TH1000000100000000000002 /* OCRRouterTests.swift in Sources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				};/* End PBXSourcesBuildPhase section */

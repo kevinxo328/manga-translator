@@ -43,13 +43,25 @@ private enum DefaultsKey {
     static let enabled = "paddleocr.enabled"
 }
 
+// MARK: - ModelDownloadManaging
+
+@MainActor
+protocol ModelDownloadManaging: AnyObject {
+    var state: ModelDownloadState { get }
+    var isPaddleOCREnabled: Bool { get }
+}
+
 // MARK: - ModelDownloadService
 
 @MainActor
-final class ModelDownloadService: ObservableObject {
+final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
     @Published private(set) var state: ModelDownloadState
 
     static let shared = ModelDownloadService()
+
+    var isPaddleOCREnabled: Bool {
+        state == .downloaded && config.userDefaults.bool(forKey: DefaultsKey.enabled)
+    }
 
     private let config: ModelDownloadConfiguration
     private let logger = Logger(subsystem: "MangaTranslator", category: "ModelDownload")

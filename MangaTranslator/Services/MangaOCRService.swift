@@ -4,8 +4,17 @@ import os
 
 final class MangaOCRService {
     private let detector = ComicTextDetectorService()
-    private var recognizer: MangaOCRRecognizer?
+    var recognizer: (any OCRRecognizing)?
     private let logger = Logger(subsystem: "MangaTranslator", category: "MangaOCR")
+
+    func resetRecognizer() {
+        recognizer = nil
+    }
+
+    static func makeRecognizer() throws -> any OCRRecognizing {
+        let tokenizer = try MangaOCRTokenizer()
+        return MangaOCRRecognizer(tokenizer: tokenizer)
+    }
 
     func recognizeAndCluster(in image: NSImage) throws -> [BubbleCluster] {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -15,26 +24,21 @@ final class MangaOCRService {
     }
 
     func recognizeAndCluster(in cgImage: CGImage) throws -> [BubbleCluster] {
-        // Initialize recognizer lazily
         if recognizer == nil {
-            let tokenizer = try MangaOCRTokenizer()
-            recognizer = MangaOCRRecognizer(tokenizer: tokenizer)
+            recognizer = try Self.makeRecognizer()
         }
         guard let recognizer else {
             throw MangaOCRError.inferenceError("failed to initialize recognizer")
         }
 
-        // Step 1: Detect text regions
         logger.info("Detecting text regions...")
         let regions = try detector.detectTextRegions(in: cgImage)
         logger.info("Found \(regions.count) text regions")
 
         if regions.isEmpty { return [] }
 
-        // Step 2: For each detected region, run OCR
         var bubbles = [BubbleCluster]()
         for (index, region) in regions.enumerated() {
-            // Skip very small regions (likely noise)
             if region.boundingBox.width < 10 || region.boundingBox.height < 10 {
                 continue
             }

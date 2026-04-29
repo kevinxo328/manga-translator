@@ -55,19 +55,19 @@
 
 ## 5. Phase 2: OCRRecognizing Protocol — TDD
 
-- [ ] 5.1 Write test: `MangaOCRService` initializes with `any OCRRecognizing`; after `resetRecognizer()` the internal recognizer is `nil`
-- [ ] 5.2 Define `OCRRecognizing` protocol in new file `OCRRecognizing.swift`
-- [ ] 5.3 Add `extension MangaOCRRecognizer: OCRRecognizing {}` (no internal changes)
-- [ ] 5.4 Refactor `MangaOCRService` to hold `(any OCRRecognizing)?` and implement `resetRecognizer()`
+- [x] 5.1 Write test: `MangaOCRService` initializes with `any OCRRecognizing`; after `resetRecognizer()` the internal recognizer is `nil`
+- [x] 5.2 Define `OCRRecognizing` protocol in new file `OCRRecognizing.swift`
+- [x] 5.3 Add `extension MangaOCRRecognizer: OCRRecognizing {}` (no internal changes)
+- [x] 5.4 Refactor `MangaOCRService` to hold `(any OCRRecognizing)?` and implement `resetRecognizer()`
 
 ## 6. Phase 2: OCRRouter Integration — TDD
 
-- [ ] 6.1 Write tests: Silicon + downloaded + enabled → uses `PaddleOCRVLRecognizer`; Silicon + not downloaded → uses `MangaOCRRecognizer`; Silicon + downloaded + disabled → uses `MangaOCRRecognizer`; Intel → uses `MangaOCRRecognizer`; attempted enabled-without-model is rejected
-- [ ] 6.2 Write strict-mode failure tests: `PaddleOCRVLRecognizer` throws while high-accuracy enabled → returns user-visible error and does not run `MangaOCRRecognizer` or `VisionOCRService`; empty image → returns empty array; 1×1 image → returns empty array
-- [ ] 6.2a Write strict-mode error-code tests: router/service surfaces stable codes (`paddleocr.model_unavailable`, `paddleocr.inference_failed`) for UI handling
-- [ ] 6.2b Write contract-stability tests: localization text/key changes do not change emitted error codes
-- [ ] 6.3 Write reset tests: recognizer resets when preference toggled; recognizer resets when model deleted
-- [ ] 6.4 Update `OCRRouter` with Silicon branch and `MangaOCRService.makeRecognizer()` factory method; keep fallback-to-Vision only for manga-ocr failures
+- [x] 6.1 Write tests: Silicon + downloaded + enabled → uses `PaddleOCRVLRecognizer`; Silicon + not downloaded → uses `MangaOCRRecognizer`; Silicon + downloaded + disabled → uses `MangaOCRRecognizer`; Intel → uses `MangaOCRRecognizer`; attempted enabled-without-model is rejected
+- [x] 6.2 Write strict-mode failure tests: `PaddleOCRVLRecognizer` throws while high-accuracy enabled → returns user-visible error and does not run `MangaOCRRecognizer` or `VisionOCRService`; empty image → returns empty array; 1×1 image → returns empty array
+- [x] 6.2a Write strict-mode error-code tests: router/service surfaces stable codes (`paddleocr.model_unavailable`, `paddleocr.inference_failed`) for UI handling
+- [x] 6.2b Write contract-stability tests: localization text/key changes do not change emitted error codes
+- [x] 6.3 Write reset tests: recognizer resets when preference toggled; recognizer resets when model deleted
+- [x] 6.4 Update `OCRRouter` with Silicon branch and `MangaOCRService.makeRecognizer()` factory method; keep fallback-to-Vision only for manga-ocr failures
 
 ## 7. Phase 3: Settings UI — TDD
 

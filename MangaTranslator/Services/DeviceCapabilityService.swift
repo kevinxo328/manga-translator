@@ -25,7 +25,13 @@ struct SystemDeviceInfo: DeviceInfoProviding {
     }
 }
 
-struct DeviceCapabilityService {
+protocol DeviceCapabilityChecking {
+    func checkPaddleOCRCapability() -> PaddleOCRCapability
+}
+
+struct DeviceCapabilityService: DeviceCapabilityChecking {
+    static let shared = DeviceCapabilityService()
+
     private let deviceInfo: DeviceInfoProviding
 
     init(deviceInfo: DeviceInfoProviding = SystemDeviceInfo()) {
