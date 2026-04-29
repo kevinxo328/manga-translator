@@ -9,6 +9,7 @@ private actor MockDownloader: ModelDownloading {
     var downloadResult: Result<URL, Error> = .failure(PaddleOCRError.downloadFailed("not configured"))
     var checksumResult: Result<String, Error> = .failure(PaddleOCRError.downloadFailed("not configured"))
     var downloadDelay: Duration = .zero
+    var progressSequence: [Double] = []
 
     func setDownload(_ url: URL, checksum: String) {
         downloadResult = .success(url)
@@ -23,8 +24,15 @@ private actor MockDownloader: ModelDownloading {
         checksumResult = .failure(error)
     }
 
+    func setProgressSequence(_ values: [Double]) {
+        progressSequence = values
+    }
+
     nonisolated func download(from url: URL, progressHandler: @Sendable @escaping (Double) -> Void) async throws -> URL {
-        let result = await downloadResult
+        let (result, progress) = await (downloadResult, progressSequence)
+        for value in progress {
+            progressHandler(value)
+        }
         switch result {
         case .success(let u): return u
         case .failure(let e): throw e
@@ -44,6 +52,22 @@ private func makeTempFile(content: Data = Data("hello".utf8)) throws -> URL {
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try content.write(to: tmp)
     return tmp
+}
+
+private func makeTestZip(containing fileName: String, content: Data) throws -> URL {
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    let fileURL = tempDir.appendingPathComponent(fileName)
+    try content.write(to: fileURL)
+    let zipURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString + ".zip")
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+    task.arguments = ["-j", zipURL.path, fileURL.path]
+    try task.run()
+    task.waitUntilExit()
+    try FileManager.default.removeItem(at: tempDir)
+    return zipURL
 }
 
 private func sha256Hex(of data: Data) -> String {
@@ -363,6 +387,105 @@ struct ModelDownloadServiceTests {
 
     // MARK: - Task 26: Launch verification policy
 
+    @Test("verifyOnLaunch: resets state when model.zip present but no supported model weight file")
+    @MainActor
+    func verifyOnLaunchResetsWhenWeightsMissing() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let archivePath = dir.appendingPathComponent("model.zip")
+        let fileData = Data("valid-model".utf8)
+        try fileData.write(to: archivePath)
+        let checksum = sha256Hex(of: fileData)
+        // No supported model weight file intentionally
+
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set(checksum, forKey: "paddleocr.model.checksum")
+
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: dir,
+            userDefaults: defaults,
+            downloader: MockDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+
+        await service.verifyOnLaunch()
+
+        #expect(service.state == .notDownloaded, "State must reset when no supported model weight file exists")
+        #expect(!defaults.bool(forKey: "paddleocr.model.downloaded"))
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    @Test("verifyOnLaunch: keeps downloaded state when weights.npz exists in a single nested model folder")
+    @MainActor
+    func verifyOnLaunchAcceptsNestedModelFolder() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let archivePath = dir.appendingPathComponent("model.zip")
+        let fileData = Data("valid-model".utf8)
+        try fileData.write(to: archivePath)
+        let checksum = sha256Hex(of: fileData)
+
+        let nestedModelDir = dir.appendingPathComponent("paddleocr-vl-manga-mlx")
+        try FileManager.default.createDirectory(at: nestedModelDir, withIntermediateDirectories: true)
+        try Data("fake-weights".utf8).write(to: nestedModelDir.appendingPathComponent("weights.npz"))
+
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set(checksum, forKey: "paddleocr.model.checksum")
+
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: dir,
+            userDefaults: defaults,
+            downloader: MockDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+
+        await service.verifyOnLaunch()
+
+        #expect(service.state == .downloaded)
+        #expect(defaults.bool(forKey: "paddleocr.model.downloaded"))
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    @Test("verifyOnLaunch: keeps downloaded state when model.safetensors exists at root")
+    @MainActor
+    func verifyOnLaunchAcceptsRootSafetensors() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let archivePath = dir.appendingPathComponent("model.zip")
+        let fileData = Data("valid-model".utf8)
+        try fileData.write(to: archivePath)
+        let checksum = sha256Hex(of: fileData)
+        try Data("fake-safetensors".utf8).write(to: dir.appendingPathComponent("model.safetensors"))
+
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set(checksum, forKey: "paddleocr.model.checksum")
+
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: dir,
+            userDefaults: defaults,
+            downloader: MockDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+
+        await service.verifyOnLaunch()
+
+        #expect(service.state == .downloaded)
+        #expect(defaults.bool(forKey: "paddleocr.model.downloaded"))
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     @Test("verifyOnLaunch: full SHA256 required when checksum evidence is missing")
     @MainActor
     func verifyOnLaunchFullChecksumWhenMissingEvidence() async throws {
@@ -405,6 +528,7 @@ struct ModelDownloadServiceTests {
         let fileData = Data("valid-model".utf8)
         try fileData.write(to: archivePath)
         let checksum = sha256Hex(of: fileData)
+        try Data("fake-weights".utf8).write(to: dir.appendingPathComponent("weights.npz"))
 
         defaults.set(true, forKey: "paddleocr.model.downloaded")
         defaults.set(checksum, forKey: "paddleocr.model.checksum")
@@ -569,6 +693,7 @@ struct ModelDownloadServiceTests {
         let fileData = Data("valid-model".utf8)
         try fileData.write(to: archivePath)
         let checksum = sha256Hex(of: fileData)
+        try Data("fake-weights".utf8).write(to: dir.appendingPathComponent("weights.npz"))
 
         defaults.set(true, forKey: "paddleocr.model.downloaded")
         defaults.set(checksum, forKey: "paddleocr.model.checksum")
@@ -588,4 +713,52 @@ struct ModelDownloadServiceTests {
         #expect(Bool(true))
         try? FileManager.default.removeItem(at: dir)
     }
+
+    // MARK: - Extraction preservation
+
+    @Test("Extracted model files are preserved in model directory after download")
+    @MainActor
+    func extractedFilesPreservedAfterDownload() async throws {
+        let (service, downloader, dir, _) = makeService()
+
+        let weightsContent = Data("fake-weights-data".utf8)
+        let zipURL = try makeTestZip(containing: "weights.npz", content: weightsContent)
+        defer { try? FileManager.default.removeItem(at: zipURL) }
+
+        let zipData = try Data(contentsOf: zipURL)
+        let checksum = sha256Hex(of: zipData)
+        await downloader.setDownload(zipURL, checksum: checksum)
+
+        await service.download()
+
+        #expect(service.state == .downloaded, "Service should reach downloaded state")
+        let weightsPath = dir.appendingPathComponent("weights.npz")
+        #expect(
+            FileManager.default.fileExists(atPath: weightsPath.path),
+            "weights.npz must exist in model directory after download"
+        )
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    // MARK: - Checksum format
+
+    @Test("sha256sum format (hash + filename) is accepted as valid checksum")
+    @MainActor
+    func checksumWithSha256sumFormatSucceeds() async throws {
+        let (service, downloader, dir, defaults) = makeService()
+
+        let fileData = Data("model-binary".utf8)
+        let tmpFile = try makeTempFile(content: fileData)
+        let hash = sha256Hex(of: fileData)
+        // Standard sha256sum output: "<hash>  <filename>"
+        let sha256sumLine = "\(hash)  model.zip"
+        await downloader.setDownload(tmpFile, checksum: sha256sumLine)
+
+        await service.download()
+
+        #expect(service.state == .downloaded, "sha256sum-format checksum should be accepted")
+        #expect(defaults.string(forKey: "paddleocr.model.checksum") == hash)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
 }

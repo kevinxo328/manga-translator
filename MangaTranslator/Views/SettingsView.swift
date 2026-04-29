@@ -17,6 +17,16 @@ struct SettingsView: View {
     @State private var copilotModels: [CopilotModel] = []
     @State private var isLoadingCopilotModels = false
 
+    #if arch(arm64)
+    @StateObject private var paddleOCRViewModel: PaddleOCRSettingsViewModel = {
+        let capability = DeviceCapabilityService.shared.checkPaddleOCRCapability()
+        return PaddleOCRSettingsViewModel(
+            capability: capability,
+            downloadService: ModelDownloadService.shared
+        )
+    }()
+    #endif
+
     init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, onFetchCacheSize: (() -> Int64)? = nil, updater: SPUUpdater? = nil) {
         self.preferences = preferences
         self.onClearCache = onClearCache
@@ -162,6 +172,10 @@ struct SettingsView: View {
             } header: {
                 Label("Translation Defaults", systemImage: "gear")
             }
+
+            #if arch(arm64)
+            PaddleOCRSettingsSection(viewModel: paddleOCRViewModel)
+            #endif
 
             if let updater = updater {
                 Section {

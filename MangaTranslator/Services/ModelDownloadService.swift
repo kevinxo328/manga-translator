@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CryptoKit
 import os
 
@@ -32,6 +33,37 @@ struct ModelDownloadConfiguration: Sendable {
             downloader: URLSessionDownloader()
         )
     }
+
+    // MARK: - Preview configurations
+
+    static var previewNotDownloaded: ModelDownloadConfiguration {
+        makePreview(downloaded: false, enabled: false)
+    }
+
+    static var previewDownloading: ModelDownloadConfiguration {
+        makePreview(downloaded: false, enabled: false)
+    }
+
+    static var previewDownloadedEnabled: ModelDownloadConfiguration {
+        makePreview(downloaded: true, enabled: true)
+    }
+
+    static var previewDownloadedDisabled: ModelDownloadConfiguration {
+        makePreview(downloaded: true, enabled: false)
+    }
+
+    private static func makePreview(downloaded: Bool, enabled: Bool) -> ModelDownloadConfiguration {
+        let defaults = UserDefaults(suiteName: "preview.\(UUID().uuidString)")!
+        defaults.set(downloaded, forKey: "paddleocr.model.downloaded")
+        defaults.set(enabled, forKey: "paddleocr.enabled")
+        return ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/model.zip.sha256")!,
+            modelDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("preview-model"),
+            userDefaults: defaults,
+            downloader: URLSessionDownloader()
+        )
+    }
 }
 
 // MARK: - UserDefaults keys
@@ -51,16 +83,38 @@ protocol ModelDownloadManaging: AnyObject {
     var isPaddleOCREnabled: Bool { get }
 }
 
+// MARK: - ModelDownloadServicing (full mutation API for Settings UI)
+
+@MainActor
+protocol ModelDownloadServicing: ModelDownloadManaging {
+    // Typed publishers carry the NEW value to avoid willSet timing issues.
+    var statePublisher: AnyPublisher<ModelDownloadState, Never> { get }
+    var enabledPublisher: AnyPublisher<Bool, Never> { get }
+    func download() async
+    func cancel()
+    func delete() async throws
+    func setEnabled(_ enabled: Bool)
+}
+
 // MARK: - ModelDownloadService
 
 @MainActor
-final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
+final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     @Published private(set) var state: ModelDownloadState
+    @Published private(set) var paddleOCREnabled: Bool
 
     static let shared = ModelDownloadService()
 
     var isPaddleOCREnabled: Bool {
-        state == .downloaded && config.userDefaults.bool(forKey: DefaultsKey.enabled)
+        state == .downloaded && paddleOCREnabled
+    }
+
+    var statePublisher: AnyPublisher<ModelDownloadState, Never> {
+        $state.eraseToAnyPublisher()
+    }
+
+    var enabledPublisher: AnyPublisher<Bool, Never> {
+        $paddleOCREnabled.eraseToAnyPublisher()
     }
 
     private let config: ModelDownloadConfiguration
@@ -72,6 +126,13 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
         self.config = configuration
         let downloaded = configuration.userDefaults.bool(forKey: DefaultsKey.downloaded)
         self.state = downloaded ? .downloaded : .notDownloaded
+        self.paddleOCREnabled = configuration.userDefaults.bool(forKey: DefaultsKey.enabled)
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        guard !enabled || state == .downloaded else { return }
+        paddleOCREnabled = enabled
+        config.userDefaults.set(enabled, forKey: DefaultsKey.enabled)
     }
 
     // MARK: - Public API
@@ -106,6 +167,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
         config.userDefaults.removeObject(forKey: DefaultsKey.checksum)
         config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
         config.userDefaults.set(false, forKey: DefaultsKey.enabled)
+        paddleOCREnabled = false
         state = .notDownloaded
     }
 
@@ -130,6 +192,11 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: archivePath.path) else {
+            resetDownloadState()
+            return
+        }
+
+        guard Self.resolvedModelDirectory(in: config.modelDirectory, fileManager: fm) != nil else {
             resetDownloadState()
             return
         }
@@ -175,9 +242,16 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
                 throw PaddleOCRError.storageUnavailable("Insufficient disk space")
             }
 
-            // Fetch expected checksum
-            let expectedChecksum = try await config.downloader.fetchString(from: config.checksumURL)
+            // Fetch expected checksum; sha256sum format is "<hash>  <filename>" — extract first token
+            let rawChecksum = try await config.downloader.fetchString(from: config.checksumURL)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let expectedChecksum = rawChecksum
+                .components(separatedBy: .whitespaces)
+                .first(where: { !$0.isEmpty }) ?? ""
+            guard !expectedChecksum.isEmpty else {
+                throw PaddleOCRError.downloadFailed("Empty or invalid checksum file")
+            }
+            logger.info("Expected checksum prefix: \(expectedChecksum.prefix(16), privacy: .public)…")
 
             // Download archive
             let tempFile = try await config.downloader.download(from: config.modelURL) { [weak self] progress in
@@ -187,7 +261,10 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
             }
 
             // Verify checksum
-            guard let actualChecksum = sha256(of: tempFile), actualChecksum == expectedChecksum else {
+            let actualChecksum = sha256(of: tempFile) ?? ""
+            logger.info("Actual checksum prefix:   \(actualChecksum.prefix(16), privacy: .public)…")
+            guard !actualChecksum.isEmpty, actualChecksum == expectedChecksum else {
+                logger.error("Checksum mismatch — expected: \(expectedChecksum.prefix(16), privacy: .public) actual: \(actualChecksum.prefix(16), privacy: .public)")
                 try? fm.removeItem(at: tempFile)
                 throw PaddleOCRError.verifyFailed
             }
@@ -206,21 +283,31 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
             let stagingDir = destDir.appendingPathComponent(".staging_\(UUID().uuidString)")
             try extractZipSecurely(from: tempFile, to: stagingDir, root: destDir)
 
-            // Atomic replacement
+            // Move extracted files into destDir so the recognizer can load them
+            if let extractedItems = try? fm.contentsOfDirectory(at: stagingDir, includingPropertiesForKeys: nil) {
+                for item in extractedItems {
+                    let dest = destDir.appendingPathComponent(item.lastPathComponent)
+                    if fm.fileExists(atPath: dest.path) {
+                        try fm.removeItem(at: dest)
+                    }
+                    try fm.moveItem(at: item, to: dest)
+                }
+            }
+            try? fm.removeItem(at: stagingDir)
+
+            // Keep the verified archive alongside extracted files
             let finalArchive = destDir.appendingPathComponent("model.zip")
             if fm.fileExists(atPath: finalArchive.path) {
                 try fm.removeItem(at: finalArchive)
             }
             try fm.moveItem(at: tempFile, to: finalArchive)
-            if fm.fileExists(atPath: stagingDir.path) {
-                try fm.removeItem(at: stagingDir)
-            }
 
             // Persist state
             config.userDefaults.set(true, forKey: DefaultsKey.downloaded)
             config.userDefaults.set(expectedChecksum, forKey: DefaultsKey.checksum)
             config.userDefaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.lastVerified)
             config.userDefaults.set(true, forKey: DefaultsKey.enabled)
+            paddleOCREnabled = true
 
             state = .downloaded
 
@@ -273,11 +360,56 @@ final class ModelDownloadService: ObservableObject, ModelDownloadManaging {
         config.userDefaults.removeObject(forKey: DefaultsKey.checksum)
         config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
         config.userDefaults.set(false, forKey: DefaultsKey.enabled)
+        paddleOCREnabled = false
         state = .notDownloaded
     }
 
     private func sha256(of url: URL) -> String? {
         Self.sha256Static(of: url)
+    }
+
+    nonisolated static func resolvedModelDirectory(
+        in rootDirectory: URL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        if hasSupportedModelWeights(in: rootDirectory, fileManager: fileManager) {
+            return rootDirectory
+        }
+
+        guard fileManager.fileExists(atPath: rootDirectory.path) else { return nil }
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: rootDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var candidates: [URL] = []
+        for child in children {
+            guard
+                let values = try? child.resourceValues(forKeys: [.isDirectoryKey]),
+                values.isDirectory == true
+            else {
+                continue
+            }
+            if hasSupportedModelWeights(in: child, fileManager: fileManager) {
+                candidates.append(child)
+            }
+        }
+
+        guard candidates.count == 1 else { return nil }
+        return candidates[0]
+    }
+
+    nonisolated static func hasSupportedModelWeights(
+        in directory: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        let candidates = ["weights.npz", "model.safetensors"]
+        return candidates.contains { name in
+            fileManager.fileExists(atPath: directory.appendingPathComponent(name).path)
+        }
     }
 
     nonisolated static func sha256Static(of url: URL) -> String? {
@@ -315,13 +447,55 @@ actor ModelLifecycleActor {
 
 // MARK: - URLSessionDownloader
 
+// Bridges URLSessionDownloadTask closure API into Swift concurrency while reporting progress.
+private final class DownloadTaskBox: @unchecked Sendable {
+    var task: URLSessionDownloadTask?
+    var observation: NSKeyValueObservation?
+}
+
 struct URLSessionDownloader: ModelDownloading {
     func download(from url: URL, progressHandler: @Sendable @escaping (Double) -> Void) async throws -> URL {
-        let (tempURL, response) = try await URLSession.shared.download(from: url, delegate: nil)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw PaddleOCRError.downloadFailed("HTTP error")
+        let box = DownloadTaskBox()
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                let task = URLSession.shared.downloadTask(with: url) { tempURL, response, error in
+                    box.observation?.invalidate()
+                    box.observation = nil
+
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                        continuation.resume(throwing: PaddleOCRError.downloadFailed("HTTP error"))
+                        return
+                    }
+                    guard let tempURL = tempURL else {
+                        continuation.resume(throwing: PaddleOCRError.downloadFailed("No download location"))
+                        return
+                    }
+                    let dest = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString + ".zip")
+                    do {
+                        try FileManager.default.moveItem(at: tempURL, to: dest)
+                        continuation.resume(returning: dest)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+                box.observation = task.progress.observe(\.fractionCompleted, options: [.new]) { _, change in
+                    if let fraction = change.newValue {
+                        progressHandler(fraction)
+                    }
+                }
+                box.task = task
+                task.resume()
+            }
+        } onCancel: {
+            box.task?.cancel()
+            box.observation?.invalidate()
         }
-        return tempURL
     }
 
     func fetchString(from url: URL) async throws -> String {

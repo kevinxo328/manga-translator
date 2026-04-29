@@ -1,16 +1,9 @@
 import Foundation
-import AppKit
+import CoreGraphics
 import os
 
 #if arch(arm64)
-import MLX
-import MLXNN
-
-// MARK: - Inference engine protocol (for testability)
-
-protocol PaddleOCRInferencing: AnyObject {
-    func infer(image: CGImage) throws -> (text: String, confidence: Float)
-}
+import MangaTranslatorMLX
 
 // MARK: - PaddleOCRVLRecognizer
 
@@ -30,17 +23,6 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
     init(modelDirectory: URL, engineFactory: @escaping (URL) throws -> any PaddleOCRInferencing) {
         self.modelDirectory = modelDirectory
         self.engineFactory = engineFactory
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryPressure),
-            name: NSApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-    }
-
-    @objc private func handleMemoryPressure() {
-        logger.info("Memory pressure received — unloading PaddleOCR model")
-        engine = nil
     }
 
     public func unload() {
@@ -58,11 +40,14 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
         }
 
         if engine == nil {
-            let fm = FileManager.default
-            guard fm.fileExists(atPath: modelDirectory.path) else {
+            guard let resolvedModelDirectory = ModelDownloadService.resolvedModelDirectory(in: modelDirectory) else {
                 throw PaddleOCRError.modelUnavailable
             }
-            engine = try engineFactory(modelDirectory)
+            do {
+                engine = try engineFactory(resolvedModelDirectory)
+            } catch {
+                throw PaddleOCRError.modelUnavailable
+            }
         }
 
         guard let engine else {
@@ -73,34 +58,11 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
             return ("", 0)
         }
 
-        return try engine.infer(image: cropped)
-    }
-}
-
-// MARK: - Default engine using MLX
-
-final class DefaultPaddleOCREngine: PaddleOCRInferencing {
-    private let modelDirectory: URL
-    private let logger = Logger(subsystem: "MangaTranslator", category: "PaddleOCREngine")
-
-    init(modelDirectory: URL) throws {
-        self.modelDirectory = modelDirectory
-        // Validate model directory contains expected weights
-        let weightsPath = modelDirectory.appendingPathComponent("weights.npz")
-        guard FileManager.default.fileExists(atPath: weightsPath.path) else {
-            throw PaddleOCRError.modelUnavailable
+        do {
+            return try engine.infer(image: cropped)
+        } catch {
+            throw PaddleOCRError.inferenceFailed(error.localizedDescription)
         }
     }
-
-    func infer(image: CGImage) throws -> (text: String, confidence: Float) {
-        // TODO: implement full MLX inference pipeline
-        // 1. Preprocess image to model input format
-        // 2. Load weights and run forward pass
-        // 3. Decode output tokens to text
-        // This is a placeholder until the full inference pipeline is implemented
-        logger.warning("PaddleOCR inference not yet implemented — returning empty result")
-        return ("", 0)
-    }
 }
-
 #endif

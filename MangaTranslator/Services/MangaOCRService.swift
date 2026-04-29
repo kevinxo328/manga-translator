@@ -60,6 +60,8 @@ final class MangaOCRService {
                     index: index
                 )
                 bubbles.append(bubble)
+            } catch let error as PaddleOCRError {
+                throw error
             } catch {
                 logger.warning("OCR failed for region \(index): \(error.localizedDescription)")
                 continue

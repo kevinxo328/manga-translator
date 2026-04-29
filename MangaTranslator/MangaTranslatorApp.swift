@@ -22,6 +22,11 @@ struct MangaTranslatorApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(viewModel: viewModel)
+                .task {
+                    #if arch(arm64)
+                    await ModelDownloadService.shared.verifyOnLaunch()
+                    #endif
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {

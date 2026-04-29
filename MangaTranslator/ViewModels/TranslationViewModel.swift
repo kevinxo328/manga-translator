@@ -3,6 +3,10 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
+#if arch(arm64)
+import MangaTranslatorMLX
+#endif
+
 @MainActor
 final class TranslationViewModel: ObservableObject {
     @Published var pages: [MangaPage] = []
@@ -21,7 +25,18 @@ final class TranslationViewModel: ObservableObject {
         [.image, .folder, .zip, UTType(filenameExtension: "cbz") ?? .zip]
     }
 
+    #if arch(arm64)
+    private lazy var ocrRouter: OCRRouter = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let modelDir = appSupport
+            .appendingPathComponent("MangaTranslator")
+            .appendingPathComponent("Models")
+            .appendingPathComponent("PaddleOCR-VL")
+        return OCRRouter(paddleOCRFactory: { PaddleOCRVLRecognizer(modelDirectory: modelDir) })
+    }()
+    #else
     private let ocrRouter = OCRRouter()
+    #endif
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
     private var cancellables = Set<AnyCancellable>()

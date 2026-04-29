@@ -71,22 +71,22 @@
 
 ## 7. Phase 3: Settings UI — TDD
 
-- [ ] 7.1 Write tests for `DeviceCapabilityService` integration in Settings: section hidden on Intel; warning label shown on 8GB; no warning on 16GB
-- [ ] 7.2 Write tests for state-driven UI: `notDownloaded` shows "Download and Enable"; `downloading` shows progress and "Cancel"; `downloaded+enabled` shows "Disable" and "Delete Model Data"; `downloaded+disabled` shows "Enable" and "Delete Model Data"
-- [ ] 7.3 Write tests for delete confirmation: dialog appears on "Delete Model Data" tap; `delete()` called only after confirm; no-op on cancel
-- [ ] 7.4 Write tests for preference persistence: `paddleocr.enabled` written to `UserDefaults` on toggle; resets to `false` after model deletion
-- [ ] 7.4a Write tests for enable gating: `paddleocr.enabled` cannot become `true` unless model is downloaded and verified
-- [ ] 7.5 Write tests for strict-mode error UX: high-accuracy failure shows actionable error text (retry / go to settings / re-download) and does not claim fallback OCR was used
-- [ ] 7.5b Write UI mapping tests: each stable error code maps to the expected user-facing message and action hints
-- [ ] 7.5c Write mapping-layer tests: error-code-to-localization-key mapping is explicit and separated (code key != localization key)
-- [ ] 7.5a Write tests for enable rejection messaging: blocked enable shows "Download model first" (or equivalent) and keeps toggle off
-- [ ] 7.6 Implement `PaddleOCRSettingsSection` SwiftUI view wrapped in `#if arch(arm64)` with `@EnvironmentObject ModelDownloadService`
-- [ ] 7.7 Add `PaddleOCRSettingsSection` to `SettingsView` inside `#if arch(arm64)` guard
-- [ ] 7.8 Add SwiftUI Previews for all states: `notDownloaded`, `downloading(progress: 0.52)`, `downloaded+enabled`, `downloaded+disabled`, `downloading+8GB warning`
+- [x] 7.1 Write tests for `DeviceCapabilityService` integration in Settings: section hidden on Intel; warning label shown on 8GB; no warning on 16GB
+- [x] 7.2 Write tests for state-driven UI: `notDownloaded` shows "Download and Enable"; `downloading` shows progress and "Cancel"; `downloaded+enabled` shows "Disable" and "Delete Model Data"; `downloaded+disabled` shows "Enable" and "Delete Model Data"
+- [x] 7.3 Write tests for delete confirmation: dialog appears on "Delete Model Data" tap; `delete()` called only after confirm; no-op on cancel
+- [x] 7.4 Write tests for preference persistence: `paddleocr.enabled` written to `UserDefaults` on toggle; resets to `false` after model deletion
+- [x] 7.4a Write tests for enable gating: `paddleocr.enabled` cannot become `true` unless model is downloaded and verified
+- [x] 7.5 Write tests for strict-mode error UX: high-accuracy failure shows actionable error text (retry / go to settings / re-download) and does not claim fallback OCR was used
+- [x] 7.5b Write UI mapping tests: each stable error code maps to the expected user-facing message and action hints
+- [x] 7.5c Write mapping-layer tests: error-code-to-localization-key mapping is explicit and separated (code key != localization key)
+- [x] 7.5a Write tests for enable rejection messaging: blocked enable shows "Download model first" (or equivalent) and keeps toggle off
+- [x] 7.6 Implement `PaddleOCRSettingsSection` SwiftUI view wrapped in `#if arch(arm64)` with `@EnvironmentObject ModelDownloadService`
+- [x] 7.7 Add `PaddleOCRSettingsSection` to `SettingsView` inside `#if arch(arm64)` guard
+- [x] 7.8 Add SwiftUI Previews for all states: `notDownloaded`, `downloading(progress: 0.52)`, `downloaded+enabled`, `downloaded+disabled`, `downloading+8GB warning`
 
 ## 8. Phase 3: App Launch Verification
 
-- [ ] 8.1 Add `await ModelDownloadService.shared.verifyOnLaunch()` call in `MangaTranslatorApp` using `.task {}` modifier on main window
+- [x] 8.1 Add `await ModelDownloadService.shared.verifyOnLaunch()` call in `MangaTranslatorApp` using `.task {}` modifier on main window
 - [ ] 8.2 Verify on simulator/device: corrupt model resets state on next launch; missing file resets state on next launch; initial UI remains responsive while verification runs
 
 ## 9. Integration & Final Validation

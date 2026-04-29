@@ -31,6 +31,13 @@ private func makeSolidCGImage(width: Int, height: Int, color: (UInt8, UInt8, UIn
     return context.makeImage()
 }
 
+private func makeModelDirectoryWithWeights() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try Data("fake-safetensors".utf8).write(to: directory.appendingPathComponent("model.safetensors"))
+    return directory
+}
+
 #if arch(arm64)
 // MARK: - Mock engine
 
@@ -56,8 +63,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("Successful inference returns structured output without crash")
     func successfulInference() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let mockEngine = MockOCREngine()
@@ -88,12 +94,50 @@ struct PaddleOCRVLRecognizerTests {
         }
     }
 
+    @Test("Nested model folder is resolved without moving files")
+    func nestedModelFolderIsResolved() throws {
+        let rootDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let nestedDir = rootDir.appendingPathComponent("paddleocr-vl-manga-mlx")
+        try FileManager.default.createDirectory(at: nestedDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootDir) }
+        try Data("fake-safetensors".utf8).write(to: nestedDir.appendingPathComponent("model.safetensors"))
+
+        var enginePath: URL?
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: rootDir) { path in
+            enginePath = path
+            return MockOCREngine()
+        }
+
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+        _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
+
+        #expect(enginePath != nil)
+        #expect(enginePath?.resolvingSymlinksInPath().path == nestedDir.resolvingSymlinksInPath().path)
+    }
+
+    @Test("Root model.safetensors is treated as a valid model artifact")
+    func rootSafetensorsIsAccepted() throws {
+        let rootDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: rootDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootDir) }
+        try Data("fake-safetensors".utf8).write(to: rootDir.appendingPathComponent("model.safetensors"))
+
+        var enginePath: URL?
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: rootDir) { path in
+            enginePath = path
+            return MockOCREngine()
+        }
+
+        guard let image = makeSolidCGImage(width: 80, height: 40) else { return }
+        _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 80, height: 40))
+        #expect(enginePath?.resolvingSymlinksInPath().path == rootDir.resolvingSymlinksInPath().path)
+    }
+
     // MARK: - Task 34: Boundary tests
 
     @Test("Region exceeding image bounds is clamped — no crash")
     func regionExceedsBoundsIsClamped() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in MockOCREngine() }
@@ -108,8 +152,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("Region with zero width returns empty string without crash")
     func zeroWidthRegionReturnsEmpty() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in MockOCREngine() }
@@ -123,8 +166,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("Region with zero height returns empty string without crash")
     func zeroHeightRegionReturnsEmpty() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in MockOCREngine() }
@@ -138,8 +180,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("All-white input image returns result without crashing")
     func allWhiteInputNoCrash() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let mockEngine = MockOCREngine()
@@ -156,8 +197,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("All-black input image returns result without crashing")
     func allBlackInputNoCrash() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let mockEngine = MockOCREngine()
@@ -173,8 +213,7 @@ struct PaddleOCRVLRecognizerTests {
 
     @Test("4K+ input image completes without out-of-memory crash")
     func largeInputImageNoCrash() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in MockOCREngine() }
@@ -186,74 +225,11 @@ struct PaddleOCRVLRecognizerTests {
         #expect(result.confidence >= 0)
     }
 
-    // MARK: - Task 35: Memory pressure
-
-    @Test("Model is released after NSApplication.didReceiveMemoryWarningNotification")
-    func memoryPressureReleasesModel() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let mockEngine = MockOCREngine()
-        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in mockEngine }
-
-        guard let image = makeSolidCGImage(width: 50, height: 50) else { return }
-        let region = CGRect(x: 0, y: 0, width: 50, height: 50)
-
-        // First inference loads the engine
-        _ = try recognizer.recognizeText(in: image, region: region)
-        #expect(mockEngine.callCount == 1)
-
-        // Simulate memory pressure
-        NotificationCenter.default.post(name: NSApplication.didReceiveMemoryWarningNotification, object: nil)
-
-        // After memory pressure, engine should be nil internally
-        // We verify by checking that the next inference re-loads (callCount resets to a new instance)
-        // We use a factory that counts creations
-        var factoryCallCount = 0
-        let recognizer2 = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in
-            factoryCallCount += 1
-            return MockOCREngine()
-        }
-        _ = try recognizer2.recognizeText(in: image, region: region)
-        NotificationCenter.default.post(name: NSApplication.didReceiveMemoryWarningNotification, object: nil)
-        _ = try recognizer2.recognizeText(in: image, region: region)
-
-        // Factory should have been called twice (once before and once after memory pressure)
-        #expect(factoryCallCount == 2)
-    }
-
-    @Test("Inference after memory pressure reloads engine and succeeds")
-    func inferenceAfterMemoryPressureSucceeds() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        var loadCount = 0
-        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in
-            loadCount += 1
-            return MockOCREngine()
-        }
-
-        guard let image = makeSolidCGImage(width: 50, height: 50) else { return }
-        let region = CGRect(x: 0, y: 0, width: 50, height: 50)
-
-        _ = try recognizer.recognizeText(in: image, region: region)
-        #expect(loadCount == 1)
-
-        NotificationCenter.default.post(name: NSApplication.didReceiveMemoryWarningNotification, object: nil)
-
-        let (text, _) = try recognizer.recognizeText(in: image, region: region)
-        #expect(loadCount == 2)
-        #expect(text == "テスト")
-    }
-
-    // MARK: - Task 36: Explicit unload hook
+    // MARK: - Task 35 / 36: Explicit unload hook
 
     @Test("unload() releases model resources deterministically")
     func explicitUnloadReleasesResources() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         var loadCount = 0
