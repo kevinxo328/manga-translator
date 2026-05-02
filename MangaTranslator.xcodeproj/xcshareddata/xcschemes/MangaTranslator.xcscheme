@@ -9,6 +9,20 @@
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SP5000000100000000000001"
+               BuildableName = "MangaTranslatorSpikeTests.xctest"
+               BlueprintName = "MangaTranslatorSpikeTests"
+               ReferencedContainer = "container:MangaTranslator.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -52,6 +66,17 @@
                BlueprintIdentifier = "T50000010000000000000001"
                BuildableName = "MangaTranslatorTests.xctest"
                BlueprintName = "MangaTranslatorTests"
+               ReferencedContainer = "container:MangaTranslator.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SP5000000100000000000001"
+               BuildableName = "MangaTranslatorSpikeTests.xctest"
+               BlueprintName = "MangaTranslatorSpikeTests"
                ReferencedContainer = "container:MangaTranslator.xcodeproj">
             </BuildableReference>
          </TestableReference>

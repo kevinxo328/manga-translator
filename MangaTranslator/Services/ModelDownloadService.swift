@@ -186,6 +186,11 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     func verifyOnLaunch() async {
         guard config.userDefaults.bool(forKey: DefaultsKey.downloaded) else { return }
 
+        // Fast-path when integrity evidence is fresh (within last 7 days)
+        let lastVerified = config.userDefaults.double(forKey: DefaultsKey.lastVerified)
+        let now = Date().timeIntervalSince1970
+        let isFresh = (now - lastVerified) < (86400 * 7)
+
         // Full SHA256 when evidence is stale or suspicious
         let storedChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum) ?? ""
         let archivePath = config.modelDirectory.appendingPathComponent("model.zip")
@@ -203,6 +208,11 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
 
         if storedChecksum.isEmpty {
             resetDownloadState()
+            return
+        }
+
+        if isFresh {
+            state = .downloaded
             return
         }
 

@@ -1,7 +1,6 @@
 import Testing
 import Foundation
 import AppKit
-@testable import MangaTranslator
 
 #if arch(arm64)
 @testable import MangaTranslatorMLX
@@ -12,7 +11,7 @@ struct PaddleOCRIntegrationSpikeTests {
     @Test("Native engine can run against local converted model artifacts")
     func nativeEngineSpike() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // MangaTranslatorTests
+            .deletingLastPathComponent() // MangaTranslatorSpikeTests
             .deletingLastPathComponent() // repo root
 
         let modelDir = repoRoot
