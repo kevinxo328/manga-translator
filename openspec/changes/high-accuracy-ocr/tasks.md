@@ -166,3 +166,13 @@ Three bugs confirmed by static analysis + key simulation (911 safetensors keys, 
 - [x] 12.3 Update `PaddleOCRVLRuntime` to hold and call `MangaVisionEncoder` instead of `model.visionModel.getImageFeatures`; set NaViT `numHiddenLayers=0` to avoid wasting ~800MB on unused zero-weight layers.
 - [x] 12.4 Fix image orientation: empirically confirmed `CIContext.render` maps CIImage y=0 → bitmap row 0 (visual top). Remove incorrect y-flip from `renderTile`; keep `cropRect.y = row * tileH` (row=0 = visual top).
 - [x] 12.5 Verify: spike test produces recognizable Japanese manga text including `第49回` (≈ `第49話`), `ドラゴン`, `うっ`, `…ない` — text from correct regions of test image. Architecture fix confirmed working.
+
+## 13. OCR Quality Improvement (Tiling vs Full-Image Coverage)
+
+**Background**: Current approach tiles the image into 3×4 grid of 392×392px crops, yielding 2,352 merged vision tokens. Python reference processes the full image via `smart_resize` (nearest multiple of 28), yielding ~3,312 merged tokens at native resolution. This gap causes shorter output and minor OCR errors (e.g. `第49回` vs `第49話`).
+
+- [ ] 13.1 Benchmark current tiling quality: run `verify.py` crop-level CER against Python baseline on all 12 `test_images/*.jpg` pages; record baseline CER per page.
+- [ ] 13.2 Implement `smart_resize` in Swift: resize input image to nearest multiple of `patchSize × spatialMergeSize = 28` in both dimensions (matching Python `image_processing.py`), then process as a single tile. Gate behind a memory check — abort and fall back to tiling if estimated peak memory (patches² × hidden × layers × 2 bytes) exceeds 80% of available GPU memory.
+- [ ] 13.3 Evaluate full-image path on `test_images/001.jpg`–`012.jpg`: compare CER vs tiling baseline from 13.1; confirm no OOM crash on 8 GB and 16 GB devices.
+- [ ] 13.4 If full-image path improves CER without OOM, make it the default; keep tiling as fallback for large pages or low-memory devices. Update `recognize()` routing logic and add unit test asserting the correct path is selected for a given image size and available memory.
+- [ ] 13.5 Update spike test assertion: tighten `#expect` thresholds to require at least one exact match from the Python reference set (e.g. `第49話`, `転生したら`) rather than just non-empty output.
