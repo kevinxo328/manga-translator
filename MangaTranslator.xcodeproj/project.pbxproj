@@ -75,7 +75,6 @@
 		PH1000000200000000000001 /* PaddleOCRVLRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */; };
 		PH1000000200000000000007 /* PaddleOCREngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000003 /* PaddleOCREngine.swift */; };
 		PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */; };
-		PX1000000200000000000001 /* PaddleOCRIntegrationSpikeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PX2000000200000000000001 /* PaddleOCRIntegrationSpikeTests.swift */; };
 		PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		PH1000000200000000000004 /* MangaTranslatorMLX.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
@@ -195,7 +194,6 @@
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
 		PH2000000200000000000003 /* PaddleOCREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCREngine.swift; sourceTree = "<group>"; };
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
-		PX2000000200000000000001 /* PaddleOCRIntegrationSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRIntegrationSpikeTests.swift; sourceTree = "<group>"; };
 		SP2000000100000000000001 /* MangaTranslatorSpikeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorSpikeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		SP2000000100000000000002 /* MangaTranslatorSpikeTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MangaTranslatorSpikeTests.entitlements; sourceTree = "<group>"; };
 		SP2000000100000000000003 /* PaddleOCRIntegrationSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRIntegrationSpikeTests.swift; sourceTree = "<group>"; };
@@ -403,7 +401,6 @@
 				TH2000000100000000000002 /* OCRRouterTests.swift */,
 				TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */,
 				PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */,
-				PX2000000200000000000001 /* PaddleOCRIntegrationSpikeTests.swift */,
 				);
 				path = MangaTranslatorTests;			sourceTree = "<group>";
 		};
@@ -635,7 +632,6 @@
 				TH1000000100000000000002 /* OCRRouterTests.swift in Sources */,
 				TH1000000100000000000003 /* PaddleOCRSettingsSectionTests.swift in Sources */,
 				PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */,
-				PX1000000200000000000001 /* PaddleOCRIntegrationSpikeTests.swift in Sources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				};
