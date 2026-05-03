@@ -26,3 +26,8 @@ xcuserdata/
 .venv/
 __pycache__/
 *.pyc
+
+
+# Test examples
+examples/*
+!examples/.gitkeep
