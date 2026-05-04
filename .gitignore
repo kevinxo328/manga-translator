@@ -38,5 +38,5 @@ scripts/convert_model/.env
 
 # Test and example images
 test_images/
-examples/
-
+examples/*
+!examples/.gitkeep

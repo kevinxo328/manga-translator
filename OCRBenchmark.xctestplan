@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "B0000000-0000-0000-0000-000000000001",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true,
+    "defaultTestExecutionTimeAllowance" : 600
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:MangaTranslator.xcodeproj",
+        "identifier" : "BK50000010000000000000001",
+        "name" : "OCRBenchmarkTests"
+      }
+    }
+  ],
+  "version" : 1
+}

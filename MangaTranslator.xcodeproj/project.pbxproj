@@ -30,6 +30,13 @@
 		A10000010000000000000022 /* GlossaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000062 /* GlossaryService.swift */; };
 		A10000010000000000000023 /* GlossaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000063 /* GlossaryView.swift */; };
 		A10000010000000000000024 /* GlossarySubstitution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000064 /* GlossarySubstitution.swift */; };
+		BK10000010000000000000001 /* IoUCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000002 /* IoUCalculator.swift */; };
+		BK10000010000000000000002 /* ImageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000003 /* ImageScanner.swift */; };
+		BK10000010000000000000003 /* BenchmarkReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000004 /* BenchmarkReporter.swift */; };
+		BK10000010000000000000004 /* IoUCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000005 /* IoUCalculatorTests.swift */; };
+		BK10000010000000000000005 /* BenchmarkReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000006 /* BenchmarkReporterTests.swift */; };
+		BK10000010000000000000006 /* ImageScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000007 /* ImageScannerTests.swift */; };
+		BK10000010000000000000007 /* OCRBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000008 /* OCRBenchmarkTests.swift */; };
 		C10000010000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = C10000010000000000000001 /* onnxruntime */; };
 		D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* ComicTextDetectorService.swift */; };
 		D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000002 /* MangaOCRTokenizer.swift */; };
@@ -58,6 +65,8 @@
 		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
 		E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000010000000000000010 /* CheckForUpdatesView.swift */; };
 		F10000010000000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* UpdateChecker.swift */; };
+		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
+		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
 		T10000010000000000000001 /* LLMPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000001 /* LLMPromptTests.swift */; };
 		T10000010000000000000002 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000002 /* PreferencesServiceTests.swift */; };
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
@@ -68,6 +77,7 @@
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
 		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
 		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
+		T1000001000000000000000A /* VisionOCRServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000A /* VisionOCRServiceTests.swift */; };
 		M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* MangaTranslatorMLX.swift */; };
 		M10000010000000000000002 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
 		M10000010000000000000003 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
@@ -83,6 +93,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		BKC000000100000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = MangaTranslator;
+		};
 		TC0000010000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
@@ -153,6 +170,14 @@
 		A20000010000000000000062 /* GlossaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryService.swift; sourceTree = "<group>"; };
 		A20000010000000000000063 /* GlossaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryView.swift; sourceTree = "<group>"; };
 		A20000010000000000000064 /* GlossarySubstitution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossarySubstitution.swift; sourceTree = "<group>"; };
+		BK20000010000000000000001 /* OCRBenchmarkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OCRBenchmarkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BK20000010000000000000002 /* IoUCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoUCalculator.swift; sourceTree = "<group>"; };
+		BK20000010000000000000003 /* ImageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageScanner.swift; sourceTree = "<group>"; };
+		BK20000010000000000000004 /* BenchmarkReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkReporter.swift; sourceTree = "<group>"; };
+		BK20000010000000000000005 /* IoUCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoUCalculatorTests.swift; sourceTree = "<group>"; };
+		BK20000010000000000000006 /* BenchmarkReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkReporterTests.swift; sourceTree = "<group>"; };
+		BK20000010000000000000007 /* ImageScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageScannerTests.swift; sourceTree = "<group>"; };
+		BK20000010000000000000008 /* OCRBenchmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRBenchmarkTests.swift; sourceTree = "<group>"; };
 		D20000010000000000000001 /* ComicTextDetectorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorService.swift; sourceTree = "<group>"; };
 		D20000010000000000000002 /* MangaOCRTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTokenizer.swift; sourceTree = "<group>"; };
 		D20000010000000000000003 /* MangaOCRRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRRecognizer.swift; sourceTree = "<group>"; };
@@ -168,12 +193,7 @@
 		TH2000000100000000000001 /* OCRRecognizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRecognizingTests.swift; sourceTree = "<group>"; };
 		TH2000000100000000000002 /* OCRRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouterTests.swift; sourceTree = "<group>"; };
 		TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRSettingsSectionTests.swift; sourceTree = "<group>"; };
-		G20000010000000000000001 /* CopilotEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironment.swift; sourceTree = "<group>"; };
-		G20000010000000000000002 /* CopilotTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationService.swift; sourceTree = "<group>"; };
-		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
-		T20000010000000000000007 /* CopilotTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationServiceTests.swift; sourceTree = "<group>"; };
-		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
-		T20000010000000000000009 /* MangaOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTests.swift; sourceTree = "<group>"; };		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
+		D20000010000000000000010 /* comic-text-detector.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = "comic-text-detector.onnx"; sourceTree = "<group>"; };
 		D20000010000000000000011 /* encoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = encoder_model.onnx; sourceTree = "<group>"; };
 		D20000010000000000000012 /* decoder_model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = decoder_model.onnx; sourceTree = "<group>"; };
 		D20000010000000000000013 /* vocab.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = vocab.txt; sourceTree = "<group>"; };
@@ -184,11 +204,18 @@
 		D20000010000000000000018 /* special_tokens_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = special_tokens_map.json; sourceTree = "<group>"; };
 		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
 		F20000010000000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		G20000010000000000000001 /* CopilotEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironment.swift; sourceTree = "<group>"; };
+		G20000010000000000000002 /* CopilotTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationService.swift; sourceTree = "<group>"; };
 		T20000010000000000000001 /* LLMPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMPromptTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000002 /* PreferencesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIViewCorrectnessTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000005 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000007 /* CopilotTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationServiceTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000009 /* MangaOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTests.swift; sourceTree = "<group>"; };
+		T2000001000000000000000A /* VisionOCRServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionOCRServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		M20000010000000000000001 /* MangaTranslatorMLX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorMLX.swift; sourceTree = "<group>"; };
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
@@ -247,6 +274,7 @@
 				M40000010000000000000001 /* MangaTranslatorMLX */,
 				T40000010000000000000001 /* MangaTranslatorTests */,
 				SP4000000100000000000001 /* MangaTranslatorSpikeTests */,
+				BK40000010000000000000001 /* OCRBenchmarkTests */,
 				A40000010000000000000009 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -338,6 +366,7 @@
 				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
 				M20000010000000000000010 /* MangaTranslatorMLX.framework */,
 				SP2000000100000000000001 /* MangaTranslatorSpikeTests.xctest */,
+				BK20000010000000000000001 /* OCRBenchmarkTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -349,6 +378,20 @@
 				SP2000000100000000000003 /* PaddleOCRIntegrationSpikeTests.swift */,
 			);
 			path = MangaTranslatorSpikeTests;
+			sourceTree = "<group>";
+		};
+		BK40000010000000000000001 /* OCRBenchmarkTests */ = {
+			isa = PBXGroup;
+			children = (
+				BK20000010000000000000002 /* IoUCalculator.swift */,
+				BK20000010000000000000003 /* ImageScanner.swift */,
+				BK20000010000000000000004 /* BenchmarkReporter.swift */,
+				BK20000010000000000000005 /* IoUCalculatorTests.swift */,
+				BK20000010000000000000006 /* BenchmarkReporterTests.swift */,
+				BK20000010000000000000007 /* ImageScannerTests.swift */,
+				BK20000010000000000000008 /* OCRBenchmarkTests.swift */,
+			);
+			path = OCRBenchmarkTests;
 			sourceTree = "<group>";
 		};
 		D40000010000000000000001 /* Resources */ = {
@@ -401,8 +444,10 @@
 				TH2000000100000000000002 /* OCRRouterTests.swift */,
 				TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */,
 				PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */,
-				);
-				path = MangaTranslatorTests;			sourceTree = "<group>";
+				T2000001000000000000000A /* VisionOCRServiceTests.swift */,
+			);
+			path = MangaTranslatorTests;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -450,6 +495,22 @@
 			productName = MangaTranslatorMLX;
 			productReference = M20000010000000000000010 /* MangaTranslatorMLX.framework */;
 			productType = "com.apple.product-type.framework";
+		};
+		BK50000010000000000000001 /* OCRBenchmarkTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BKA000000100000000000001 /* Build configuration list for PBXNativeTarget "OCRBenchmarkTests" */;
+			buildPhases = (
+				BK60000010000000000000001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BKD000000100000000000001 /* PBXTargetDependency */,
+			);
+			name = OCRBenchmarkTests;
+			productName = OCRBenchmarkTests;
+			productReference = BK20000010000000000000001 /* OCRBenchmarkTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		T50000010000000000000001 /* MangaTranslatorTests */ = {
 			isa = PBXNativeTarget;
@@ -502,6 +563,10 @@
 					M50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
+					BK50000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A50000010000000000000001;
+					};
 					T50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = A50000010000000000000001;
@@ -535,6 +600,7 @@
 				M50000010000000000000001 /* MangaTranslatorMLX */,
 				T50000010000000000000001 /* MangaTranslatorTests */,
 				SP5000000100000000000001 /* MangaTranslatorSpikeTests */,
+				BK50000010000000000000001 /* OCRBenchmarkTests */,
 			);
 		};
 /* End PBXProject section */
@@ -615,6 +681,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BK60000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BK10000010000000000000001 /* IoUCalculator.swift in Sources */,
+				BK10000010000000000000002 /* ImageScanner.swift in Sources */,
+				BK10000010000000000000003 /* BenchmarkReporter.swift in Sources */,
+				BK10000010000000000000004 /* IoUCalculatorTests.swift in Sources */,
+				BK10000010000000000000005 /* BenchmarkReporterTests.swift in Sources */,
+				BK10000010000000000000006 /* ImageScannerTests.swift in Sources */,
+				BK10000010000000000000007 /* OCRBenchmarkTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		T60000010000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -632,9 +712,10 @@
 				TH1000000100000000000002 /* OCRRouterTests.swift in Sources */,
 				TH1000000100000000000003 /* PaddleOCRSettingsSectionTests.swift in Sources */,
 				PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */,
-				);
-				runOnlyForDeploymentPostprocessing = 0;
-				};
+				T1000001000000000000000A /* VisionOCRServiceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		SP6000000100000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -646,6 +727,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		BKD000000100000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* MangaTranslator */;
+			targetProxy = BKC000000100000000000001 /* PBXContainerItemProxy */;
+		};
 		TD0000010000000000000001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A50000010000000000000001 /* MangaTranslator */;
@@ -721,7 +807,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -778,7 +864,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
@@ -896,6 +982,40 @@
 			};
 			name = Release;
 		};
+		BKB000000100000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.OCRBenchmarkTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Debug;
+		};
+		BKB000000100000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.OCRBenchmarkTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Release;
+		};
 		TB0000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -904,7 +1024,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -921,7 +1041,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1013,6 +1133,15 @@
 			buildConfigurations = (
 				SP7000000100000000000001 /* Debug */,
 				SP7000000100000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BKA000000100000000000001 /* Build configuration list for PBXNativeTarget "OCRBenchmarkTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BKB000000100000000000001 /* Debug */,
+				BKB000000100000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

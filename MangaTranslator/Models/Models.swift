@@ -17,7 +17,13 @@ enum Language: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var visionLanguageCode: String { rawValue }
+    var visionLanguageCode: String {
+        switch self {
+        case .ja: return "ja-JP"
+        case .en: return "en-US"
+        case .zhHant: return "zh-Hant"
+        }
+    }
 }
 
 enum TranslationEngine: String, CaseIterable, Identifiable, Codable {

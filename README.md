@@ -6,7 +6,7 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ## Core Features
 
-- **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. (Apple Vision is used as a secondary fallback).
+- **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. Apple Vision (macOS 15 `RecognizeTextRequest` API) is used as a secondary fallback with language correction enabled, mixed JP/EN language support, and a lowered text-height threshold (1%) to capture small text that the legacy Vision API missed.
 - **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
 - **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible backend auto-detects new proper nouns during translation and adds them to the active glossary automatically.
 - **Cross-page Context** — When using the OpenAI-compatible engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
@@ -20,8 +20,8 @@ A native macOS application that automatically detects, recognizes, and translate
 | Source              | OCR Method                            | Target                        |
 | ------------------- | ------------------------------------- | ----------------------------- |
 | Japanese            | Manga-OCR (ONNX) with Vision fallback | English, Traditional Chinese  |
-| English             | Apple Vision                          | Japanese, Traditional Chinese |
-| Traditional Chinese | Apple Vision                          | Japanese, English             |
+| English             | Apple Vision (`RecognizeTextRequest`, macOS 15+) | Japanese, Traditional Chinese |
+| Traditional Chinese | Apple Vision (`RecognizeTextRequest`, macOS 15+) | Japanese, English             |
 
 ## Installation
 
@@ -36,8 +36,8 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ### Prerequisites
 
-- macOS Monterey or later
-- Xcode 14+ with Swift 5.0
+- macOS Sequoia (15.0) or later
+- Xcode 16+ with Swift 6
 
 ### Build & Run
 
@@ -69,6 +69,7 @@ MangaTranslator/
 ├── Views/                    # SwiftUI interface components
 └── Resources/                # Bundled ML models and assets
 MangaTranslatorTests/         # Unit and integration tests
+OCRBenchmarkTests/            # OCR benchmark tool (separate scheme)
 openspec/                     # Technical specifications and change tracking
 scripts/                      # Build and release automation scripts
 ```
@@ -97,6 +98,35 @@ Pushing a version tag (e.g., `v1.0.0`) to the `main` branch triggers the GitHub 
 git tag v1.0.0
 git push origin v1.0.0
 ```
+
+## Testing
+
+### Unit & Integration Tests
+
+```bash
+xcodebuild test -project MangaTranslator.xcodeproj \
+    -scheme MangaTranslator \
+    -destination 'platform=macOS'
+```
+
+Or press `⌘U` in Xcode with the **MangaTranslator** scheme selected.
+
+### OCR Benchmark
+
+A separate benchmark tool compares MangaOCR and VisionOCR side-by-side on real manga pages. Each engine runs as an independent production pipeline; results are paired by greedy IoU matching (threshold ≥ 0.5). The report shows paired regions with both texts and IoU score, plus unmatched bubbles from each engine and per-engine failure counts.
+
+**Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
+
+**Run**:
+```bash
+xcodebuild test -project MangaTranslator.xcodeproj \
+    -scheme OCRBenchmark \
+    -destination 'platform=macOS'
+```
+
+Or switch to the **OCRBenchmark** scheme in Xcode and press `⌘U`.
+
+The report prints to the Xcode console immediately after the run. It is also saved as an attachment in the test result — open **Report Navigator** (`⌘9`), select the test run, and click `testFullBenchmark` to retrieve past reports.
 
 ## Development Notes
 
