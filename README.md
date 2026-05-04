@@ -69,6 +69,7 @@ MangaTranslator/
 ├── Views/                    # SwiftUI interface components
 └── Resources/                # Bundled ML models and assets
 MangaTranslatorTests/         # Unit and integration tests
+OCRBenchmarkTests/            # OCR benchmark tool (separate scheme)
 openspec/                     # Technical specifications and change tracking
 scripts/                      # Build and release automation scripts
 ```
@@ -97,6 +98,35 @@ Pushing a version tag (e.g., `v1.0.0`) to the `main` branch triggers the GitHub 
 git tag v1.0.0
 git push origin v1.0.0
 ```
+
+## Testing
+
+### Unit & Integration Tests
+
+```bash
+xcodebuild test -project MangaTranslator.xcodeproj \
+    -scheme MangaTranslator \
+    -destination 'platform=macOS'
+```
+
+Or press `⌘U` in Xcode with the **MangaTranslator** scheme selected.
+
+### OCR Benchmark
+
+A separate benchmark tool compares MangaOCR and VisionOCR side-by-side on real manga pages. It detects overlapping bounding boxes (IoU > 0.5) and outputs a plain-text report.
+
+**Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
+
+**Run**:
+```bash
+xcodebuild test -project MangaTranslator.xcodeproj \
+    -scheme OCRBenchmark \
+    -destination 'platform=macOS'
+```
+
+Or switch to the **OCRBenchmark** scheme in Xcode and press `⌘U`.
+
+The report prints to the Xcode console immediately after the run. It is also saved as an attachment in the test result — open **Report Navigator** (`⌘9`), select the test run, and click `testFullBenchmark` to retrieve past reports.
 
 ## Development Notes
 
