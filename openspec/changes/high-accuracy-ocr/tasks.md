@@ -173,12 +173,20 @@ Three bugs confirmed by static analysis + key simulation (911 safetensors keys, 
 - [x] 13.3 Extract `GeneratorRuntime`: move the autoregressive decode loop (cache init, `mergeInputIdsWithImageFeatures`, `languageModel.forward`, `lmHead`, per-step logit sampling, stop-token check) into a dedicated `struct GeneratorRuntime`. Interface: `func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int]`.
 - [x] 13.4 Update `PaddleOCRVLRuntime.recognize()` to delegate to the three extracted subcomponents; verify existing tests still pass with no behaviour change.
 
-## 14. OCR Quality Improvement (Tiling vs Full-Image Coverage)
+## 14. Benchmark Test Consolidation (Prerequisite for Phase 15)
+
+**Background**: `PaddleOCRIntegrationSpikeTests` was exploratory scaffolding to verify the engine loads and produces non-empty output. Now that inference is confirmed working, this spike test should be promoted to a proper production benchmark alongside the existing MangaOCR/VisionOCR benchmark tests in `OCRBenchmarkTests/`. The spike test file should be deleted and `testEmptyExamplesProducesNoImagesWarning` (which duplicates `BenchmarkReporterTests.testNoImagesWarningInReport`) should be removed to keep `OCRBenchmarkTests` focused on production OCR quality. This consolidation is a prerequisite for Phase 15's CER evaluation, which needs a reproducible benchmark harness.
+
+- [ ] 14.1 Add `testPaddleOCRBenchmark()` to `OCRBenchmarkTests/OCRBenchmarkTests.swift` inside `#if arch(arm64)`: scan `examples/`, load model from Application Support (`MangaTranslator/Models/PaddleOCR-VL`), skip gracefully if model not installed, run `DefaultPaddleOCREngine.infer()` on each image, print latency and text output per image. Add `@testable import MangaTranslatorMLX` inside the `#if arch(arm64)` guard.
+- [ ] 14.2 Remove `testEmptyExamplesProducesNoImagesWarning` from `OCRBenchmarkTests/OCRBenchmarkTests.swift` — already covered by `BenchmarkReporterTests.testNoImagesWarningInReport`.
+- [ ] 14.3 Delete `MangaTranslatorSpikeTests/PaddleOCRIntegrationSpikeTests.swift` — functionality replaced by `testPaddleOCRBenchmark`.
+
+## 15. OCR Quality Improvement (Tiling vs Full-Image Coverage)
 
 **Background**: Current approach tiles the image into 3×4 grid of 392×392px crops, yielding 2,352 merged vision tokens. Python reference processes the full image via `smart_resize` (nearest multiple of 28), yielding ~3,312 merged tokens at native resolution. This gap causes shorter output and minor OCR errors (e.g. `第49回` vs `第49話`).
 
-- [ ] 14.1 Benchmark current tiling quality: run `verify.py` crop-level CER against Python baseline on all 12 `test_images/*.jpg` pages; record baseline CER per page.
-- [ ] 14.2 Implement `smart_resize` in Swift: resize input image to nearest multiple of `patchSize × spatialMergeSize = 28` in both dimensions (matching Python `image_processing.py`), then process as a single tile. Gate behind a memory check — abort and fall back to tiling if estimated peak memory (patches² × hidden × layers × 2 bytes) exceeds 80% of available GPU memory.
-- [ ] 14.3 Evaluate full-image path on `examples/book1/001.jpg`–`012.jpg`: compare CER vs tiling baseline from 14.1; confirm no OOM crash on 8 GB and 16 GB devices.
-- [ ] 14.4 If full-image path improves CER without OOM, make it the default; keep tiling as fallback for large pages or low-memory devices. Update `recognize()` routing logic and add unit test asserting the correct path is selected for a given image size and available memory.
-- [ ] 14.5 Update spike test assertion: tighten `#expect` thresholds to require at least one exact match from the Python reference set (e.g. `第49話`, `転生したら`) rather than just non-empty output.
+- [ ] 15.1 Establish tiling baseline: run `testPaddleOCRBenchmark` alongside `testFullBenchmark` on `examples/` images; compare PaddleOCR output against MangaOCR results to identify recognition gaps before implementing smart_resize.
+- [ ] 15.2 Implement `smart_resize` in Swift: resize input image to nearest multiple of `patchSize × spatialMergeSize = 28` in both dimensions (matching Python `image_processing.py`), then process as a single tile. Gate behind a memory check — abort and fall back to tiling if estimated peak memory (patches² × hidden × layers × 2 bytes) exceeds 80% of available GPU memory.
+- [ ] 15.3 Evaluate full-image path on `examples/book1/001.jpg`–`012.jpg`: compare CER vs tiling baseline from 15.1; confirm no OOM crash on 8 GB and 16 GB devices.
+- [ ] 15.4 If full-image path improves CER without OOM, make it the default; keep tiling as fallback for large pages or low-memory devices. Update `recognize()` routing logic and add unit test asserting the correct path is selected for a given image size and available memory.
+- [ ] 15.5 Tighten `testPaddleOCRBenchmark` assertions: require at least one exact match from the Python reference set (e.g. `第49話`, `転生したら`) rather than just non-empty output.
