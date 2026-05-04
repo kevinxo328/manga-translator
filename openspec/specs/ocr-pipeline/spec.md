@@ -19,6 +19,24 @@ The system SHALL use the appropriate OCR engine based on source language: manga-
 - **WHEN** user opens an image with source language set to English or Traditional Chinese
 - **THEN** the system uses Vision framework OCR to detect and recognize text
 
+### Requirement: Vision OCR uses macOS 15 RecognizeTextRequest API
+`VisionOCRService` SHALL use the `RecognizeTextRequest` API (macOS 15+) instead of the legacy `VNRecognizeTextRequest`. The macOS 15 API adds support for detecting text direction on each observation, improving results on vertical Japanese text that the legacy API could not handle.
+
+The service SHALL expose configurable properties for `usesLanguageCorrection`, `minimumTextHeightFraction`, and a helper `recognitionLanguages(for:)` that always includes English as a secondary language.
+
+Default configuration:
+- `usesLanguageCorrection`: `true` — enables language-model post-processing to correct recognition errors
+- `minimumTextHeightFraction`: `0.01` — detects text as small as 1% of image height (the legacy default of 3.125% filtered out furigana, sound effects, and dense tategaki lines)
+- `recognitionLanguages`: source language first, always followed by `en-US` for mixed JP/EN content
+
+#### Scenario: Small text detection (furigana, sound effects)
+- **WHEN** a manga page contains text smaller than 3% of image height (e.g., furigana, SFX)
+- **THEN** VisionOCRService detects those regions (minimumTextHeightFraction = 0.01)
+
+#### Scenario: Mixed JP/EN content
+- **WHEN** a page contains both Japanese and English text
+- **THEN** VisionOCRService recognizes both because en-US is always included in recognitionLanguages
+
 ### Requirement: Normalize coordinates from Vision to image space
 The system SHALL convert Vision framework normalized coordinates (origin at bottom-left, 0-1 range) to image pixel coordinates (origin at top-left) when Vision OCR is used. All downstream consumers (bubble detection, UI overlay) SHALL receive coordinates in image space regardless of the OCR engine used.
 
