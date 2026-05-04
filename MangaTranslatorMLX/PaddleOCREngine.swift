@@ -293,35 +293,109 @@ private class MangaMultiModalProjector: Module {
     }
 }
 
+// MARK: - Subcomponents for OCR Engine
+
+private struct ImagePreprocessor {
+    let context: CIContext
+
+    func preprocessTile(_ ciImage: CIImage, rect: CGRect, targetSize: Int) -> MLXArray {
+        let tileImage = ciImage
+            .cropped(to: rect)
+            .transformed(by: CGAffineTransform(translationX: -rect.origin.x, y: -rect.origin.y))
+            .transformed(by: CGAffineTransform(scaleX: CGFloat(targetSize) / rect.width, y: CGFloat(targetSize) / rect.height))
+            .cropped(to: CGRect(origin: .zero, size: CGSize(width: targetSize, height: targetSize)))
+
+        var data = Data(count: targetSize * targetSize * 4)
+        data.withUnsafeMutableBytes { ptr in
+            context.render(
+                tileImage,
+                toBitmap: ptr.baseAddress!,
+                rowBytes: targetSize * 4,
+                bounds: tileImage.extent,
+                format: .RGBA8,
+                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
+            )
+        }
+        let uint8Array = MLXArray(data, [targetSize, targetSize, 4], type: UInt8.self)
+        var px = uint8Array.asType(.float32) / 255.0
+        px = px[0..., 0..., ..<3]
+        px = (px - 0.5) / 0.5
+        return px.reshaped(1, targetSize, targetSize, 3).asType(.bfloat16)
+    }
+}
+
+private struct TokenizerAdapter {
+    let tokenizer: any Tokenizer
+    let config: PaddleOCRVLConfig
+
+    var stopTokens: Set<Int> {
+        let eosId = tokenizer.eosTokenId ?? 2
+        return [2, 100272, eosId]
+    }
+
+    func buildInputIds(numMergedTokens: Int) -> [Int] {
+        let textPrompt = "Perform OCR on this manga image. Output only the text, no explanation."
+        let userPrefixIds = tokenizer.encode(text: "User: ", addSpecialTokens: false)
+        let textIds = tokenizer.encode(text: textPrompt + "\nAssistant: ", addSpecialTokens: false)
+
+        var inputIds: [Int] = []
+        inputIds.append(100273)  // <|begin_of_sentence|>
+        inputIds.append(contentsOf: userPrefixIds)
+        inputIds.append(config.visionStartTokenId)
+        inputIds.append(contentsOf: Array(repeating: config.visionTokenId, count: numMergedTokens))
+        inputIds.append(config.visionEndTokenId)
+        inputIds.append(contentsOf: textIds)
+        return inputIds
+    }
+
+    func decode(_ tokens: [Int]) -> String {
+        tokenizer.decode(tokens: tokens, skipSpecialTokens: true)
+    }
+}
+
+private struct GeneratorRuntime {
+    let model: PaddleOCRVLModel
+    let stopTokens: Set<Int>
+
+    func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int] {
+        var inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
+        let cache = model.newCache()
+
+        let mergedEmbeds = model.mergeInputIdsWithImageFeatures(inputIds: inputIdArray, imageFeatures: imageFeatures)
+        let hiddenStates = model.languageModel.forward(mergedEmbeds, cache: cache)
+        var logits = model.lmHead(hiddenStates)
+
+        var generatedTokens: [Int] = []
+
+        for _ in 0..<maxNewTokens {
+            let lastLogits = logits[0, -1]
+            let nextTokenId = argMax(lastLogits).item(Int.self)
+
+            if stopTokens.contains(nextTokenId) { break }
+            generatedTokens.append(nextTokenId)
+
+            inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
+            let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
+            let nextHidden = model.languageModel.forward(nextEmbeds, cache: cache)
+            logits = model.lmHead(nextHidden)
+
+            eval(logits)
+            for c in cache { if let cs = c as? (any Updatable) { eval(cs) } }
+        }
+        return generatedTokens
+    }
+}
+
 // MARK: - Internal runtime container
 
 private struct PaddleOCRVLRuntime {
     let model: PaddleOCRVLModel
     let visionEncoder: MangaVisionEncoder
     let projector: MangaMultiModalProjector
-    let tokenizer: any Tokenizer
+    let tokenizerAdapter: TokenizerAdapter
+    let imagePreprocessor: ImagePreprocessor
+    let generator: GeneratorRuntime
     let config: PaddleOCRVLConfig
-    let context = CIContext()
-
-    private func renderTile(_ tile: CIImage, width: Int, height: Int) -> MLXArray {
-        // CIContext.render maps CIImage y=0 → bitmap row 0 (visual top), so no flip needed.
-        var data = Data(count: width * height * 4)
-        data.withUnsafeMutableBytes { ptr in
-            context.render(
-                tile,
-                toBitmap: ptr.baseAddress!,
-                rowBytes: width * 4,
-                bounds: tile.extent,
-                format: .RGBA8,
-                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
-            )
-        }
-        let uint8Array = MLXArray(data, [height, width, 4], type: UInt8.self)
-        var px = uint8Array.asType(.float32) / 255.0
-        px = px[0..., 0..., ..<3]
-        px = (px - 0.5) / 0.5
-        return px.reshaped(1, height, width, 3).asType(.bfloat16)
-    }
 
     func recognize(ciImage: CIImage) -> String {
         let patchSize = config.visionConfig.patchSize  // 14
@@ -346,12 +420,7 @@ private struct PaddleOCRVLRuntime {
                     x: CGFloat(col) * tileW, y: CGFloat(row) * tileH,
                     width: tileW, height: tileH
                 )
-                let tileImage = ciImage
-                    .cropped(to: cropRect)
-                    .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
-                    .transformed(by: CGAffineTransform(scaleX: CGFloat(tileSize) / tileW, y: CGFloat(tileSize) / tileH))
-                    .cropped(to: CGRect(origin: .zero, size: CGSize(width: tileSize, height: tileSize)))
-                let pixelValues = renderTile(tileImage, width: tileSize, height: tileSize)
+                let pixelValues = imagePreprocessor.preprocessTile(ciImage, rect: cropRect, targetSize: tileSize)
                 let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
                 let projected = projector(visionFeatures, height: tileSize, width: tileSize, patchSize: patchSize)
                 allProjectedFeatures.append(projected)
@@ -361,48 +430,10 @@ private struct PaddleOCRVLRuntime {
             ? allProjectedFeatures[0]
             : concatenated(allProjectedFeatures, axis: 1)
 
-        let textPrompt = "Perform OCR on this manga image. Output only the text, no explanation."
-        let userPrefixIds = tokenizer.encode(text: "User: ", addSpecialTokens: false)
-        let textIds = tokenizer.encode(text: textPrompt + "\nAssistant: ", addSpecialTokens: false)
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1))
+        let generatedTokens = generator.generate(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
 
-        let numMergedTokens = mergedFeatures.dim(1)
-
-        var inputIds: [Int] = []
-        inputIds.append(100273)  // <|begin_of_sentence|>
-        inputIds.append(contentsOf: userPrefixIds)
-        inputIds.append(config.visionStartTokenId)
-        inputIds.append(contentsOf: Array(repeating: config.visionTokenId, count: numMergedTokens))
-        inputIds.append(config.visionEndTokenId)
-        inputIds.append(contentsOf: textIds)
-
-        var inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
-        let cache = model.newCache()
-
-        let mergedEmbeds = model.mergeInputIdsWithImageFeatures(inputIds: inputIdArray, imageFeatures: mergedFeatures)
-        let hiddenStates = model.languageModel.forward(mergedEmbeds, cache: cache)
-        var logits = model.lmHead(hiddenStates)
-
-        var generatedTokens: [Int] = []
-        let eosId = tokenizer.eosTokenId ?? 2
-        let stopTokens: Set<Int> = [2, 100272, eosId]
-
-        for _ in 0..<1024 {
-            let lastLogits = logits[0, -1]
-            let nextTokenId = argMax(lastLogits).item(Int.self)
-
-            if stopTokens.contains(nextTokenId) { break }
-            generatedTokens.append(nextTokenId)
-
-            inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
-            let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
-            let nextHidden = model.languageModel.forward(nextEmbeds, cache: cache)
-            logits = model.lmHead(nextHidden)
-
-            eval(logits)
-            for c in cache { if let cs = c as? (any Updatable) { eval(cs) } }
-        }
-
-        let result = tokenizer.decode(tokens: generatedTokens, skipSpecialTokens: true)
+        let result = tokenizerAdapter.decode(generatedTokens)
         if result.isEmpty {
             print("[PaddleOCREngine] Warning: Empty OCR result. Tokens: \(generatedTokens)")
         }
@@ -505,11 +536,17 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         try loadWeights(into: model, projector: projector, visionEncoder: visionEncoder, from: modelDirectory)
 
         let tokenizer = try await AutoTokenizer.from(modelFolder: modelDirectory)
+        let tokenizerAdapter = TokenizerAdapter(tokenizer: tokenizer, config: config)
+        let imagePreprocessor = ImagePreprocessor(context: CIContext())
+        let generator = GeneratorRuntime(model: model, stopTokens: tokenizerAdapter.stopTokens)
+
         return PaddleOCRVLRuntime(
             model: model,
             visionEncoder: visionEncoder,
             projector: projector,
-            tokenizer: tokenizer,
+            tokenizerAdapter: tokenizerAdapter,
+            imagePreprocessor: imagePreprocessor,
+            generator: generator,
             config: config
         )
     }

@@ -171,10 +171,10 @@ Three bugs confirmed by static analysis + key simulation (911 safetensors keys, 
 
 **Background**: `PaddleOCRVLRuntime.recognize()` currently handles image tiling, vision encoding, prompt construction, and autoregressive decoding in a single monolithic function. D19 planned four distinct subcomponents (`ImagePreprocessor`, `ModelRuntime`, `TokenizerAdapter`, `GeneratorRuntime`) to improve testability and make image-processing strategy swappable. This refactor is a prerequisite for Task 14 (`smart_resize`), which adds a second image-processing path.
 
-- [ ] 13.1 Extract `ImagePreprocessor`: move `renderTile()` and tile-cropping/scaling logic into a dedicated `struct ImagePreprocessor`. Interface: `func preprocessTile(_ ciImage: CIImage, rect: CGRect, targetSize: Int) -> MLXArray`. Tiling orchestration (loop over rows/cols) stays in the caller.
-- [ ] 13.2 Extract `TokenizerAdapter`: wrap `tokenizer.encode`, prompt assembly (BOS token, vision token span, user/assistant prefix), stop-token set, and `tokenizer.decode` into a dedicated `struct TokenizerAdapter`. Interface: `func buildInputIds(numMergedTokens: Int) -> [Int]` and `func decode(_ tokens: [Int]) -> String`.
-- [ ] 13.3 Extract `GeneratorRuntime`: move the autoregressive decode loop (cache init, `mergeInputIdsWithImageFeatures`, `languageModel.forward`, `lmHead`, per-step logit sampling, stop-token check) into a dedicated `struct GeneratorRuntime`. Interface: `func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int]`.
-- [ ] 13.4 Update `PaddleOCRVLRuntime.recognize()` to delegate to the three extracted subcomponents; verify existing tests still pass with no behaviour change.
+- [x] 13.1 Extract `ImagePreprocessor`: move `renderTile()` and tile-cropping/scaling logic into a dedicated `struct ImagePreprocessor`. Interface: `func preprocessTile(_ ciImage: CIImage, rect: CGRect, targetSize: Int) -> MLXArray`. Tiling orchestration (loop over rows/cols) stays in the caller.
+- [x] 13.2 Extract `TokenizerAdapter`: wrap `tokenizer.encode`, prompt assembly (BOS token, vision token span, user/assistant prefix), stop-token set, and `tokenizer.decode` into a dedicated `struct TokenizerAdapter`. Interface: `func buildInputIds(numMergedTokens: Int) -> [Int]` and `func decode(_ tokens: [Int]) -> String`.
+- [x] 13.3 Extract `GeneratorRuntime`: move the autoregressive decode loop (cache init, `mergeInputIdsWithImageFeatures`, `languageModel.forward`, `lmHead`, per-step logit sampling, stop-token check) into a dedicated `struct GeneratorRuntime`. Interface: `func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int]`.
+- [x] 13.4 Update `PaddleOCRVLRuntime.recognize()` to delegate to the three extracted subcomponents; verify existing tests still pass with no behaviour change.
 
 ## 14. OCR Quality Improvement (Tiling vs Full-Image Coverage)
 
