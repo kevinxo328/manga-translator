@@ -2,7 +2,8 @@
   "samples": [
     {
       "id": "sample-001",
-      "image": "../../test_images/001.jpg",
+      "image": "../../examples/book1/001.jpg"
+,
       "crop": [640, 120, 240, 320],
       "reference_text": "PLACEHOLDER_TEXT",
       "metadata": {

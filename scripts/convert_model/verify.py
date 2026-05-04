@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Evaluate BF16 vs quantized PaddleOCR-VL on page-level or crop-level datasets.
+"""Evaluate BF16 vs quantized PaddleOCR-VL consistency (parity).
 
-The default mode compares full-page images under ``test_images/``. Crop mode reads
-samples from a JSON manifest and measures recognizer drift on production-like text
-regions. The script can optionally compare either model output against a provided
-ground-truth string per crop.
+Compares the output of the original BF16 model and the quantized MLX model
+on image samples and reports the Character Error Rate (CER) delta.
 """
 
 import argparse
@@ -15,7 +13,6 @@ import math
 import os
 import sys
 import tempfile
-from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,8 +22,8 @@ os.environ.setdefault("HF_HOME", str(SCRIPT_DIR / ".hf_cache"))
 
 MODEL_ID = "jzhang533/PaddleOCR-VL-For-Manga"
 DEFAULT_MAX_CER_DELTA = 0.05
-DEFAULT_PROMPT = "OCR the text in this image."
-DEFAULT_MAX_TOKENS = 500
+DEFAULT_PROMPT = "Perform OCR on this manga image. Output only the text, no explanation."
+DEFAULT_MAX_TOKENS = 1024
 
 
 @dataclass(frozen=True)
@@ -68,17 +65,11 @@ class EvaluationRecord:
     prepared_image_path: str
     crop_box: list[int] | None
     crop_padding: float
-    reference_source: str
     original_text: str
     quantized_text: str
     cer_delta: float
-    original_loop_detected: bool
     quantized_loop_detected: bool
     empty_output: bool
-    ordering_mismatch: bool
-    catastrophic: bool
-    original_cer_to_gt: float | None = None
-    quantized_cer_to_gt: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -154,49 +145,14 @@ def expand_crop_box(box: CropBox, padding_ratio: float, image_width: int, image_
     return clamp_crop_box(expanded, image_width, image_height)
 
 
-def detect_ordering_mismatch(reference: str, hypothesis: str) -> bool:
-    """Heuristically detect line-order changes without penalizing identical content."""
-    normalized_reference = normalize_text(reference)
-    normalized_hypothesis = normalize_text(hypothesis)
-    if not normalized_reference or not normalized_hypothesis:
-        return False
-    if normalized_reference == normalized_hypothesis:
-        return False
-
-    ref_lines = [line.strip() for line in normalized_reference.splitlines() if line.strip()]
-    hyp_lines = [line.strip() for line in normalized_hypothesis.splitlines() if line.strip()]
-    if len(ref_lines) < 2 or len(ref_lines) != len(hyp_lines):
-        return False
-
-    return Counter(ref_lines) == Counter(hyp_lines)
-
-
 def classify_record(
     sample: Sample,
     original_output: ModelOutput,
     quantized_output: ModelOutput,
     cer_delta: float,
-    fail_threshold: float,
-    reference_source: str,
 ) -> EvaluationRecord:
-    """Build a structured evaluation record with failure annotations."""
-    ordering_mismatch = False
-    if sample.mode == "page":
-        ordering_mismatch = detect_ordering_mismatch(original_output.text, quantized_output.text)
-
+    """Build a structured evaluation record."""
     empty_output = not quantized_output.text.strip()
-    catastrophic = (
-        cer_delta >= max(fail_threshold * 4, 0.25)
-        or empty_output
-        or quantized_output.loop_detected
-    )
-
-    original_cer_to_gt = None
-    quantized_cer_to_gt = None
-    if sample.reference_text is not None:
-        original_cer_to_gt = compute_cer(sample.reference_text, original_output.text)
-        quantized_cer_to_gt = compute_cer(sample.reference_text, quantized_output.text)
-
     crop_box = None
     if sample.crop_box is not None:
         crop_box = [sample.crop_box.x, sample.crop_box.y, sample.crop_box.width, sample.crop_box.height]
@@ -208,17 +164,11 @@ def classify_record(
         prepared_image_path="",
         crop_box=crop_box,
         crop_padding=float(sample.metadata.get("crop_padding", 0.0)),
-        reference_source=reference_source,
         original_text=original_output.text,
         quantized_text=quantized_output.text,
         cer_delta=cer_delta,
-        original_loop_detected=original_output.loop_detected,
         quantized_loop_detected=quantized_output.loop_detected,
         empty_output=empty_output,
-        ordering_mismatch=ordering_mismatch,
-        catastrophic=catastrophic,
-        original_cer_to_gt=original_cer_to_gt,
-        quantized_cer_to_gt=quantized_cer_to_gt,
         metadata=sample.metadata,
     )
 
@@ -226,7 +176,7 @@ def classify_record(
 def summarize_records(records: list[EvaluationRecord], fail_threshold: float) -> dict[str, Any]:
     """Summarize evaluation metrics across all records."""
     cer_values = [record.cer_delta for record in records]
-    summary = {
+    return {
         "sample_count": len(records),
         "avg_cer": sum(cer_values) / len(cer_values) if cer_values else 0.0,
         "median_cer": percentile(cer_values, 0.5),
@@ -234,27 +184,21 @@ def summarize_records(records: list[EvaluationRecord], fail_threshold: float) ->
         "max_cer": max(cer_values) if cer_values else 0.0,
         "fail_threshold": fail_threshold,
         "fail_count": sum(1 for record in records if record.cer_delta > fail_threshold),
-        "catastrophic_count": sum(1 for record in records if record.catastrophic),
-        "ordering_mismatch_count": sum(1 for record in records if record.ordering_mismatch),
         "empty_output_count": sum(1 for record in records if record.empty_output),
         "quantized_loop_count": sum(1 for record in records if record.quantized_loop_detected),
     }
 
-    gt_records = [record for record in records if record.quantized_cer_to_gt is not None]
-    if gt_records:
-        summary["avg_quantized_cer_to_gt"] = sum(record.quantized_cer_to_gt for record in gt_records if record.quantized_cer_to_gt is not None) / len(gt_records)
-        summary["avg_original_cer_to_gt"] = sum(record.original_cer_to_gt for record in gt_records if record.original_cer_to_gt is not None) / len(gt_records)
-
-    return summary
-
 
 def load_page_samples(test_dir: Path) -> list[Sample]:
-    """Load full-page image samples from a directory."""
+    """Load full-page image samples from a directory (recursive)."""
     extensions = {".png", ".jpg", ".jpeg", ".webp"}
     samples = []
-    for image_path in sorted(test_dir.iterdir()):
+    for image_path in sorted(test_dir.rglob("*")):
         if image_path.is_file() and image_path.suffix.lower() in extensions:
-            samples.append(Sample(sample_id=image_path.stem, image_path=image_path, mode="page"))
+            # For sample ID, use relative path to keep it unique if in subdirs
+            rel_path = image_path.relative_to(test_dir)
+            sample_id = str(rel_path.with_suffix(""))
+            samples.append(Sample(sample_id=sample_id, image_path=image_path, mode="page"))
     return samples
 
 
@@ -323,7 +267,7 @@ def prepare_samples(samples: list[Sample], crop_padding: float) -> list[Prepared
                 raise ValueError(f"crop sample {sample.sample_id} produced an empty crop")
 
             cropped = image.crop((crop_box.x, crop_box.y, crop_box.x + crop_box.width, crop_box.y + crop_box.height))
-            prepared_path = temp_dir / f"{sample.sample_id}{sample.image_path.suffix or '.png'}"
+            prepared_path = temp_dir / f"{sample.sample_id.replace('/', '_')}{sample.image_path.suffix or '.png'}"
             cropped.save(prepared_path)
 
         updated_metadata = dict(sample.metadata)
@@ -400,16 +344,11 @@ def evaluate_model_pair(
     records = []
     for prepared_sample, original_output, quantized_output in zip(prepared_samples, original_outputs, quantized_outputs):
         cer_delta = compute_cer(original_output.text, quantized_output.text)
-        reference_source = "bf16"
-        if prepared_sample.sample.reference_text is not None:
-            reference_source = "bf16+ground_truth"
         record = classify_record(
             sample=prepared_sample.sample,
             original_output=original_output,
             quantized_output=quantized_output,
             cer_delta=cer_delta,
-            fail_threshold=fail_threshold,
-            reference_source=reference_source,
         )
         records.append(
             EvaluationRecord(
@@ -458,15 +397,9 @@ def write_report_csv(output_path: Path, records: list[EvaluationRecord]) -> None
         "prepared_image_path",
         "crop_box",
         "crop_padding",
-        "reference_source",
         "cer_delta",
-        "original_loop_detected",
         "quantized_loop_detected",
         "empty_output",
-        "ordering_mismatch",
-        "catastrophic",
-        "original_cer_to_gt",
-        "quantized_cer_to_gt",
     ]
     with output_path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -479,29 +412,21 @@ def write_report_csv(output_path: Path, records: list[EvaluationRecord]) -> None
 
 def print_human_report(records: list[EvaluationRecord], summary: dict[str, Any]) -> None:
     """Print a compact human-readable report."""
-    print(f"==> Results ({len(records)} samples):\n")
+    print(f"==> Parity Results ({len(records)} samples):\n")
     for record in records:
         status = "PASS" if record.cer_delta <= summary["fail_threshold"] else "FAIL"
         print(f"  [{status}] {record.sample_id} ({record.mode})")
         print(f"    Image:       {record.image_path}")
-        if record.crop_box is not None:
-            print(f"    Crop:        {record.crop_box} padding={record.crop_padding:.2f}")
         print(f"    Original:    {record.original_text!r}")
         print(f"    Quantized:   {record.quantized_text!r}")
         print(f"    CER delta:   {record.cer_delta:.4f}")
         flags = []
-        if record.ordering_mismatch:
-            flags.append("ordering-mismatch")
         if record.quantized_loop_detected:
             flags.append("quantized-loop")
         if record.empty_output:
             flags.append("empty-output")
-        if record.catastrophic:
-            flags.append("catastrophic")
         if flags:
             print(f"    Flags:       {', '.join(flags)}")
-        if record.quantized_cer_to_gt is not None and record.original_cer_to_gt is not None:
-            print(f"    GT CER:      orig={record.original_cer_to_gt:.4f} quant={record.quantized_cer_to_gt:.4f}")
         print()
 
     print("==> Summary:")
@@ -510,13 +435,8 @@ def print_human_report(records: list[EvaluationRecord], summary: dict[str, Any])
     print(f"    P90 CER delta:         {summary['p90_cer']:.4f}")
     print(f"    Max CER delta:         {summary['max_cer']:.4f}")
     print(f"    Fail count:            {summary['fail_count']}")
-    print(f"    Catastrophic count:    {summary['catastrophic_count']}")
-    print(f"    Ordering mismatches:   {summary['ordering_mismatch_count']}")
     print(f"    Empty outputs:         {summary['empty_output_count']}")
     print(f"    Quantized loops:       {summary['quantized_loop_count']}")
-    if "avg_quantized_cer_to_gt" in summary:
-        print(f"    Avg quantized CER→GT:  {summary['avg_quantized_cer_to_gt']:.4f}")
-        print(f"    Avg original CER→GT:   {summary['avg_original_cer_to_gt']:.4f}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -525,8 +445,8 @@ def parse_args() -> argparse.Namespace:
     dataset_group.add_argument(
         "--test-images",
         type=lambda p: Path(p).resolve(),
-        default=SCRIPT_DIR.parent.parent / "test_images",
-        help="Directory containing page-level test images",
+        default=SCRIPT_DIR.parent.parent / "examples",
+        help="Directory containing test images (default: examples/)",
     )
     dataset_group.add_argument(
         "--crop-manifest",
@@ -617,8 +537,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"==> Dataset mode: {dataset_mode}")
-    if dataset_mode == "crop":
-        print(f"==> Crop padding: {args.crop_padding:.2f}")
+    print(f"==> Test data: {args.test_images if args.crop_manifest is None else args.crop_manifest}")
 
     records, summary = evaluate_model_pair(
         samples=samples,

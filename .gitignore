@@ -36,3 +36,7 @@ scripts/**/*.tar.gz
 scripts/**/*.sha256
 scripts/convert_model/.env
 
+# Test and example images
+test_images/
+examples/
+

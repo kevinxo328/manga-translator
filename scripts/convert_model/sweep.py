@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     dataset_group.add_argument(
         "--test-images",
         type=lambda p: Path(p).resolve(),
-        default=SCRIPT_DIR.parent.parent / "test_images",
+        default=SCRIPT_DIR.parent.parent / "examples",
         help="Directory containing page-level test images",
     )
     dataset_group.add_argument(

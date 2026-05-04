@@ -17,7 +17,7 @@ The current OCR pipeline achieves ~27% full-sentence accuracy on manga text. A f
 - Keep error codes and localization keys separated via a dedicated mapping layer
 - Add launch verification policy with full-checksum triggers and fast-path conditions
 - Add a model conversion script (Python/uv) included in the repo for reproducibility
-- Add a two-layer phase0 verification harness: page-level sanity checks plus crop-level parity checks on detector-like text regions
+- Add a verification harness: compare BF16 original vs quantized behavior to ensure consistency before proceeding to Swift integration
 - Add sweep tooling for quantization group size, crop padding, prompt, and token-limit experiments
 - Add an explicit integration-research gate before native MLX inference implementation so architecture, dependency compatibility, artifact contract, and parity criteria are confirmed first
 

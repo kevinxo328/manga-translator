@@ -87,16 +87,11 @@ Download is only available on Apple Silicon. On 8GB devices, a warning is shown 
 
 ---
 
-### D8: Phase 0 gate is crop-level parity, not page-level average CER
+### D8: Phase 0 gate is BF16 vs Quantized parity
 
-Early internal verification on a non-public sample set showed that page-level CER was materially higher than crop-level parity metrics for the same quantized model. The large page-level gap is driven by page assembly effects such as reading order drift, repeated-dialogue loops, and trailing-line omission, which overstate recognizer quantization error.
+The primary goal of model verification is to ensure the quantized MLX model behaves consistently with the original BF16 model.
 
-**Decision**: Phase 0 SHALL use a two-layer gate:
-
-- Primary gate: crop-level BF16 vs quantized parity on detector-like crops
-- Secondary gate: page-level sanity checks for loops, truncation, and ordering regressions
-
-Page-level average CER is retained for observability, but it no longer determines go/no-go by itself.
+**Decision**: Phase 0 SHALL use BF16 vs quantized parity as the primary gate. All samples must stay within the CER delta threshold.
 
 ---
 
@@ -306,7 +301,7 @@ We reviewed current notices and prospective dependencies for the native runtime 
 We ran a local Swift integration spike with:
 
 - model artifacts: `scripts/convert_model/mlx_output`
-- test image: `test_images/001.jpg`
+- test image: `examples/book1/001.jpg`
 - runtime path: `DefaultPaddleOCREngine` through `PaddleOCRVLPipeline`
 
 **Observed failure:**
