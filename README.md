@@ -113,7 +113,7 @@ Or press `⌘U` in Xcode with the **MangaTranslator** scheme selected.
 
 ### OCR Benchmark
 
-A separate benchmark tool compares MangaOCR and VisionOCR side-by-side on real manga pages. It detects overlapping bounding boxes (IoU > 0.5) and outputs a plain-text report.
+A separate benchmark tool compares MangaOCR and VisionOCR side-by-side on real manga pages. Each engine runs as an independent production pipeline; results are paired by greedy IoU matching (threshold ≥ 0.5). The report shows paired regions with both texts and IoU score, plus unmatched bubbles from each engine and per-engine failure counts.
 
 **Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
 

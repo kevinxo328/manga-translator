@@ -1,22 +1,23 @@
 import Foundation
 import CoreGraphics
+@testable import MangaTranslator
 
 struct OverlapWarning {
     let boxIndex: Int
     let overlappingIndices: [(index: Int, iou: Float)]
 }
 
-struct RegionResult {
-    let index: Int
-    let rect: CGRect
-    let mangaOCRText: String
-    let visionOCRText: String
-    let overlapWarnings: [OverlapWarning]
+struct PairedRegionResult {
+    let mangaBubble: BubbleCluster?
+    let visionBubble: BubbleCluster?
+    let iou: Float
 }
 
 struct ImageResult {
     let imagePath: String
-    let regions: [RegionResult]
+    let pairedRegions: [PairedRegionResult]
+    let unmatchedManga: [BubbleCluster]
+    let unmatchedVision: [BubbleCluster]
 }
 
 struct BenchmarkResult {
@@ -27,27 +28,6 @@ struct BenchmarkResult {
 }
 
 struct BenchmarkReporter {
-
-    func detectOverlaps(in boxes: [CGRect]) -> [OverlapWarning] {
-        var warnings: [OverlapWarning] = []
-        for i in 0..<boxes.count {
-            var overlapping: [(index: Int, iou: Float)] = []
-            for j in 0..<boxes.count where j != i {
-                let score = IoUCalculator.iou(boxes[i], boxes[j])
-                if score > 0.5 {
-                    let areaI = boxes[i].width * boxes[i].height
-                    let areaJ = boxes[j].width * boxes[j].height
-                    if areaI >= areaJ {
-                        overlapping.append((index: j, iou: score))
-                    }
-                }
-            }
-            if !overlapping.isEmpty {
-                warnings.append(OverlapWarning(boxIndex: i, overlappingIndices: overlapping))
-            }
-        }
-        return warnings
-    }
 
     func generateReport(from result: BenchmarkResult) -> String {
         let tsFormatter = DateFormatter()
@@ -64,38 +44,57 @@ struct BenchmarkReporter {
             return lines.joined(separator: "\n")
         }
 
-        var totalRegions = 0
-        var totalOverlapWarnings = 0
-        var mangaFailures = 0
-        var visionFailures = 0
+        var totalPaired = 0
+        var totalUnmatchedManga = 0
+        var totalUnmatchedVision = 0
+        var mangaFailures = 0 // Images where MangaOCR produced 0 bubbles
+        var visionFailures = 0 // Images where VisionOCR produced 0 bubbles
 
         for imgResult in result.imageResults {
-            lines += ["", "--- \(imgResult.imagePath) ---",
-                      "Regions detected: \(imgResult.regions.count)"]
-            for region in imgResult.regions {
-                totalRegions += 1
-                lines += ["", "  Region \(region.index + 1): \(region.rect)"]
-                let manga = region.mangaOCRText
-                lines.append("  MangaOCR: \(manga.isEmpty ? "[empty]" : manga)")
-                if manga.isEmpty { mangaFailures += 1 }
-                let vision = region.visionOCRText
-                lines.append("  VisionOCR: \(vision.isEmpty ? "[empty]" : vision)")
-                if vision.isEmpty { visionFailures += 1 }
-                for warning in region.overlapWarnings {
-                    totalOverlapWarnings += 1
-                    let details = warning.overlappingIndices
-                        .map { "region \($0.index + 1) (IoU=\(String(format: "%.2f", $0.iou)))" }
-                        .joined(separator: ", ")
-                    lines.append("  WARNING: Overlaps with \(details)")
+            lines += ["", "--- \(imgResult.imagePath) ---"]
+            
+            if imgResult.pairedRegions.isEmpty && imgResult.unmatchedManga.isEmpty {
+                mangaFailures += 1
+            }
+            if imgResult.pairedRegions.isEmpty && imgResult.unmatchedVision.isEmpty {
+                visionFailures += 1
+            }
+
+            // Paired Regions
+            lines.append("Paired Regions: \(imgResult.pairedRegions.count)")
+            for (i, paired) in imgResult.pairedRegions.enumerated() {
+                totalPaired += 1
+                let rect = paired.mangaBubble?.boundingBox ?? paired.visionBubble?.boundingBox ?? .zero
+                lines += ["", "  Pair \(i + 1): \(rect) (IoU: \(String(format: "%.2f", paired.iou)))"]
+                lines.append("  MangaOCR: \(paired.mangaBubble?.text ?? "[empty]")")
+                lines.append("  VisionOCR: \(paired.visionBubble?.text ?? "[empty]")")
+            }
+
+            // Unmatched MangaOCR
+            if !imgResult.unmatchedManga.isEmpty {
+                lines += ["", "  [Unmatched MangaOCR]"]
+                for bubble in imgResult.unmatchedManga {
+                    totalUnmatchedManga += 1
+                    lines.append("  - \(bubble.boundingBox): \(bubble.text)")
+                }
+            }
+
+            // Unmatched Vision
+            if !imgResult.unmatchedVision.isEmpty {
+                lines += ["", "  [Unmatched Vision]"]
+                for bubble in imgResult.unmatchedVision {
+                    totalUnmatchedVision += 1
+                    lines.append("  - \(bubble.boundingBox): \(bubble.text)")
                 }
             }
         }
 
         lines += ["", "=== Summary ===",
-                  "Total regions: \(totalRegions)",
-                  "Overlap warnings: \(totalOverlapWarnings)",
-                  "MangaOCR failures: \(mangaFailures)",
-                  "VisionOCR failures: \(visionFailures)"]
+                  "Total paired: \(totalPaired)",
+                  "Unmatched MangaOCR: \(totalUnmatchedManga)",
+                  "Unmatched Vision: \(totalUnmatchedVision)",
+                  "MangaOCR image failures: \(mangaFailures)",
+                  "VisionOCR image failures: \(visionFailures)"]
         return lines.joined(separator: "\n")
     }
 

@@ -1,33 +1,9 @@
 import XCTest
 import CoreGraphics
+@testable import MangaTranslator
 
 final class BenchmarkReporterTests: XCTestCase {
     let reporter = BenchmarkReporter()
-
-    // Task 2.3 - overlap detection flags larger box at threshold 0.5
-    func testOverlapDetectionFlagsLargerBox() {
-        // large (0,0,100,100) area=10000, small (0,0,80,80) area=6400
-        // intersection=6400, union=10000, IoU=0.64 > 0.5 → large flagged
-        let large = CGRect(x: 0, y: 0, width: 100, height: 100)
-        let small = CGRect(x: 0, y: 0, width: 80, height: 80)
-        let warnings = reporter.detectOverlaps(in: [large, small])
-        XCTAssertFalse(warnings.isEmpty)
-        XCTAssertTrue(warnings.contains { $0.boxIndex == 0 })
-    }
-
-    func testBelowThresholdNoWarning() {
-        // IoU=0.09 < 0.5 → no warning
-        let large = CGRect(x: 0, y: 0, width: 100, height: 100)
-        let small = CGRect(x: 10, y: 10, width: 30, height: 30)
-        let warnings = reporter.detectOverlaps(in: [large, small])
-        XCTAssertTrue(warnings.isEmpty)
-    }
-
-    func testNoOverlapNoWarnings() {
-        let a = CGRect(x: 0, y: 0, width: 50, height: 50)
-        let b = CGRect(x: 100, y: 100, width: 50, height: 50)
-        XCTAssertTrue(reporter.detectOverlaps(in: [a, b]).isEmpty)
-    }
 
     // Task 2.5 - report formatting: header
     func testReportHeader() {
@@ -38,24 +14,42 @@ final class BenchmarkReporterTests: XCTestCase {
     }
 
     func testReportPerImageSection() {
-        let region = RegionResult(index: 0, rect: .zero, mangaOCRText: "日本語",
-                                  visionOCRText: "日本語", overlapWarnings: [])
-        let imageResult = ImageResult(imagePath: "test.jpg", regions: [region])
+        let manga = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 100, height: 100), text: "Manga Text", observations: [])
+        let vision = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 100, height: 100), text: "Vision Text", observations: [])
+        let paired = PairedRegionResult(mangaBubble: manga, visionBubble: vision, iou: 1.0)
+        
+        let unmatchedM = BubbleCluster(boundingBox: CGRect(x: 200, y: 0, width: 50, height: 50), text: "Only Manga", observations: [])
+        let unmatchedV = BubbleCluster(boundingBox: CGRect(x: 0, y: 200, width: 50, height: 50), text: "Only Vision", observations: [])
+        
+        let imageResult = ImageResult(
+            imagePath: "test.jpg",
+            pairedRegions: [paired],
+            unmatchedManga: [unmatchedM],
+            unmatchedVision: [unmatchedV]
+        )
         let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [imageResult])
         let report = reporter.generateReport(from: result)
+        
         XCTAssertTrue(report.contains("test.jpg"))
-        XCTAssertTrue(report.contains("MangaOCR: 日本語"))
-        XCTAssertTrue(report.contains("VisionOCR: 日本語"))
+        XCTAssertTrue(report.contains("Pair 1"))
+        XCTAssertTrue(report.contains("IoU: 1.00"))
+        XCTAssertTrue(report.contains("MangaOCR: Manga Text"))
+        XCTAssertTrue(report.contains("VisionOCR: Vision Text"))
+        XCTAssertTrue(report.contains("[Unmatched MangaOCR]"))
+        XCTAssertTrue(report.contains("Only Manga"))
+        XCTAssertTrue(report.contains("[Unmatched Vision]"))
+        XCTAssertTrue(report.contains("Only Vision"))
     }
 
     func testReportSummarySection() {
         let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [])
         let report = reporter.generateReport(from: result)
         XCTAssertTrue(report.contains("Summary"))
-        XCTAssertTrue(report.contains("Total regions:"))
-        XCTAssertTrue(report.contains("Overlap warnings:"))
-        XCTAssertTrue(report.contains("MangaOCR failures:"))
-        XCTAssertTrue(report.contains("VisionOCR failures:"))
+        XCTAssertTrue(report.contains("Total paired:"))
+        XCTAssertTrue(report.contains("Unmatched MangaOCR:"))
+        XCTAssertTrue(report.contains("Unmatched Vision:"))
+        XCTAssertTrue(report.contains("MangaOCR image failures:"))
+        XCTAssertTrue(report.contains("VisionOCR image failures:"))
     }
 
     func testNoImagesWarningInReport() {

@@ -30,7 +30,7 @@ final class OCRBenchmarkTests: XCTestCase {
     }
 
     // Task 3.5 - integration test: full pipeline on a single known test image
-    func testSingleImagePipeline() throws {
+    func testSingleImagePipeline() async throws {
         let images = scanner.findImages(in: examplesDir)
         guard let firstImageURL = images.first else {
             print("No images in examples/ — skipping integration test")
@@ -41,13 +41,16 @@ final class OCRBenchmarkTests: XCTestCase {
             return
         }
 
-        let detector = ComicTextDetectorService()
-        let detections = try detector.detectTextRegions(in: nsImage)
-        XCTAssertFalse(detections.isEmpty, "Expected at least one detection in \(firstImageURL.lastPathComponent)")
+        let mangaService = MangaOCRService()
+        let visionService = VisionOCRService()
+        let bubbleDetector = BubbleDetector()
 
-        let boxes = detections.map(\.boundingBox)
-        let warnings = reporter.detectOverlaps(in: boxes)
-        print("Image: \(firstImageURL.lastPathComponent), detections: \(detections.count), overlap warnings: \(warnings.count)")
+        let mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
+        let visionObservations = try await visionService.recognizeText(in: nsImage)
+        let visionBubbles = bubbleDetector.detectBubbles(from: visionObservations)
+
+        let result = BubbleRegionMatcher.match(manga: mangaBubbles, vision: visionBubbles)
+        print("Image: \(firstImageURL.path), Manga bubbles: \(mangaBubbles.count), Vision bubbles: \(visionBubbles.count), Paired: \(result.paired.count)")
     }
 
     // Task 3.6 - full benchmark: scan → detect → IoU → dual OCR → report
@@ -58,72 +61,42 @@ final class OCRBenchmarkTests: XCTestCase {
             return
         }
 
-        let detector = ComicTextDetectorService()
-        let visionOCR = VisionOCRService()
-        var mangaRecognizer: MangaOCRRecognizer?
+        let mangaService = MangaOCRService()
+        let visionService = VisionOCRService()
+        let bubbleDetector = BubbleDetector()
 
         var imageResults: [ImageResult] = []
 
         for imagePath in images {
-            guard let nsImage = NSImage(contentsOf: imagePath),
-                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            guard let nsImage = NSImage(contentsOf: imagePath) else {
                 continue
             }
 
-            let detections: [DetectedTextRegion]
+            let mangaBubbles: [BubbleCluster]
             do {
-                detections = try detector.detectTextRegions(in: nsImage)
+                mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
             } catch {
-                print("Detection failed for \(imagePath.lastPathComponent): \(error)")
-                continue
+                print("MangaOCR failed for \(imagePath.lastPathComponent): \(error)")
+                mangaBubbles = []
             }
 
-            let boxes = detections.map(\.boundingBox)
-            let overlapWarnings = reporter.detectOverlaps(in: boxes)
-
-            // Lazy-init MangaOCRRecognizer (uses Bundle.main from host app)
-            if mangaRecognizer == nil {
-                let tokenizer = try MangaOCRTokenizer()
-                mangaRecognizer = MangaOCRRecognizer(tokenizer: tokenizer)
+            let visionBubbles: [BubbleCluster]
+            do {
+                let obs = try await visionService.recognizeText(in: nsImage)
+                visionBubbles = bubbleDetector.detectBubbles(from: obs)
+            } catch {
+                print("VisionOCR failed for \(imagePath.lastPathComponent): \(error)")
+                visionBubbles = []
             }
 
-            var regions: [RegionResult] = []
-
-            for (i, region) in detections.enumerated() {
-                let regionWarnings = overlapWarnings.filter { $0.boxIndex == i }
-
-                // MangaOCR: crop-based per-region recognition
-                let mangaText: String
-                do {
-                    let (text, _) = try mangaRecognizer!.recognizeText(in: cgImage, region: region.boundingBox)
-                    mangaText = text
-                } catch {
-                    mangaText = "[error]"
-                }
-
-                // VisionOCR: crop the region then run on the crop
-                let visionText: String
-                if let crop = cgImage.cropping(to: region.boundingBox) {
-                    do {
-                        let obs = try await visionOCR.recognizeText(in: crop)
-                        visionText = obs.map(\.text).joined(separator: " ")
-                    } catch {
-                        visionText = "[error]"
-                    }
-                } else {
-                    visionText = "[error]"
-                }
-
-                regions.append(RegionResult(
-                    index: i,
-                    rect: region.boundingBox,
-                    mangaOCRText: mangaText,
-                    visionOCRText: visionText,
-                    overlapWarnings: regionWarnings
-                ))
-            }
-
-            imageResults.append(ImageResult(imagePath: imagePath.lastPathComponent, regions: regions))
+            let matchResult = BubbleRegionMatcher.match(manga: mangaBubbles, vision: visionBubbles)
+            
+            imageResults.append(ImageResult(
+                imagePath: imagePath.path,
+                pairedRegions: matchResult.paired,
+                unmatchedManga: matchResult.unmatchedManga,
+                unmatchedVision: matchResult.unmatchedVision
+            ))
         }
 
         let result = BenchmarkResult(
@@ -137,7 +110,7 @@ final class OCRBenchmarkTests: XCTestCase {
         // Print to Xcode console for immediate viewing
         print("\n" + report + "\n")
 
-        // Also attach to test result for history (Report Navigator ⌘9 → test run → testFullBenchmark)
+        // Also attach to test result for history
         let attachment = XCTAttachment(string: report)
         attachment.name = "benchmark-report.txt"
         attachment.lifetime = .keepAlways
