@@ -177,9 +177,9 @@ Three bugs confirmed by static analysis + key simulation (911 safetensors keys, 
 
 **Background**: `PaddleOCRIntegrationSpikeTests` was exploratory scaffolding to verify the engine loads and produces non-empty output. Now that inference is confirmed working, this spike test should be promoted to a proper production benchmark alongside the existing MangaOCR/VisionOCR benchmark tests in `OCRBenchmarkTests/`. The spike test file should be deleted and `testEmptyExamplesProducesNoImagesWarning` (which duplicates `BenchmarkReporterTests.testNoImagesWarningInReport`) should be removed to keep `OCRBenchmarkTests` focused on production OCR quality. This consolidation is a prerequisite for Phase 15's CER evaluation, which needs a reproducible benchmark harness.
 
-- [ ] 14.1 Add `testPaddleOCRBenchmark()` to `OCRBenchmarkTests/OCRBenchmarkTests.swift` inside `#if arch(arm64)`: scan `examples/`, load model from Application Support (`MangaTranslator/Models/PaddleOCR-VL`), skip gracefully if model not installed, run `DefaultPaddleOCREngine.infer()` on each image, print latency and text output per image. Add `@testable import MangaTranslatorMLX` inside the `#if arch(arm64)` guard.
-- [ ] 14.2 Remove `testEmptyExamplesProducesNoImagesWarning` from `OCRBenchmarkTests/OCRBenchmarkTests.swift` — already covered by `BenchmarkReporterTests.testNoImagesWarningInReport`.
-- [ ] 14.3 Delete `MangaTranslatorSpikeTests/PaddleOCRIntegrationSpikeTests.swift` — functionality replaced by `testPaddleOCRBenchmark`.
+- [x] 14.1 Add `testPaddleOCRBenchmark()` to `OCRBenchmarkTests/OCRBenchmarkTests.swift` inside `#if arch(arm64)`: scan `examples/`, load model from Application Support (`MangaTranslator/Models/PaddleOCR-VL`), skip gracefully if model not installed, run `DefaultPaddleOCREngine.infer()` on each image, print latency and text output per image. Add `@testable import MangaTranslatorMLX` inside the `#if arch(arm64)` guard.
+- [x] 14.2 Remove `testEmptyExamplesProducesNoImagesWarning` from `OCRBenchmarkTests/OCRBenchmarkTests.swift` — already covered by `BenchmarkReporterTests.testNoImagesWarningInReport`.
+- [x] 14.3 Delete `MangaTranslatorSpikeTests/PaddleOCRIntegrationSpikeTests.swift` — functionality replaced by `testPaddleOCRBenchmark`.
 
 ## 15. OCR Quality Improvement (Tiling vs Full-Image Coverage)
 
