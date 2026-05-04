@@ -112,12 +112,15 @@ final class OCRBenchmarkTests: XCTestCase {
 
     #if arch(arm64)
     func testPaddleOCRBenchmark() async throws {
+        // 23 example images × ~40 s/image + model load ≈ 15–20 min; default allowance is 10 min.
+        executionTimeAllowance = 30 * 60
+
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let modelDir = appSupport
             .appendingPathComponent("MangaTranslator")
             .appendingPathComponent("Models")
             .appendingPathComponent("PaddleOCR-VL")
-        
+
         // Use ModelDownloadService to find the actual model folder (it might be nested)
         guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelDir) else {
             print("PaddleOCR model not installed at \(modelDir.path) — skipping benchmark")
@@ -178,6 +181,46 @@ final class OCRBenchmarkTests: XCTestCase {
         add(attachment)
 
         XCTAssertFalse(imageResults.isEmpty, "Expected results for at least one image")
+
+        // Require at least one reference string confirmed from Swift full-page inference on examples/book2.
+        // Python verify.py produces different output than Swift for the same images (different quantization
+        // path / mlx_vlm vs native MLX inference). book2/004 and book2/005 consistently produce clean text.
+        let referenceStrings = ["どうしたんですか", "じゃあそれだけ", "仮説も", "転生したら", "第49話"]
+        let allText = imageResults.compactMap { $0.unmatchedManga.first?.text }.joined(separator: " ")
+        let hasMatch = referenceStrings.contains { allText.contains($0) }
+        XCTAssert(hasMatch,
+            "Expected at least one reference string \(referenceStrings) in PaddleOCR output. Got: \(allText.prefix(300))")
+    }
+
+    // MARK: - Smart-resize routing tests (task 15.4)
+
+    func testSmartResizeSelectedForSmallCrop() {
+        // 200×50 → 196×56 (56 patches); peak ≈ 56 × 1152 × 27 × 2 × 10 ≈ 34.8 MB — trivially within budget
+        XCTAssertTrue(shouldUseSmartResize(
+            srcW: 200, srcH: 50,
+            patchSize: 14, hiddenSize: 1152, numLayers: 27,
+            availableMemoryBytes: 8 * 1024 * 1024 * 1024
+        ), "Small crop should use smart_resize path")
+    }
+
+    func testSmartResizeSelectedForLargeMangaPage() {
+        // 1200×1800 clamped by max_pixels to ~812×1204 (86×58≈4988 patches)
+        // MLX flash attention is O(N), not O(N²); peak ≈ 3.1 GB — within 8 GB threshold (6.4 GB)
+        XCTAssertTrue(shouldUseSmartResize(
+            srcW: 1200, srcH: 1800,
+            patchSize: 14, hiddenSize: 1152, numLayers: 27,
+            availableMemoryBytes: 8 * 1024 * 1024 * 1024
+        ), "Large manga page should use smart_resize (clamped to max_pixels, flash attention)")
+    }
+
+    func testSmartResizeRespects80PercentThreshold() {
+        // 56×28 → 8 patches; peak = 8 × 1152 × 27 × 2 × 10 ≈ 4.75 MB
+        // With 5 MB budget (threshold 4 MB): 4.75 MB > 4 MB → tiling selected
+        XCTAssertFalse(shouldUseSmartResize(
+            srcW: 56, srcH: 28,
+            patchSize: 14, hiddenSize: 1152, numLayers: 27,
+            availableMemoryBytes: 5 * 1024 * 1024
+        ), "Should fall back to tiling when estimated peak memory exceeds 80% threshold")
     }
     #endif
 }

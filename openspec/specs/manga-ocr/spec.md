@@ -48,6 +48,25 @@ The system SHALL include a tokenizer that maps manga-ocr model output token IDs 
 - **WHEN** the manga-ocr model outputs a sequence of token IDs [2, 345, 678, 91, 3]
 - **THEN** the tokenizer decodes tokens 345, 678, 91 (skipping BOS=2 and EOS=3) to produce the Japanese text string
 
+### Requirement: OCRRecognizing protocol for recognizer abstraction
+The system SHALL define an `OCRRecognizing` protocol with a single method `recognizeText(in:region:) throws -> (text: String, confidence: Float)`. Both `MangaOCRRecognizer` and `PaddleOCRVLRecognizer` SHALL conform to this protocol. `MangaOCRService` SHALL depend only on `any OCRRecognizing` rather than a concrete recognizer type.
+
+#### Scenario: MangaOCRRecognizer conforms to protocol
+- **WHEN** `MangaOCRService` requests a recognizer
+- **THEN** it receives an instance typed as `any OCRRecognizing`, not `MangaOCRRecognizer` directly
+
+#### Scenario: PaddleOCRVLRecognizer conforms to protocol
+- **WHEN** high-accuracy OCR is enabled and model is downloaded on Apple Silicon
+- **THEN** `MangaOCRService` receives a `PaddleOCRVLRecognizer` instance typed as `any OCRRecognizing`
+
+#### Scenario: Recognizer reset resets to nil
+- **WHEN** `MangaOCRService.resetRecognizer()` is called
+- **THEN** the internal recognizer is set to `nil` and will be re-initialized on next inference call
+
+#### Scenario: Guard against externally corrupted high-accuracy preference
+- **WHEN** persisted preference indicates high-accuracy enabled but model state is unavailable or unverified
+- **THEN** the service path normalizes to standard manga-ocr recognizer behavior and the enabled preference is corrected to `false` before processing
+
 ### Requirement: Produce TextObservation-compatible output
 The system SHALL output results as arrays of `TextObservation` (boundingBox, text, confidence) and `BubbleCluster` (boundingBox, text, observations, index) that are compatible with the existing translation pipeline.
 

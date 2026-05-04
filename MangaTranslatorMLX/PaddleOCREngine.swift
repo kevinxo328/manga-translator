@@ -7,6 +7,7 @@ import os
 import MLX
 import MLXNN
 import MLXFast
+import Metal
 import PaddleOCRVL
 import Tokenizers
 import Hub
@@ -298,6 +299,32 @@ private class MangaMultiModalProjector: Module {
 private struct ImagePreprocessor {
     let context: CIContext
 
+    func preprocessFullImage(_ ciImage: CIImage, targetWidth: Int, targetHeight: Int) -> MLXArray {
+        let extent = ciImage.extent
+        let scaleX = CGFloat(targetWidth) / extent.width
+        let scaleY = CGFloat(targetHeight) / extent.height
+        let scaled = ciImage
+            .transformed(by: CGAffineTransform(translationX: -extent.origin.x, y: -extent.origin.y))
+            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+
+        var data = Data(count: targetWidth * targetHeight * 4)
+        data.withUnsafeMutableBytes { ptr in
+            context.render(
+                scaled,
+                toBitmap: ptr.baseAddress!,
+                rowBytes: targetWidth * 4,
+                bounds: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight),
+                format: .RGBA8,
+                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
+            )
+        }
+        let uint8Array = MLXArray(data, [targetHeight, targetWidth, 4], type: UInt8.self)
+        var px = uint8Array.asType(.float32) / 255.0
+        px = px[0..., 0..., ..<3]
+        px = (px - 0.5) / 0.5
+        return px.reshaped(1, targetHeight, targetWidth, 3).asType(.bfloat16)
+    }
+
     func preprocessTile(_ ciImage: CIImage, rect: CGRect, targetSize: Int) -> MLXArray {
         let tileImage = ciImage
             .cropped(to: rect)
@@ -396,8 +423,43 @@ private struct PaddleOCRVLRuntime {
     let imagePreprocessor: ImagePreprocessor
     let generator: GeneratorRuntime
     let config: PaddleOCRVLConfig
+    let numVisionLayers: Int
 
     func recognize(ciImage: CIImage) -> String {
+        let patchSize = config.visionConfig.patchSize
+        let hiddenSize = config.visionConfig.hiddenSize
+        let srcW = Int(ciImage.extent.width)
+        let srcH = Int(ciImage.extent.height)
+
+        let availableMemory = availableGPUMemoryBytes()
+        if shouldUseSmartResize(srcW: srcW, srcH: srcH, patchSize: patchSize,
+                                 hiddenSize: hiddenSize, numLayers: numVisionLayers,
+                                 availableMemoryBytes: availableMemory) {
+            let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
+            return recognizeSmartResize(ciImage: ciImage, targetW: targetW, targetH: targetH)
+        } else {
+            return recognizeTiled(ciImage: ciImage)
+        }
+    }
+
+    private func recognizeSmartResize(ciImage: CIImage, targetW: Int, targetH: Int) -> String {
+        let patchSize = config.visionConfig.patchSize
+        let hPatches = targetH / patchSize
+        let wPatches = targetW / patchSize
+        let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
+        let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
+        let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
+
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1))
+        let generatedTokens = generator.generate(imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024)
+        let result = tokenizerAdapter.decode(generatedTokens)
+        if result.isEmpty {
+            print("[PaddleOCREngine] Warning: Empty OCR result from smart_resize path. Tokens: \(generatedTokens)")
+        }
+        return result
+    }
+
+    private func recognizeTiled(ciImage: CIImage) -> String {
         let patchSize = config.visionConfig.patchSize  // 14
         let tileSize = 392  // 28 patches per side → 14×14 merged tokens per tile
         let srcW = Int(ciImage.extent.width)
@@ -432,13 +494,54 @@ private struct PaddleOCRVLRuntime {
 
         let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1))
         let generatedTokens = generator.generate(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
-
         let result = tokenizerAdapter.decode(generatedTokens)
         if result.isEmpty {
-            print("[PaddleOCREngine] Warning: Empty OCR result. Tokens: \(generatedTokens)")
+            print("[PaddleOCREngine] Warning: Empty OCR result from tiling path. Tokens: \(generatedTokens)")
         }
         return result
     }
+}
+
+// MARK: - Smart-resize routing helpers (internal for testability)
+
+/// Compute smart_resize target dimensions with max_pixels cap, matching Python image_processing.py.
+func smartResizeClampedDimensions(srcW: Int, srcH: Int, patchSize: Int) -> (targetW: Int, targetH: Int) {
+    let factor = patchSize * 2  // spatialMergeSize = 2 → 28
+    let maxPixels = 28 * 28 * 1280  // 1,003,520 — Python default
+
+    var targetH = max(factor, Int(round(Double(srcH) / Double(factor))) * factor)
+    var targetW = max(factor, Int(round(Double(srcW) / Double(factor))) * factor)
+
+    if targetH * targetW > maxPixels {
+        let beta = sqrt(Double(srcH * srcW) / Double(maxPixels))
+        targetH = max(factor, Int(floor(Double(srcH) / beta / Double(factor))) * factor)
+        targetW = max(factor, Int(floor(Double(srcW) / beta / Double(factor))) * factor)
+    }
+    return (targetW, targetH)
+}
+
+/// Returns whether smart_resize (single-tile, aspect-ratio-preserving) should be used
+/// instead of fixed tiling.
+///
+/// MLX uses flash attention (SDPA), so the attention matrix is never fully materialised —
+/// peak memory scales linearly with patch count, not quadratically.
+/// The ×10 multiplier budgets Q/K/V activations, layer-norms, and residuals.
+func shouldUseSmartResize(
+    srcW: Int, srcH: Int,
+    patchSize: Int, hiddenSize: Int, numLayers: Int,
+    availableMemoryBytes: Int
+) -> Bool {
+    let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
+    let numPatches = (targetH / patchSize) * (targetW / patchSize)
+    let peakMemoryD = Double(numPatches) * Double(hiddenSize) * Double(numLayers) * 2.0 * 10.0
+    return peakMemoryD < Double(availableMemoryBytes) * 0.8
+}
+
+private func availableGPUMemoryBytes() -> Int {
+    if let device = MTLCreateSystemDefaultDevice() {
+        return Int(device.recommendedMaxWorkingSetSize)
+    }
+    return 8 * 1024 * 1024 * 1024  // 8 GB fallback
 }
 
 // MARK: - Default engine using MLX
@@ -547,7 +650,8 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
             tokenizerAdapter: tokenizerAdapter,
             imagePreprocessor: imagePreprocessor,
             generator: generator,
-            config: config
+            config: config,
+            numVisionLayers: visionNumLayers
         )
     }
 
