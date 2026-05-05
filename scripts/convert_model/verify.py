@@ -311,6 +311,28 @@ def run_detector_export_cli(page_images: list[Path], output_path: Path) -> None:
     request_file_path = request_dir / "detector-export-request.json"
     request_file_path.write_text(json.dumps({"imagePaths": [str(path) for path in page_images]}))
 
+    onnxruntime_path = REPO_ROOT / ".xcodebuild-env" / "SourcePackages" / "artifacts" / "onnxruntime-swift-package-manager" / "onnxruntime" / "onnxruntime.xcframework"
+    if not onnxruntime_path.exists():
+        print("==> Resolving Swift dependencies (onnxruntime missing)...")
+        resolve_command = [
+            "xcodebuild",
+            "-resolvePackageDependencies",
+            "-project",
+            str(REPO_ROOT / "MangaTranslator.xcodeproj"),
+            "-clonedSourcePackagesDirPath",
+            str(REPO_ROOT / ".xcodebuild-env" / "SourcePackages"),
+        ]
+        resolve_result = subprocess.run(
+            resolve_command,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if resolve_result.returncode != 0:
+            output = "\n".join(part for part in [resolve_result.stdout.strip(), resolve_result.stderr.strip()] if part).strip()
+            raise RuntimeError(f"Failed to resolve SPM dependencies:\n{output}")
+
     build_command = [
         "swift",
         "build",
