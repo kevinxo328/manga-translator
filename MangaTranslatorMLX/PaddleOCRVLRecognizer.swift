@@ -13,6 +13,14 @@ extension Notification.Name {
 
 @MainActor
 public final class PaddleOCRVLRecognizer: OCRRecognizing {
+    private static let cropPaddingRatio: CGFloat = 0.18
+    private static let minimumHorizontalPadding: CGFloat = 10
+    private static let minimumVerticalPadding: CGFloat = 6
+    private static let elongatedBubbleThreshold: CGFloat = 1.6
+    private static let tallBubbleThreshold: CGFloat = 0.7
+    private static let elongatedHorizontalBoostRatio: CGFloat = 0.08
+    private static let tallVerticalBoostRatio: CGFloat = 0.08
+
     private var engine: (any PaddleOCRInferencing)?
     private let modelDirectory: URL
     private let engineFactory: (URL) throws -> any PaddleOCRInferencing
@@ -67,7 +75,8 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
 
     public func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
         let imageBounds = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
-        let clampedRegion = region.intersection(imageBounds)
+        let expandedRegion = Self.expandedCropRegion(for: region, within: imageBounds)
+        let clampedRegion = expandedRegion.intersection(imageBounds)
 
         guard clampedRegion.width > 0 && clampedRegion.height > 0 else {
             return ("", 0)
@@ -102,6 +111,7 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
 
     private func cleanRecognizedText(_ text: String) -> String {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        cleaned = cleaned.replacingOccurrences(of: "\u{FFFD}", with: "")
 
         // 1. Remove repeated punctuation loops (e.g. ".....", "!!!!")
         let punctuationPairs: [(String, String)] = [
@@ -139,6 +149,25 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
         }
 
         return cleaned
+    }
+
+    private static func expandedCropRegion(for region: CGRect, within imageBounds: CGRect) -> CGRect {
+        guard region.width > 0 && region.height > 0 else {
+            return region.intersection(imageBounds)
+        }
+
+        let aspectRatio = region.width / region.height
+        var horizontalPadding = max(minimumHorizontalPadding, region.width * cropPaddingRatio)
+        var verticalPadding = max(minimumVerticalPadding, region.height * cropPaddingRatio)
+
+        if aspectRatio >= elongatedBubbleThreshold {
+            horizontalPadding += region.width * elongatedHorizontalBoostRatio
+        } else if aspectRatio <= tallBubbleThreshold {
+            verticalPadding += region.height * tallVerticalBoostRatio
+        }
+
+        let expanded = region.insetBy(dx: -horizontalPadding, dy: -verticalPadding)
+        return expanded.intersection(imageBounds).integral
     }
 
     private static func mapEngineError(_ error: Error) -> PaddleOCRError {

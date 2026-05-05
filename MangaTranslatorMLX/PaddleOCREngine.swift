@@ -381,8 +381,14 @@ private struct TokenizerAdapter {
 }
 
 private struct GeneratorRuntime {
+    struct GenerationSettings {
+        let maxNewTokens: Int
+        let noRepeatNgramSize: Int
+    }
+
     let model: PaddleOCRVLModel
     let stopTokens: Set<Int>
+    let settings: GenerationSettings
 
     func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int] {
         var inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
@@ -393,18 +399,24 @@ private struct GeneratorRuntime {
         var logits = model.lmHead(hiddenStates)
 
         var generatedTokens: [Int] = []
+        let tokenBudget = effectiveMaxNewTokens(requested: maxNewTokens, configured: settings.maxNewTokens)
 
-        for _ in 0..<maxNewTokens {
+        for _ in 0..<tokenBudget {
             let lastLogits = logits[0, -1]
             let nextTokenId = argMax(lastLogits).item(Int.self)
 
             if stopTokens.contains(nextTokenId) { break }
+            if wouldRepeatNgram(
+                generatedTokens: generatedTokens,
+                nextTokenId: nextTokenId,
+                noRepeatNgramSize: settings.noRepeatNgramSize
+            ) {
+                break
+            }
+
             generatedTokens.append(nextTokenId)
 
-            // Loop detection: check for 2, 3, or 4 token repetitive patterns
-            if generatedTokens.count >= 12 {
-                if detectLoop(in: generatedTokens) { break }
-            }
+            if detectLoop(in: generatedTokens) { break }
 
             inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
             let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
@@ -418,7 +430,7 @@ private struct GeneratorRuntime {
     }
 
     private func detectLoop(in tokens: [Int]) -> Bool {
-        for n in 2...4 {
+        for n in 1...4 {
             if tokens.count >= n * 3 {
                 let tail = Array(tokens.suffix(n))
                 let prev = Array(tokens.dropLast(n).suffix(n))
@@ -429,6 +441,37 @@ private struct GeneratorRuntime {
             }
         }
         return false
+    }
+}
+
+func effectiveMaxNewTokens(requested: Int, configured: Int) -> Int {
+    max(1, min(requested, configured))
+}
+
+func wouldRepeatNgram(generatedTokens: [Int], nextTokenId: Int, noRepeatNgramSize: Int) -> Bool {
+    guard noRepeatNgramSize > 1 else { return false }
+    let prefixSize = noRepeatNgramSize - 1
+    guard generatedTokens.count >= prefixSize else { return false }
+
+    let prefix = Array(generatedTokens.suffix(prefixSize))
+    let candidate = prefix + [nextTokenId]
+    guard generatedTokens.count >= noRepeatNgramSize else { return false }
+
+    for start in 0...(generatedTokens.count - noRepeatNgramSize) {
+        if Array(generatedTokens[start..<(start + noRepeatNgramSize)]) == candidate {
+            return true
+        }
+    }
+    return false
+}
+
+private struct PaddleOCRGenerationConfig: Decodable {
+    let maxLength: Int?
+    let noRepeatNgramSize: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case maxLength = "max_length"
+        case noRepeatNgramSize = "no_repeat_ngram_size"
     }
 }
 
@@ -608,6 +651,7 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
     private static func buildRuntime(modelDirectory: URL) async throws -> PaddleOCRVLRuntime {
         let config = try loadConfig(from: modelDirectory)
         let visionNumLayers = try readVisionNumLayers(from: modelDirectory)
+        let generationSettings = readGenerationSettings(from: modelDirectory)
 
         // NaViT (model.visionModel) is unused; set numHiddenLayers=0 to avoid wasted allocation
         let sparseConfig = PaddleOCRVLConfig(
@@ -660,7 +704,11 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         let tokenizer = try await AutoTokenizer.from(modelFolder: modelDirectory)
         let tokenizerAdapter = TokenizerAdapter(tokenizer: tokenizer, config: config)
         let imagePreprocessor = ImagePreprocessor(context: CIContext())
-        let generator = GeneratorRuntime(model: model, stopTokens: tokenizerAdapter.stopTokens)
+        let generator = GeneratorRuntime(
+            model: model,
+            stopTokens: tokenizerAdapter.stopTokens,
+            settings: generationSettings
+        )
 
         return PaddleOCRVLRuntime(
             model: model,
@@ -729,6 +777,22 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
               let bits = q["bits"] as? Int,
               let groupSize = q["group_size"] as? Int else { return nil }
         return (bits, groupSize)
+    }
+
+    private static func readGenerationSettings(from directory: URL) -> GeneratorRuntime.GenerationSettings {
+        let fallback = GeneratorRuntime.GenerationSettings(maxNewTokens: 300, noRepeatNgramSize: 3)
+        let url = directory.appendingPathComponent("generation_config.json")
+        guard let data = try? Data(contentsOf: url),
+              let config = try? JSONDecoder().decode(PaddleOCRGenerationConfig.self, from: data) else {
+            return fallback
+        }
+
+        let maxNewTokens = max(1, config.maxLength ?? fallback.maxNewTokens)
+        let noRepeatNgramSize = max(0, config.noRepeatNgramSize ?? fallback.noRepeatNgramSize)
+        return GeneratorRuntime.GenerationSettings(
+            maxNewTokens: maxNewTokens,
+            noRepeatNgramSize: noRepeatNgramSize
+        )
     }
 
     private static func loadWeights(

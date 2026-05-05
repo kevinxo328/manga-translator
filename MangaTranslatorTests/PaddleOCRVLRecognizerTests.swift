@@ -65,6 +65,16 @@ private final class MockOCREngine: PaddleOCRInferencing {
     }
 }
 
+private final class RecordingOCREngine: PaddleOCRInferencing {
+    private(set) var lastImageSize: CGSize?
+    var result: (text: String, confidence: Float) = ("テスト", 0.95)
+
+    func infer(image: CGImage) throws -> (text: String, confidence: Float) {
+        lastImageSize = CGSize(width: image.width, height: image.height)
+        return result
+    }
+}
+
 // MARK: - Tests
 
 @Suite("PaddleOCRVLRecognizer")
@@ -177,6 +187,34 @@ struct PaddleOCRVLRecognizerTests {
         let result = try recognizer.recognizeText(in: image, region: region)
 
         #expect(result.text == "テスト")
+    }
+
+    @Test("PaddleOCR crop expands region with padding before inference")
+    func cropExpansionAddsPadding() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let engine = RecordingOCREngine()
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in engine }
+
+        guard let image = makeSolidCGImage(width: 200, height: 100) else { return }
+        _ = try recognizer.recognizeText(in: image, region: CGRect(x: 50, y: 20, width: 60, height: 30))
+
+        #expect(engine.lastImageSize == CGSize(width: 92, height: 42))
+    }
+
+    @Test("PaddleOCR crop padding is clamped to image bounds near edges")
+    func cropExpansionClampsNearEdges() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let engine = RecordingOCREngine()
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in engine }
+
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+        _ = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 20, height: 10))
+
+        #expect(engine.lastImageSize == CGSize(width: 32, height: 16))
     }
 
     @Test("Region with zero width returns empty string without crash")
@@ -331,6 +369,21 @@ struct PaddleOCRVLRecognizerTests {
         #expect(text == "Degraded output.", "Repeated dots should be collapsed to one period, not replaced with '['")
     }
 
+    @Test("Replacement characters are stripped from PaddleOCR output")
+    func replacementCharactersAreRemoved() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mockEngine = MockOCREngine()
+        mockEngine.result = ("さぁ�いってきてください!!", 0.8)
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in mockEngine }
+
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+        let (text, _) = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
+
+        #expect(text == "さぁいってきてください!!")
+    }
+
     @Test("Repeated phrase loop is stripped to its first occurrence")
     func repeatedPhraseTailIsStripped() throws {
         let dir = try makeModelDirectoryWithWeights()
@@ -373,6 +426,21 @@ struct PaddleOCRVLRecognizerTests {
 @Suite("DefaultPaddleOCREngine")
 @MainActor
 struct DefaultPaddleOCREngineTests {
+    @Test("effectiveMaxNewTokens respects generation config ceiling")
+    func effectiveMaxNewTokensRespectsConfig() {
+        #expect(effectiveMaxNewTokens(requested: 1024, configured: 300) == 300)
+        #expect(effectiveMaxNewTokens(requested: 120, configured: 300) == 120)
+        #expect(effectiveMaxNewTokens(requested: 0, configured: 300) == 1)
+    }
+
+    @Test("no-repeat ngram guard blocks repeated trigram continuation")
+    func noRepeatNgramGuardBlocksRepeatedTrigram() {
+        let tokens = [10, 11, 12, 10, 11]
+        #expect(wouldRepeatNgram(generatedTokens: tokens, nextTokenId: 12, noRepeatNgramSize: 3))
+        #expect(!wouldRepeatNgram(generatedTokens: tokens, nextTokenId: 13, noRepeatNgramSize: 3))
+        #expect(!wouldRepeatNgram(generatedTokens: [10], nextTokenId: 10, noRepeatNgramSize: 3))
+    }
+
     @Test("infer throws runtimeFailure when model artifacts cannot be fully loaded")
     func inferThrowsRuntimeFailure() throws {
         let dir = try makeModelDirectoryWithRuntimeArtifacts()
