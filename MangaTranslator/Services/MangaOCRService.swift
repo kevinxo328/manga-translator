@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import os
 
+@MainActor
 final class MangaOCRService {
     private let detector = ComicTextDetectorService()
     var recognizer: (any OCRRecognizing)?

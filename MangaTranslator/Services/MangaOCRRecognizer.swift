@@ -192,4 +192,5 @@ final class MangaOCRRecognizer {
     }
 }
 
+@MainActor
 extension MangaOCRRecognizer: OCRRecognizing {}

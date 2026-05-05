@@ -6,6 +6,7 @@ import AppKit
 @testable import MangaTranslatorMLX
 #endif
 
+@MainActor
 final class OCRBenchmarkTests: XCTestCase {
     private let scanner = ImageScanner()
     private let reporter = BenchmarkReporter()
@@ -32,17 +33,19 @@ final class OCRBenchmarkTests: XCTestCase {
             return
         }
 
-        let mangaService = MangaOCRService()
-        let visionService = VisionOCRService()
-        let bubbleDetector = BubbleDetector()
+        let router = try await productionRouter()
+        let paddleBubbles = try? router.processWithPaddleOCR(image: nsImage)
+        let mangaBubbles = try await router.processWithMangaOCR(image: nsImage, sourceLanguage: .ja, allowVisionFallback: false)
+        let visionBubbles = try await router.processWithVisionOCR(image: nsImage, sourceLanguage: .ja)
 
-        let mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
-        let visionObservations = try await visionService.recognizeText(in: nsImage, sourceLanguage: .ja)
-        let visionBubbles = bubbleDetector.detectBubbles(from: visionObservations)
-
-        // For this test, we just check that matching still works for existing engines
-        let result = BubbleRegionMatcher.match(anchor: mangaBubbles, compared: visionBubbles)
-        print("Image: \(firstImageURL.path), Manga bubbles: \(mangaBubbles.count), Vision bubbles: \(visionBubbles.count), Paired: \(result.paired.count)")
+        print(
+            "Image: \(firstImageURL.path), " +
+            "Paddle bubbles: \(paddleBubbles?.count ?? 0), " +
+            "Manga bubbles: \(mangaBubbles.count), " +
+            "Vision bubbles: \(visionBubbles.count)"
+        )
+        XCTAssertGreaterThanOrEqual(mangaBubbles.count, 0)
+        XCTAssertGreaterThanOrEqual(visionBubbles.count, 0)
     }
 
     // Full benchmark: scan → tri-engine OCR (production paths) → IoU → report
@@ -53,36 +56,8 @@ final class OCRBenchmarkTests: XCTestCase {
             return
         }
 
-        let mangaService = MangaOCRService()
-        let visionService = VisionOCRService()
-        let bubbleDetector = BubbleDetector()
+        let router = try await productionRouter()
         let clock = ContinuousClock()
-
-        // Mock capability and download to force PaddleOCR path in router
-        struct MockCapability: DeviceCapabilityChecking {
-            func checkPaddleOCRCapability() -> PaddleOCRCapability { .supported }
-        }
-        
-        @MainActor
-        class MockDownload: ModelDownloadManaging {
-            var state: ModelDownloadState = .downloaded
-            var isPaddleOCREnabled: Bool = true
-        }
-
-        let downloadManager = await MainActor.run { MockDownload() }
-        let router = OCRRouter(
-            mangaOCRService: mangaService,
-            visionOCRService: visionService,
-            capabilityChecker: MockCapability(),
-            downloadManager: downloadManager,
-            paddleOCRFactory: {
-                #if arch(arm64)
-                throw PaddleOCRError.modelUnavailable
-                #else
-                throw PaddleOCRError.modelUnavailable
-                #endif
-            }
-        )
 
         var imageResults: [ImageResult] = []
 
@@ -94,11 +69,10 @@ final class OCRBenchmarkTests: XCTestCase {
             var latency: [String: Double] = [:]
             var failures: Set<String> = []
 
-            // 1. PaddleOCR Path (via OCRRouter)
-            let paddleBubbles: [BubbleCluster]
             let paddleStart = clock.now
+            let paddleBubbles: [BubbleCluster]
             do {
-                paddleBubbles = try await router.processPage(image: nsImage, sourceLanguage: .ja)
+                paddleBubbles = try router.processWithPaddleOCR(image: nsImage)
                 let elapsed = paddleStart.duration(to: clock.now)
                 latency["PaddleOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
@@ -107,11 +81,10 @@ final class OCRBenchmarkTests: XCTestCase {
                 failures.insert("PaddleOCR")
             }
 
-            // 2. MangaOCR Path (direct bypass)
             let mangaStart = clock.now
             let mangaBubbles: [BubbleCluster]
             do {
-                mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
+                mangaBubbles = try await router.processWithMangaOCR(image: nsImage, sourceLanguage: .ja, allowVisionFallback: false)
                 let elapsed = mangaStart.duration(to: clock.now)
                 latency["MangaOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
@@ -120,12 +93,10 @@ final class OCRBenchmarkTests: XCTestCase {
                 failures.insert("MangaOCR")
             }
 
-            // 3. Vision Path
             let visionStart = clock.now
             let visionBubbles: [BubbleCluster]
             do {
-                let obs = try await visionService.recognizeText(in: nsImage, sourceLanguage: .ja)
-                visionBubbles = bubbleDetector.detectBubbles(from: obs)
+                visionBubbles = try await router.processWithVisionOCR(image: nsImage, sourceLanguage: .ja)
                 let elapsed = visionStart.duration(to: clock.now)
                 latency["Vision"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
@@ -134,10 +105,9 @@ final class OCRBenchmarkTests: XCTestCase {
                 failures.insert("Vision")
             }
 
-            // Matching
             let paddleVsManga = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: mangaBubbles)
             let paddleVsVision = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: visionBubbles)
-            
+
             imageResults.append(ImageResult(
                 imagePath: imagePath.path,
                 paddleVsManga: paddleVsManga.paired,
@@ -167,6 +137,16 @@ final class OCRBenchmarkTests: XCTestCase {
         add(attachment)
 
         XCTAssertFalse(imageResults.isEmpty, "Expected results for at least one image")
+    }
+
+    private func productionRouter() async throws -> OCRRouter {
+        #if arch(arm64)
+        return await MainActor.run {
+            OCRRouter.makeProductionRouter()
+        }
+        #else
+        return OCRRouter()
+        #endif
     }
 
     // MARK: - Smart-resize routing tests

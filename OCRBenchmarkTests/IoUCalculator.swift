@@ -19,8 +19,8 @@ struct BubbleRegionMatcher {
         threshold: Float = 0.5
     ) -> (paired: [PairedRegionResult], unmatchedAnchor: [BubbleCluster], unmatchedCompared: [BubbleCluster]) {
         var paired: [PairedRegionResult] = []
-        var remainingAnchor = anchor
-        var remainingCompared = compared
+        let remainingAnchor = anchor
+        let remainingCompared = compared
         
         // Find all possible pairings above threshold
         struct CandidatePair {

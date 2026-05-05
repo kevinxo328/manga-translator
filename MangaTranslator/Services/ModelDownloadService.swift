@@ -12,7 +12,7 @@ protocol ModelDownloading: Sendable {
 
 // MARK: - Configuration
 
-struct ModelDownloadConfiguration: Sendable {
+struct ModelDownloadConfiguration {
     let modelURL: URL
     let checksumURL: URL
     let modelDirectory: URL
@@ -20,11 +20,7 @@ struct ModelDownloadConfiguration: Sendable {
     let downloader: any ModelDownloading
 
     static var `default`: ModelDownloadConfiguration {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let modelDir = appSupport
-            .appendingPathComponent("MangaTranslator")
-            .appendingPathComponent("Models")
-            .appendingPathComponent("PaddleOCR-VL")
+        let modelDir = ModelDownloadService.defaultModelDirectory()
         return ModelDownloadConfiguration(
             modelURL: URL(string: "https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx/resolve/main/model.zip")!,
             checksumURL: URL(string: "https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx/resolve/main/model.zip.sha256")!,
@@ -376,6 +372,44 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
 
     private func sha256(of url: URL) -> String? {
         Self.sha256Static(of: url)
+    }
+
+    nonisolated static func defaultModelDirectory(fileManager: FileManager = .default) -> URL {
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return appSupport
+            .appendingPathComponent("MangaTranslator")
+            .appendingPathComponent("Models")
+            .appendingPathComponent("PaddleOCR-VL")
+    }
+
+    nonisolated static func productionModelSearchRoots(homeDirectory: String = NSHomeDirectory()) -> [URL] {
+        let containerRoot = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent("Library")
+            .appendingPathComponent("Containers")
+            .appendingPathComponent("com.chunweiliu.MangaTranslator")
+            .appendingPathComponent("Data")
+            .appendingPathComponent("Library")
+            .appendingPathComponent("Application Support")
+            .appendingPathComponent("MangaTranslator")
+            .appendingPathComponent("Models")
+            .appendingPathComponent("PaddleOCR-VL")
+
+        return [
+            defaultModelDirectory(),
+            containerRoot
+        ]
+    }
+
+    nonisolated static func resolvedProductionModelDirectory(
+        fileManager: FileManager = .default,
+        homeDirectory: String = NSHomeDirectory()
+    ) -> URL? {
+        for root in productionModelSearchRoots(homeDirectory: homeDirectory) {
+            if let resolved = resolvedModelDirectory(in: root, fileManager: fileManager) {
+                return resolved
+            }
+        }
+        return nil
     }
 
     nonisolated static func resolvedModelDirectory(

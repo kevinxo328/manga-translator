@@ -2,6 +2,7 @@ import XCTest
 import CoreGraphics
 @testable import MangaTranslator
 
+@MainActor
 final class OCRRecognizingTests: XCTestCase {
 
     // MangaOCRService starts with nil recognizer (protocol type)

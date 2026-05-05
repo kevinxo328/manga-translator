@@ -60,7 +60,7 @@ struct BenchmarkReporter {
 
         for imgResult in result.imageResults {
             lines += ["", "--- \(imgResult.imagePath) ---"]
-            
+
             for engineId in imgResult.failures {
                 engineFailures[engineId, default: 0] += 1
             }

@@ -27,12 +27,7 @@ final class TranslationViewModel: ObservableObject {
 
     #if arch(arm64)
     private lazy var ocrRouter: OCRRouter = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let modelDir = appSupport
-            .appendingPathComponent("MangaTranslator")
-            .appendingPathComponent("Models")
-            .appendingPathComponent("PaddleOCR-VL")
-        return OCRRouter(paddleOCRFactory: { PaddleOCRVLRecognizer(modelDirectory: modelDir) })
+        OCRRouter.makeProductionRouter()
     }()
     #else
     private let ocrRouter = OCRRouter()
