@@ -13,6 +13,7 @@
 		A10000010000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* Assets.xcassets */; };
 		A10000010000000000000005 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* Models.swift */; };
 		A10000010000000000000006 /* VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* VisionOCRService.swift */; };
+		A10000010000000000000025 /* OCRError.swift in Sources */ = {isa = PBXBuildFile; fileRef = CL20000010000000000000002 /* OCRError.swift */; };
 		A10000010000000000000007 /* BubbleDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* BubbleDetector.swift */; };
 		A10000010000000000000008 /* ReadingOrderSorter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* ReadingOrderSorter.swift */; };
 		A10000010000000000000009 /* LLMPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033 /* LLMPrompt.swift */; };
@@ -214,6 +215,7 @@
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
 
 		M20000010000000000000010 /* MangaTranslatorMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MangaTranslatorMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CL20000010000000000000002 /* OCRError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRError.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -308,6 +310,7 @@
 		A40000010000000000000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				CL20000010000000000000002 /* OCRError.swift */,
 				A20000010000000000000030 /* VisionOCRService.swift */,
 				A20000010000000000000031 /* BubbleDetector.swift */,
 				A20000010000000000000032 /* ReadingOrderSorter.swift */,
@@ -587,6 +590,7 @@
 				E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */,
 				A10000010000000000000005 /* Models.swift in Sources */,
 				A10000010000000000000006 /* VisionOCRService.swift in Sources */,
+				A10000010000000000000025 /* OCRError.swift in Sources */,
 				A10000010000000000000007 /* BubbleDetector.swift in Sources */,
 				A10000010000000000000008 /* ReadingOrderSorter.swift in Sources */,
 				A10000010000000000000009 /* LLMPrompt.swift in Sources */,

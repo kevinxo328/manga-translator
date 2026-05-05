@@ -17,7 +17,7 @@ try:
         DEFAULT_PROMPT,
         evaluate_model_pair,
         load_crop_samples,
-        load_page_samples,
+        load_test_image_samples,
     )
 except ImportError:
     from convert import MODEL_ID, run_conversion
@@ -27,7 +27,7 @@ except ImportError:
         DEFAULT_PROMPT,
         evaluate_model_pair,
         load_crop_samples,
-        load_page_samples,
+        load_test_image_samples,
     )
 
 
@@ -122,7 +122,8 @@ def parse_args() -> argparse.Namespace:
 def load_samples(args: argparse.Namespace):
     if args.crop_manifest is not None:
         return "crop", load_crop_samples(args.crop_manifest)
-    return "page", load_page_samples(args.test_images)
+    dataset = load_test_image_samples(args.test_images)
+    return dataset.mode, dataset.samples
 
 
 def main() -> None:

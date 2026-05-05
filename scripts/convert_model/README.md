@@ -29,7 +29,7 @@ python convert.py
 # Scans examples/ directory by default
 python verify.py
 
-# Or verify a specific directory with a token limit
+# Or verify a specific directory with detector-driven crops and a token limit
 python verify.py --test-images ../../examples/book1 --max-tokens 100
 
 # 5. Sweep quantization group sizes and export reports
@@ -49,6 +49,8 @@ mathematically close to the original BF16 model. We measure this using
 **Character Error Rate (CER) Delta**.
 
 - **Default data**: `examples/` directory (full manga pages).
+- **`--test-images` data**: detector-driven region crops produced by the same
+  `ComicTextDetectorService` used by the macOS app.
 - **Primary metric**: CER Delta (BF16 vs. Quantized).
 - **Success threshold**: Average CER Delta ≤ 0.05.
 
@@ -65,10 +67,18 @@ The verification report includes:
 
 ## Current Guidance
 
-- **Page-level vs Crop-level**: While `verify.py` scans full pages by default,
-  production inference in the App happens on small text crops. Consistency on
-  full pages is a conservative "stress test"—actual App performance on crops
-  is expected to be higher.
+- **`--test-images` is crop-first**: page directories are converted into
+  region-level OCR samples through the standalone Swift `DetectorExportCLI`.
+  Full pages are not sent directly to OCR in this mode.
+- **Crop expansion parity**: detector crops are expanded with the same padding
+  rules as `PaddleOCRVLRecognizer.expandedCropRegion()` in the app.
+- **`--crop-manifest` remains supported**: curated crop datasets still use the
+  explicit manifest coordinates plus the CLI `--crop-padding` setting.
+- **Region-level reporting**: reports include per-region CER records, per-page
+  summaries, and a `zero_region_pages` list when the detector finds nothing.
+- **Detector JSON retention**: use `--keep-detector-json` to keep the temporary
+  detector export, or `--detector-json-output <path>` to write it to a fixed
+  location for debugging.
 - **Group Size**: `group_size=64` is the default candidate as it balances
   model size and parity.
 
@@ -76,6 +86,7 @@ The verification report includes:
 
 ```bash
 python -m unittest discover scripts/convert_model/tests
+xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/ComicTextDetectorExportTests
 ```
 
 ## Cleanup

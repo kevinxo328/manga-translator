@@ -2,20 +2,125 @@ import Foundation
 import AppKit
 import OnnxRuntimeBindings
 
-struct DetectedTextRegion {
-    let boundingBox: CGRect
-    let confidence: Float
-    let classIndex: Int // 0 = text, 1 = bubble
+public struct DetectedTextRegion {
+    public let boundingBox: CGRect
+    public let confidence: Float
+    public let classIndex: Int // 0 = text, 1 = bubble
+
+    public init(boundingBox: CGRect, confidence: Float, classIndex: Int) {
+        self.boundingBox = boundingBox
+        self.confidence = confidence
+        self.classIndex = classIndex
+    }
 }
 
-final class ComicTextDetectorService {
+public protocol ComicTextRegionDetecting {
+    func detectTextRegions(in image: NSImage) throws -> [DetectedTextRegion]
+}
+
+struct ComicTextDetectorExportRegion: Codable, Equatable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+    let confidence: Float
+    let classIndex: Int
+}
+
+struct ComicTextDetectorExportPage: Codable, Equatable {
+    let imagePath: String
+    let pageWidth: Int
+    let pageHeight: Int
+    let regions: [ComicTextDetectorExportRegion]
+}
+
+struct ComicTextDetectorExportDocument: Codable, Equatable {
+    let schemaVersion: Int
+    let pages: [ComicTextDetectorExportPage]
+}
+
+enum ComicTextDetectorExportError: LocalizedError, Equatable {
+    case imageNotFound(String)
+    case unreadableImage(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .imageNotFound(let path):
+            return "image not found: \(path)"
+        case .unreadableImage(let path):
+            return "image is unreadable: \(path)"
+        }
+    }
+}
+
+public struct ComicTextDetectorExporter {
+    let detector: any ComicTextRegionDetecting
+
+    public init(detector: any ComicTextRegionDetecting) {
+        self.detector = detector
+    }
+
+    func export(pageImagePaths: [String]) throws -> ComicTextDetectorExportDocument {
+        let pages = try pageImagePaths.map(exportPage)
+        return ComicTextDetectorExportDocument(schemaVersion: 1, pages: pages)
+    }
+
+    func writeJSON(document: ComicTextDetectorExportDocument, to outputURL: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(document).write(to: outputURL)
+    }
+
+    public func writeJSON(pageImagePaths: [String], to outputURL: URL) throws {
+        try writeJSON(document: export(pageImagePaths: pageImagePaths), to: outputURL)
+    }
+
+    private func exportPage(from imagePath: String) throws -> ComicTextDetectorExportPage {
+        let imageURL = URL(fileURLWithPath: imagePath).standardizedFileURL
+        guard FileManager.default.fileExists(atPath: imageURL.path) else {
+            throw ComicTextDetectorExportError.imageNotFound(imageURL.path)
+        }
+        guard let image = NSImage(contentsOf: imageURL),
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw ComicTextDetectorExportError.unreadableImage(imageURL.path)
+        }
+
+        let regions = try detector.detectTextRegions(in: image).map { region in
+            let box = region.boundingBox.standardized
+            return ComicTextDetectorExportRegion(
+                x: Double(box.origin.x),
+                y: Double(box.origin.y),
+                width: Double(box.width),
+                height: Double(box.height),
+                confidence: region.confidence,
+                classIndex: region.classIndex
+            )
+        }
+
+        return ComicTextDetectorExportPage(
+            imagePath: imageURL.path,
+            pageWidth: cgImage.width,
+            pageHeight: cgImage.height,
+            regions: regions
+        )
+    }
+}
+
+public final class ComicTextDetectorService {
     private static let inputSize = 1024
     private static let confidenceThreshold: Float = 0.4
     private static let nmsThreshold: Float = 0.35
 
     private var session: ORTSession?
+    private let modelURLProvider: () -> URL?
 
-    func detectTextRegions(in image: NSImage) throws -> [DetectedTextRegion] {
+    public init(modelURLProvider: @escaping () -> URL? = {
+        Bundle.main.url(forResource: "comic-text-detector", withExtension: "onnx")
+    }) {
+        self.modelURLProvider = modelURLProvider
+    }
+
+    public func detectTextRegions(in image: NSImage) throws -> [DetectedTextRegion] {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw OCRError.invalidImage
         }
@@ -83,14 +188,14 @@ final class ComicTextDetectorService {
     private func getSession() throws -> ORTSession {
         if let session { return session }
 
-        guard let modelPath = Bundle.main.path(forResource: "comic-text-detector", ofType: "onnx") else {
+        guard let modelURL = modelURLProvider() else {
             throw ComicTextDetectorError.modelNotFound
         }
 
         let env = try ORTEnv(loggingLevel: .warning)
         let opts = try ORTSessionOptions()
         try opts.setLogSeverityLevel(.warning)
-        let session = try ORTSession(env: env, modelPath: modelPath, sessionOptions: opts)
+        let session = try ORTSession(env: env, modelPath: modelURL.path, sessionOptions: opts)
         self.session = session
         return session
     }
@@ -234,6 +339,8 @@ final class ComicTextDetectorService {
         return unionArea > 0 ? intersectionArea / unionArea : 0
     }
 }
+
+extension ComicTextDetectorService: ComicTextRegionDetecting {}
 
 enum ComicTextDetectorError: LocalizedError {
     case modelNotFound

@@ -1,6 +1,8 @@
+import argparse
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from PIL import Image
@@ -8,12 +10,16 @@ from PIL import Image
 from scripts.convert_model.verify import (
     CropBox,
     EvaluationRecord,
+    LoadedDataset,
     Sample,
     clamp_crop_box,
     compute_cer,
+    expand_detector_crop_box,
     expand_crop_box,
     format_report_block,
+    load_detector_samples,
     load_crop_samples,
+    load_samples_from_args,
     normalize_text,
     percentile,
     prepare_samples,
@@ -97,6 +103,156 @@ class VerifyHelpersTests(unittest.TestCase):
             self.assertTrue(prepared[0].prepared_image_path.exists())
             self.assertEqual(prepared[0].sample.crop_box, CropBox(x=8, y=9, width=24, height=12))
             self.assertEqual(prepared[0].sample.metadata["crop_padding"], 0.1)
+
+    def test_load_detector_samples_parses_regions_and_zero_region_pages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            test_dir = base / "book1"
+            test_dir.mkdir()
+            page1 = test_dir / "001.png"
+            page2 = test_dir / "002.png"
+            Image.new("RGB", (100, 50), "white").save(page1)
+            Image.new("RGB", (120, 80), "white").save(page2)
+
+            detector_json = base / "detector.json"
+            detector_json.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "pages": [
+                            {
+                                "imagePath": str(page1.resolve()),
+                                "pageWidth": 100,
+                                "pageHeight": 50,
+                                "regions": [
+                                    {
+                                        "x": 10,
+                                        "y": 12,
+                                        "width": 20,
+                                        "height": 8,
+                                        "confidence": 0.95,
+                                        "classIndex": 0,
+                                    }
+                                ],
+                            },
+                            {
+                                "imagePath": str(page2.resolve()),
+                                "pageWidth": 120,
+                                "pageHeight": 80,
+                                "regions": [],
+                            },
+                        ],
+                    }
+                )
+            )
+
+            dataset = load_detector_samples(detector_json, test_dir)
+            self.assertEqual(dataset.mode, "detector")
+            self.assertEqual(len(dataset.samples), 1)
+            self.assertEqual(dataset.samples[0].sample_id, "001#region-001")
+            self.assertEqual(dataset.samples[0].mode, "detector_crop")
+            self.assertEqual(dataset.samples[0].crop_box, CropBox(x=10.0, y=12.0, width=20.0, height=8.0))
+            self.assertEqual(dataset.metadata["page_count"], 2)
+            self.assertEqual(dataset.metadata["zero_region_pages"], ["002"])
+
+    def test_expand_detector_crop_box_matches_paddleocr_rules(self):
+        self.assertEqual(
+            expand_detector_crop_box(CropBox(x=50, y=20, width=60, height=30), 200, 100),
+            CropBox(x=34.0, y=14.0, width=92.0, height=42.0),
+        )
+        self.assertEqual(
+            expand_detector_crop_box(CropBox(x=0, y=0, width=20, height=10), 100, 50),
+            CropBox(x=0.0, y=0.0, width=32.0, height=16.0),
+        )
+        self.assertEqual(
+            expand_detector_crop_box(CropBox(x=40, y=10, width=20, height=40), 100, 100),
+            CropBox(x=30.0, y=0.0, width=40.0, height=61.0),
+        )
+
+    @mock.patch("scripts.convert_model.verify.run_detector_export_cli")
+    def test_load_samples_from_args_uses_detector_crops_not_full_pages(self, mock_export):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            test_dir = base / "pages"
+            test_dir.mkdir()
+            page = test_dir / "001.png"
+            Image.new("RGB", (100, 80), "white").save(page)
+
+            def write_detector_json(page_images, output_path):
+                self.assertEqual(page_images, [page.resolve()])
+                output_path.write_text(
+                    json.dumps(
+                        {
+                            "schemaVersion": 1,
+                            "pages": [
+                                {
+                                    "imagePath": str(page.resolve()),
+                                    "pageWidth": 100,
+                                    "pageHeight": 80,
+                                    "regions": [
+                                        {
+                                            "x": 10,
+                                            "y": 10,
+                                            "width": 20,
+                                            "height": 10,
+                                            "confidence": 0.9,
+                                            "classIndex": 0,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    )
+                )
+
+            mock_export.side_effect = write_detector_json
+            args = argparse.Namespace(
+                crop_manifest=None,
+                test_images=test_dir.resolve(),
+                keep_detector_json=False,
+                detector_json_output=None,
+            )
+
+            dataset = load_samples_from_args(args)
+            prepared = prepare_samples(dataset.samples, crop_padding=0.0)
+
+            self.assertEqual(dataset.mode, "detector")
+            self.assertEqual(len(prepared), 1)
+            self.assertNotEqual(prepared[0].prepared_image_path, page.resolve())
+            with Image.open(prepared[0].prepared_image_path) as cropped:
+                self.assertEqual(cropped.size, (42, 22))
+
+    def test_load_samples_from_args_preserves_crop_manifest_support(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            image_path = base / "page.png"
+            Image.new("RGB", (20, 20), "white").save(image_path)
+            manifest_path = base / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "samples": [
+                            {
+                                "id": "sample-1",
+                                "image": "page.png",
+                                "crop": [1, 2, 3, 4],
+                            }
+                        ]
+                    }
+                )
+            )
+
+            args = argparse.Namespace(
+                crop_manifest=manifest_path.resolve(),
+                test_images=None,
+                keep_detector_json=False,
+                detector_json_output=None,
+            )
+            dataset = load_samples_from_args(args)
+
+            self.assertEqual(dataset.mode, "crop_manifest")
+            self.assertEqual(len(dataset.samples), 1)
+            self.assertEqual(dataset.samples[0].mode, "crop")
 
     def test_summarize_records_counts_failures(self):
         records = [

@@ -128,4 +128,123 @@ private final class MockDownloadManager: ModelDownloadManaging {
     }
     var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
 }
+
+private final class MockComicTextDetector: ComicTextRegionDetecting {
+    var resultByPath = [String: [DetectedTextRegion]]()
+
+    func detectTextRegions(in image: NSImage) throws -> [DetectedTextRegion] {
+        let key = image.accessibilityDescription() ?? ""
+        return resultByPath[key, default: []]
+    }
+}
+
+private func writeTestPNG(at url: URL, width: Int = 32, height: Int = 24) throws {
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )
+    rep?.size = NSSize(width: width, height: height)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = rep.flatMap(NSGraphicsContext.init(bitmapImageRep:))
+    NSColor.white.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let rep, let data = rep.representation(using: .png, properties: [:]) else {
+        throw OCRError.invalidImage
+    }
+    try data.write(to: url)
+}
+
+@MainActor
+final class ComicTextDetectorExportTests: XCTestCase {
+    func testExporterEmitsJSONTextRegionBoxes() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let imageURL = directory.appendingPathComponent("page-1.png")
+        try writeTestPNG(at: imageURL)
+
+        let detector = MockComicTextDetector()
+        detector.resultByPath[imageURL.path] = [
+            DetectedTextRegion(
+                boundingBox: CGRect(x: 12.5, y: 8.0, width: 40.0, height: 16.0),
+                confidence: 0.91,
+                classIndex: 0
+            )
+        ]
+
+        let exporter = ComicTextDetectorExporter(detector: detector)
+        let document = try exporter.export(pageImagePaths: [imageURL.path])
+
+        XCTAssertEqual(document.schemaVersion, 1)
+        XCTAssertEqual(document.pages.count, 1)
+        XCTAssertEqual(document.pages[0].imagePath, imageURL.path)
+        XCTAssertEqual(document.pages[0].pageWidth, 32)
+        XCTAssertEqual(document.pages[0].pageHeight, 24)
+        XCTAssertEqual(
+            document.pages[0].regions,
+            [
+                ComicTextDetectorExportRegion(
+                    x: 12.5,
+                    y: 8.0,
+                    width: 40.0,
+                    height: 16.0,
+                    confidence: 0.91,
+                    classIndex: 0
+                )
+            ]
+        )
+    }
+
+    func testExporterFailsForMissingImagePath() throws {
+        let detector = MockComicTextDetector()
+        let exporter = ComicTextDetectorExporter(detector: detector)
+
+        XCTAssertThrowsError(try exporter.export(pageImagePaths: ["/tmp/does-not-exist.png"])) { error in
+            XCTAssertEqual(error as? ComicTextDetectorExportError, .imageNotFound("/tmp/does-not-exist.png"))
+        }
+    }
+
+    func testExporterFailsForUnreadableImage() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let imageURL = directory.appendingPathComponent("broken.png")
+        try Data("not-an-image".utf8).write(to: imageURL)
+
+        let detector = MockComicTextDetector()
+        let exporter = ComicTextDetectorExporter(detector: detector)
+
+        XCTAssertThrowsError(try exporter.export(pageImagePaths: [imageURL.path])) { error in
+            XCTAssertEqual(error as? ComicTextDetectorExportError, .unreadableImage(imageURL.path))
+        }
+    }
+
+    func testExporterKeepsZeroRegionPages() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let imageURL = directory.appendingPathComponent("empty.png")
+        try writeTestPNG(at: imageURL)
+
+        let detector = MockComicTextDetector()
+        let exporter = ComicTextDetectorExporter(detector: detector)
+        let document = try exporter.export(pageImagePaths: [imageURL.path])
+
+        XCTAssertEqual(document.pages.count, 1)
+        XCTAssertTrue(document.pages[0].regions.isEmpty)
+    }
+}
 #endif
