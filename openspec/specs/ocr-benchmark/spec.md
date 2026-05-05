@@ -29,47 +29,86 @@ The system SHALL compute Intersection over Union (IoU) for every pair of detecte
 - **THEN** no overlap warnings are emitted for that image
 
 ### Requirement: Dual-engine OCR comparison
-For each image, the system SHALL invoke the two OCR engines as independent production pipelines and record their outputs separately:
+For each image, the system SHALL invoke three OCR engines as independent production pipelines and record their outputs separately:
+
+- **PaddleOCR path**: process the image through the production Japanese OCR path that uses `PaddleOCRVLRecognizer` for region recognition
 - **MangaOCR path**: call `MangaOCRService.recognizeAndCluster(in:)` directly; the service handles detection and per-region recognition internally
 - **Vision path**: call `VisionOCRService.recognizeText(in:)` on the full image, then cluster observations with `BubbleDetector`
 
-After both engines produce their bubble lists, the system SHALL pair results by greedy IoU matching (threshold ≥ 0.5). Bubbles that cannot be paired SHALL be recorded as unmatched for their respective engine.
+After the engines produce their bubble lists, the system SHALL compare them through two greedy IoU matching passes (threshold ≥ 0.5):
 
-The benchmark test SHALL contain no detection or image-cropping logic; all such logic resides inside the production services.
+- PaddleOCR vs MangaOCR
+- PaddleOCR vs Vision OCR
 
-#### Scenario: Both engines succeed and regions overlap
-- **WHEN** both engines return bubbles and at least one MangaOCR bubble has IoU ≥ 0.5 with a Vision bubble
-- **THEN** the report SHALL show the paired results with both texts and their IoU score
+Bubbles that cannot be paired in a given comparison SHALL be recorded as unmatched for that comparison. The benchmark test SHALL contain no direct image-cropping logic and SHALL NOT invoke the PaddleOCR full-page engine path.
 
-#### Scenario: Both engines succeed but regions do not overlap
-- **WHEN** a MangaOCR bubble has IoU < 0.5 with every Vision bubble
-- **THEN** that bubble SHALL appear in the unmatched MangaOCR section of the report
+#### Scenario: PaddleOCR and MangaOCR produce overlapping regions
+- **WHEN** PaddleOCR and MangaOCR both return bubbles and at least one PaddleOCR bubble has IoU ≥ 0.5 with a MangaOCR bubble
+- **THEN** the report SHALL show the paired PaddleOCR/MangaOCR result with both texts and the IoU score
 
-#### Scenario: One engine fails
-- **WHEN** one engine throws an error or returns no bubbles for an image
-- **THEN** the report SHALL show all results from the successful engine as unmatched, and record a failure indicator for the other engine
+#### Scenario: PaddleOCR and Vision produce overlapping regions
+- **WHEN** PaddleOCR and Vision OCR both return bubbles and at least one PaddleOCR bubble has IoU ≥ 0.5 with a Vision bubble
+- **THEN** the report SHALL show the paired PaddleOCR/Vision result with both texts and the IoU score
+
+#### Scenario: A comparison has no overlapping regions
+- **WHEN** all PaddleOCR bubbles have IoU < 0.5 against every bubble from the compared engine
+- **THEN** the report SHALL record all PaddleOCR bubbles and all compared-engine bubbles as unmatched for that comparison
+
+#### Scenario: Full-page engine benchmark is excluded
+- **WHEN** the OCR benchmark suite runs
+- **THEN** it SHALL NOT call `DefaultPaddleOCREngine.infer(image:)` with a full-page source image as a benchmark path
 
 ### Requirement: Unmatched region reporting
-The report SHALL include a section per image listing bubbles that could not be paired across engines. Unmatched MangaOCR bubbles and unmatched Vision bubbles SHALL be listed separately with their bounding box and recognised text.
+The report SHALL include unmatched-region sections for each PaddleOCR comparison independently. Unmatched PaddleOCR bubbles, unmatched MangaOCR bubbles, and unmatched Vision bubbles SHALL be listed under their corresponding comparison sections with bounding box and recognised text.
 
-#### Scenario: Unmatched MangaOCR bubbles
-- **WHEN** a MangaOCR bubble has no corresponding Vision bubble with IoU ≥ 0.5
-- **THEN** the report SHALL include it under an `[Unmatched MangaOCR]` heading with its bounding box and text
+#### Scenario: Unmatched PaddleOCR bubble in PaddleOCR vs MangaOCR
+- **WHEN** a PaddleOCR bubble has no corresponding MangaOCR bubble with IoU ≥ 0.5
+- **THEN** the report SHALL include it in the unmatched PaddleOCR section for the PaddleOCR/MangaOCR comparison
 
-#### Scenario: Unmatched Vision bubbles
-- **WHEN** a Vision bubble has no corresponding MangaOCR bubble with IoU ≥ 0.5
-- **THEN** the report SHALL include it under an `[Unmatched Vision]` heading with its bounding box and text
+#### Scenario: Unmatched MangaOCR bubble
+- **WHEN** a MangaOCR bubble has no corresponding PaddleOCR bubble with IoU ≥ 0.5
+- **THEN** the report SHALL include it in the unmatched MangaOCR section for the PaddleOCR/MangaOCR comparison
 
-#### Scenario: No unmatched bubbles
-- **WHEN** every bubble from both engines is paired
-- **THEN** the unmatched sections SHALL be omitted from the report
+#### Scenario: Unmatched Vision bubble
+- **WHEN** a Vision bubble has no corresponding PaddleOCR bubble with IoU ≥ 0.5
+- **THEN** the report SHALL include it in the unmatched Vision section for the PaddleOCR/Vision comparison
+
+#### Scenario: No unmatched bubbles in a comparison
+- **WHEN** every bubble in a comparison is paired
+- **THEN** the unmatched sections for that comparison SHALL be omitted
 
 ### Requirement: Summary counts reflect independent pipelines
-The summary section SHALL report: total paired regions, total unmatched MangaOCR regions, total unmatched Vision regions, and per-engine failure count (images where the engine produced no output).
+The summary section SHALL report:
 
-#### Scenario: Summary correctness
+- total PaddleOCR vs MangaOCR paired regions
+- total PaddleOCR vs Vision paired regions
+- unmatched PaddleOCR regions per comparison
+- unmatched MangaOCR regions
+- unmatched Vision regions
+- per-engine image failure counts for PaddleOCR, MangaOCR, and Vision OCR
+
+#### Scenario: Summary correctness for PaddleOCR vs MangaOCR
 - **WHEN** the report is generated
-- **THEN** paired + unmatched MangaOCR count SHALL equal total MangaOCR bubbles found, and paired + unmatched Vision count SHALL equal total Vision bubbles found
+- **THEN** paired + unmatched PaddleOCR count for the PaddleOCR/MangaOCR comparison SHALL equal total PaddleOCR bubbles considered in that comparison, and paired + unmatched MangaOCR count SHALL equal total MangaOCR bubbles
+
+#### Scenario: Summary correctness for PaddleOCR vs Vision
+- **WHEN** the report is generated
+- **THEN** paired + unmatched PaddleOCR count for the PaddleOCR/Vision comparison SHALL equal total PaddleOCR bubbles considered in that comparison, and paired + unmatched Vision count SHALL equal total Vision bubbles
+
+#### Scenario: Engine failure count
+- **WHEN** an engine produces no output for an image
+- **THEN** the summary SHALL increment that engine's image failure count without masking successful outputs from the other engines
+
+### Requirement: Per-engine latency reporting
+The benchmark report SHALL record per-image latency for each production OCR engine path that runs on that image.
+
+#### Scenario: Successful tri-engine run
+- **WHEN** PaddleOCR, MangaOCR, and Vision OCR all complete for an image
+- **THEN** the report SHALL include latency entries for each engine on that image
+
+#### Scenario: Engine failure after timing starts
+- **WHEN** an engine fails after benchmark timing has started
+- **THEN** the report SHALL record the failure and MAY omit latency for that engine if no completed measurement is available
 
 ### Requirement: Plain-text report output
 The system SHALL write a timestamped plain-text report to `examples/output/report-YYYYMMDD-HHmmss.txt` after processing all images.

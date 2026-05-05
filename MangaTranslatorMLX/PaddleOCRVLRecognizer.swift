@@ -5,6 +5,10 @@ import os
 #if arch(arm64)
 import MangaTranslatorMLX
 
+extension Notification.Name {
+    static let paddleOCRVLMemoryPressure = Notification.Name("MangaTranslatorPaddleOCRVLMemoryPressure")
+}
+
 // MARK: - PaddleOCRVLRecognizer
 
 @MainActor
@@ -13,6 +17,8 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
     private let modelDirectory: URL
     private let engineFactory: (URL) throws -> any PaddleOCRInferencing
     private let logger = Logger(subsystem: "MangaTranslator", category: "PaddleOCRVL")
+    private var memoryPressureObserver: NSObjectProtocol?
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
 
     convenience public init(modelDirectory: URL) {
         self.init(modelDirectory: modelDirectory) { dir in
@@ -23,10 +29,38 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
     init(modelDirectory: URL, engineFactory: @escaping (URL) throws -> any PaddleOCRInferencing) {
         self.modelDirectory = modelDirectory
         self.engineFactory = engineFactory
+        setupMemoryPressureHandling()
+    }
+
+    deinit {
+        memoryPressureSource?.cancel()
+        if let observer = memoryPressureObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     public func unload() {
         engine = nil
+    }
+
+    private func setupMemoryPressureHandling() {
+        memoryPressureObserver = NotificationCenter.default.addObserver(
+            forName: .paddleOCRVLMemoryPressure,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.unload()
+            }
+        }
+
+        // Bridge real macOS memory pressure events to the notification
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler {
+            NotificationCenter.default.post(name: .paddleOCRVLMemoryPressure, object: nil)
+        }
+        source.resume()
+        memoryPressureSource = source
     }
 
     // MARK: - OCRRecognizing
@@ -59,10 +93,52 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
         }
 
         do {
-            return try engine.infer(image: cropped)
+            let (text, confidence) = try engine.infer(image: cropped)
+            return (cleanRecognizedText(text), confidence)
         } catch {
             throw Self.mapEngineError(error)
         }
+    }
+
+    private func cleanRecognizedText(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Remove repeated punctuation loops (e.g. ".....", "!!!!")
+        let punctuationPairs: [(String, String)] = [
+            ("[\\.]{3,}", "."), ("[!]{3,}", "!"), ("[?]{3,}", "?"),
+            ("[。]{3,}", "。"), ("[！]{3,}", "！"), ("[？]{3,}", "？"), ("[…]{2,}", "…")
+        ]
+        for (pattern, replacement) in punctuationPairs {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                cleaned = regex.stringByReplacingMatches(
+                    in: cleaned, options: [],
+                    range: NSRange(location: 0, length: cleaned.utf16.count),
+                    withTemplate: replacement
+                )
+            }
+        }
+
+        // 2. Phrase loop cleanup: strip all trailing repetitions back to a single occurrence
+        let words = cleaned.components(separatedBy: .whitespaces)
+        if words.count >= 6 {
+            for n in 2...4 {
+                if words.count >= n * 3 {
+                    let tail = Array(words.suffix(n))
+                    let prev = Array(words.dropLast(n).suffix(n))
+                    let prevPrev = Array(words.dropLast(n * 2).suffix(n))
+                    if tail == prev && prev == prevPrev {
+                        var cutAt = words.count
+                        while cutAt >= n && Array(words[(cutAt - n)..<cutAt]) == tail {
+                            cutAt -= n
+                        }
+                        cleaned = (Array(words[0..<cutAt]) + tail).joined(separator: " ")
+                        return cleaned
+                    }
+                }
+            }
+        }
+
+        return cleaned
     }
 
     private static func mapEngineError(_ error: Error) -> PaddleOCRError {

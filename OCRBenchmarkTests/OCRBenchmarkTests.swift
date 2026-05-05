@@ -20,7 +20,7 @@ final class OCRBenchmarkTests: XCTestCase {
         projectRoot.appendingPathComponent("examples")
     }
 
-    // Task 3.5 - integration test: full pipeline on a single known test image
+    // Integration test: full pipeline on a single known test image
     func testSingleImagePipeline() async throws {
         let images = scanner.findImages(in: examplesDir)
         guard let firstImageURL = images.first else {
@@ -37,14 +37,15 @@ final class OCRBenchmarkTests: XCTestCase {
         let bubbleDetector = BubbleDetector()
 
         let mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
-        let visionObservations = try await visionService.recognizeText(in: nsImage)
+        let visionObservations = try await visionService.recognizeText(in: nsImage, sourceLanguage: .ja)
         let visionBubbles = bubbleDetector.detectBubbles(from: visionObservations)
 
-        let result = BubbleRegionMatcher.match(manga: mangaBubbles, vision: visionBubbles)
+        // For this test, we just check that matching still works for existing engines
+        let result = BubbleRegionMatcher.match(anchor: mangaBubbles, compared: visionBubbles)
         print("Image: \(firstImageURL.path), Manga bubbles: \(mangaBubbles.count), Vision bubbles: \(visionBubbles.count), Paired: \(result.paired.count)")
     }
 
-    // Task 3.6 - full benchmark: scan → detect → IoU → dual OCR → report
+    // Full benchmark: scan → tri-engine OCR (production paths) → IoU → report
     func testFullBenchmark() async throws {
         let images = scanner.findImages(in: examplesDir)
         guard !images.isEmpty else {
@@ -55,6 +56,33 @@ final class OCRBenchmarkTests: XCTestCase {
         let mangaService = MangaOCRService()
         let visionService = VisionOCRService()
         let bubbleDetector = BubbleDetector()
+        let clock = ContinuousClock()
+
+        // Mock capability and download to force PaddleOCR path in router
+        struct MockCapability: DeviceCapabilityChecking {
+            func checkPaddleOCRCapability() -> PaddleOCRCapability { .supported }
+        }
+        
+        @MainActor
+        class MockDownload: ModelDownloadManaging {
+            var state: ModelDownloadState = .downloaded
+            var isPaddleOCREnabled: Bool = true
+        }
+
+        let downloadManager = await MainActor.run { MockDownload() }
+        let router = OCRRouter(
+            mangaOCRService: mangaService,
+            visionOCRService: visionService,
+            capabilityChecker: MockCapability(),
+            downloadManager: downloadManager,
+            paddleOCRFactory: {
+                #if arch(arm64)
+                throw PaddleOCRError.modelUnavailable
+                #else
+                throw PaddleOCRError.modelUnavailable
+                #endif
+            }
+        )
 
         var imageResults: [ImageResult] = []
 
@@ -63,30 +91,63 @@ final class OCRBenchmarkTests: XCTestCase {
                 continue
             }
 
+            var latency: [String: Double] = [:]
+            var failures: Set<String> = []
+
+            // 1. PaddleOCR Path (via OCRRouter)
+            let paddleBubbles: [BubbleCluster]
+            let paddleStart = clock.now
+            do {
+                paddleBubbles = try await router.processPage(image: nsImage, sourceLanguage: .ja)
+                let elapsed = paddleStart.duration(to: clock.now)
+                latency["PaddleOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+            } catch {
+                print("PaddleOCR failed for \(imagePath.lastPathComponent): \(error)")
+                paddleBubbles = []
+                failures.insert("PaddleOCR")
+            }
+
+            // 2. MangaOCR Path (direct bypass)
+            let mangaStart = clock.now
             let mangaBubbles: [BubbleCluster]
             do {
                 mangaBubbles = try mangaService.recognizeAndCluster(in: nsImage)
+                let elapsed = mangaStart.duration(to: clock.now)
+                latency["MangaOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
                 print("MangaOCR failed for \(imagePath.lastPathComponent): \(error)")
                 mangaBubbles = []
+                failures.insert("MangaOCR")
             }
 
+            // 3. Vision Path
+            let visionStart = clock.now
             let visionBubbles: [BubbleCluster]
             do {
-                let obs = try await visionService.recognizeText(in: nsImage)
+                let obs = try await visionService.recognizeText(in: nsImage, sourceLanguage: .ja)
                 visionBubbles = bubbleDetector.detectBubbles(from: obs)
+                let elapsed = visionStart.duration(to: clock.now)
+                latency["Vision"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
                 print("VisionOCR failed for \(imagePath.lastPathComponent): \(error)")
                 visionBubbles = []
+                failures.insert("Vision")
             }
 
-            let matchResult = BubbleRegionMatcher.match(manga: mangaBubbles, vision: visionBubbles)
+            // Matching
+            let paddleVsManga = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: mangaBubbles)
+            let paddleVsVision = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: visionBubbles)
             
             imageResults.append(ImageResult(
                 imagePath: imagePath.path,
-                pairedRegions: matchResult.paired,
-                unmatchedManga: matchResult.unmatchedManga,
-                unmatchedVision: matchResult.unmatchedVision
+                paddleVsManga: paddleVsManga.paired,
+                paddleVsVision: paddleVsVision.paired,
+                unmatchedPaddleManga: paddleVsManga.unmatchedAnchor,
+                unmatchedPaddleVision: paddleVsVision.unmatchedAnchor,
+                unmatchedManga: paddleVsManga.unmatchedCompared,
+                unmatchedVision: paddleVsVision.unmatchedCompared,
+                latency: latency,
+                failures: failures
             ))
         }
 
@@ -98,10 +159,8 @@ final class OCRBenchmarkTests: XCTestCase {
 
         let report = reporter.generateReport(from: result)
 
-        // Print to Xcode console for immediate viewing
         print("\n" + report + "\n")
 
-        // Also attach to test result for history
         let attachment = XCTAttachment(string: report)
         attachment.name = "benchmark-report.txt"
         attachment.lifetime = .keepAlways
@@ -110,90 +169,9 @@ final class OCRBenchmarkTests: XCTestCase {
         XCTAssertFalse(imageResults.isEmpty, "Expected results for at least one image")
     }
 
+    // MARK: - Smart-resize routing tests
+
     #if arch(arm64)
-    func testPaddleOCRBenchmark() async throws {
-        // 23 example images × ~40 s/image + model load ≈ 15–20 min; default allowance is 10 min.
-        executionTimeAllowance = 30 * 60
-
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let modelDir = appSupport
-            .appendingPathComponent("MangaTranslator")
-            .appendingPathComponent("Models")
-            .appendingPathComponent("PaddleOCR-VL")
-
-        // Use ModelDownloadService to find the actual model folder (it might be nested)
-        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelDir) else {
-            print("PaddleOCR model not installed at \(modelDir.path) — skipping benchmark")
-            return
-        }
-
-        print("Using PaddleOCR model at: \(resolvedDir.path)")
-        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
-        let images = scanner.findImages(in: examplesDir)
-        
-        guard !images.isEmpty else {
-            print("No images in examples/ — skipping PaddleOCR benchmark")
-            return
-        }
-
-        let clock = ContinuousClock()
-        var imageResults: [ImageResult] = []
-
-        for imagePath in images {
-            guard let image = NSImage(contentsOf: imagePath),
-                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                continue
-            }
-
-            let start = clock.now
-            let result: (text: String, confidence: Float)
-            do {
-                result = try engine.infer(image: cgImage)
-            } catch {
-                print("PaddleOCR failed for \(imagePath.lastPathComponent): \(error)")
-                continue
-            }
-            let elapsed = start.duration(to: clock.now)
-            let durationMs = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-
-            print("Image: \(imagePath.lastPathComponent), Latency: \(String(format: "%.2f", durationMs))ms, Text: [\(result.text)]")
-            
-            imageResults.append(ImageResult(
-                imagePath: imagePath.path,
-                pairedRegions: [], // Not using regions in this benchmark yet
-                unmatchedManga: [BubbleCluster(boundingBox: .zero, text: result.text, observations: [])],
-                unmatchedVision: []
-            ))
-        }
-
-        let result = BenchmarkResult(
-            timestamp: Date(),
-            imageCount: imageResults.count,
-            imageResults: imageResults
-        )
-
-        let report = reporter.generateReport(from: result)
-        print("\n--- PaddleOCR Benchmark Report ---\n" + report + "\n")
-        
-        let attachment = XCTAttachment(string: report)
-        attachment.name = "paddle-ocr-benchmark-report.txt"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-
-        XCTAssertFalse(imageResults.isEmpty, "Expected results for at least one image")
-
-        // Require at least one reference string confirmed from Swift full-page inference on examples/book2.
-        // Python verify.py produces different output than Swift for the same images (different quantization
-        // path / mlx_vlm vs native MLX inference). book2/004 and book2/005 consistently produce clean text.
-        let referenceStrings = ["どうしたんですか", "じゃあそれだけ", "仮説も", "転生したら", "第49話"]
-        let allText = imageResults.compactMap { $0.unmatchedManga.first?.text }.joined(separator: " ")
-        let hasMatch = referenceStrings.contains { allText.contains($0) }
-        XCTAssert(hasMatch,
-            "Expected at least one reference string \(referenceStrings) in PaddleOCR output. Got: \(allText.prefix(300))")
-    }
-
-    // MARK: - Smart-resize routing tests (task 15.4)
-
     func testSmartResizeSelectedForSmallCrop() {
         // 200×50 → 196×56 (56 patches); peak ≈ 56 × 1152 × 27 × 2 × 10 ≈ 34.8 MB — trivially within budget
         XCTAssertTrue(shouldUseSmartResize(

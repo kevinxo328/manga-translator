@@ -121,7 +121,7 @@ The system SHALL allow users to delete the downloaded model, freeing disk space.
 ---
 
 ### Requirement: Run high-accuracy OCR inference on Apple Silicon
-The system SHALL load the quantized MLX model from Application Support and run text recognition on cropped image regions. The recognizer SHALL conform to `OCRRecognizing`. The system SHALL lazy-load the model on first inference. The system SHALL release the model from memory when the system sends a memory pressure notification, and reload on next inference.
+The system SHALL load the quantized MLX model from Application Support and run text recognition on cropped image regions. The recognizer SHALL conform to `OCRRecognizing`. The system SHALL lazy-load the model on first inference. The system SHALL expose deterministic unload/reset hooks for app-controlled lifecycle events and SHALL release in-memory model resources when those hooks are invoked. The system SHALL also release the model from memory when the system sends a memory pressure notification, and reload on next inference.
 
 #### Scenario: Successful inference on cropped region
 - **WHEN** a cropped image region containing Japanese text is provided
@@ -133,15 +133,15 @@ The system SHALL load the quantized MLX model from Application Support and run t
 
 #### Scenario: Memory pressure release
 - **WHEN** the system sends `NSApplication.didReceiveMemoryWarningNotification`
-- **THEN** the in-memory MLX model is released (`model = nil`)
-
-#### Scenario: Inference after memory pressure
-- **WHEN** inference is requested after the model was released due to memory pressure
-- **THEN** the model is reloaded and inference succeeds
+- **THEN** the in-memory MLX model is released and the next inference reloads it before recognition
 
 #### Scenario: Explicit unload hook
 - **WHEN** app-controlled lifecycle events invoke recognizer unload/reset
 - **THEN** in-memory MLX model resources are released deterministically even without a system memory warning notification
+
+#### Scenario: Inference after explicit unload
+- **WHEN** inference is requested after the model was released through an explicit unload/reset hook
+- **THEN** the model is reloaded and inference succeeds
 
 #### Scenario: Model file deleted externally before inference
 - **WHEN** model files are deleted outside the app and `recognizeText` is called
@@ -166,6 +166,27 @@ The system SHALL load the quantized MLX model from Application Support and run t
 #### Scenario: Very large input image (boundary)
 - **WHEN** a 4K+ resolution image is provided
 - **THEN** inference completes without out-of-memory crash
+
+---
+
+### Requirement: Stable decode termination for high-accuracy OCR
+The high-accuracy OCR runtime SHALL guard against repetitive decode loops and token-budget exhaustion that produce non-meaningful repeated output. The runtime SHALL stop generation when a loop or terminal truncation condition is detected and SHALL return the best available cleaned text for the crop.
+
+#### Scenario: Repetitive phrase loop detected
+- **WHEN** generated tokens enter a repeated phrase loop for a crop
+- **THEN** generation stops before consuming the full decode budget and the recognizer returns the cleaned non-looping prefix
+
+#### Scenario: Repeated punctuation loop detected
+- **WHEN** generated tokens degrade into repeated punctuation or other low-information repetition
+- **THEN** generation stops and the result is reported without the repeated tail
+
+#### Scenario: Legitimate long crop output
+- **WHEN** a crop contains a long but valid text sequence with no loop pattern
+- **THEN** the runtime continues decoding until a normal stop condition or token limit is reached
+
+#### Scenario: Token limit reached without loop detection
+- **WHEN** generation reaches the configured token ceiling without EOS and without a detected loop
+- **THEN** the runtime returns the truncated text deterministically and surfaces no silent crash
 
 ---
 

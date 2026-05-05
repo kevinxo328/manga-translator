@@ -14,27 +14,27 @@ enum IoUCalculator {
 
 struct BubbleRegionMatcher {
     static func match(
-        manga: [BubbleCluster],
-        vision: [BubbleCluster],
+        anchor: [BubbleCluster],
+        compared: [BubbleCluster],
         threshold: Float = 0.5
-    ) -> (paired: [PairedRegionResult], unmatchedManga: [BubbleCluster], unmatchedVision: [BubbleCluster]) {
+    ) -> (paired: [PairedRegionResult], unmatchedAnchor: [BubbleCluster], unmatchedCompared: [BubbleCluster]) {
         var paired: [PairedRegionResult] = []
-        var remainingManga = manga
-        var remainingVision = vision
+        var remainingAnchor = anchor
+        var remainingCompared = compared
         
         // Find all possible pairings above threshold
         struct CandidatePair {
-            let mangaIndex: Int
-            let visionIndex: Int
+            let anchorIndex: Int
+            let comparedIndex: Int
             let iou: Float
         }
         
         var candidates: [CandidatePair] = []
-        for i in 0..<remainingManga.count {
-            for j in 0..<remainingVision.count {
-                let score = IoUCalculator.iou(remainingManga[i].boundingBox, remainingVision[j].boundingBox)
+        for i in 0..<remainingAnchor.count {
+            for j in 0..<remainingCompared.count {
+                let score = IoUCalculator.iou(remainingAnchor[i].boundingBox, remainingCompared[j].boundingBox)
                 if score >= threshold {
-                    candidates.append(CandidatePair(mangaIndex: i, visionIndex: j, iou: score))
+                    candidates.append(CandidatePair(anchorIndex: i, comparedIndex: j, iou: score))
                 }
             }
         }
@@ -42,30 +42,30 @@ struct BubbleRegionMatcher {
         // Sort by IoU descending for greedy matching
         candidates.sort { $0.iou > $1.iou }
         
-        var matchedMangaIndices = Set<Int>()
-        var matchedVisionIndices = Set<Int>()
+        var matchedAnchorIndices = Set<Int>()
+        var matchedComparedIndices = Set<Int>()
         
         for candidate in candidates {
-            if !matchedMangaIndices.contains(candidate.mangaIndex) && 
-               !matchedVisionIndices.contains(candidate.visionIndex) {
+            if !matchedAnchorIndices.contains(candidate.anchorIndex) && 
+               !matchedComparedIndices.contains(candidate.comparedIndex) {
                 paired.append(PairedRegionResult(
-                    mangaBubble: remainingManga[candidate.mangaIndex],
-                    visionBubble: remainingVision[candidate.visionIndex],
+                    anchorBubble: remainingAnchor[candidate.anchorIndex],
+                    comparedBubble: remainingCompared[candidate.comparedIndex],
                     iou: candidate.iou
                 ))
-                matchedMangaIndices.insert(candidate.mangaIndex)
-                matchedVisionIndices.insert(candidate.visionIndex)
+                matchedAnchorIndices.insert(candidate.anchorIndex)
+                matchedComparedIndices.insert(candidate.comparedIndex)
             }
         }
         
-        let unmatchedManga = remainingManga.enumerated()
-            .filter { !matchedMangaIndices.contains($0.offset) }
+        let unmatchedAnchor = remainingAnchor.enumerated()
+            .filter { !matchedAnchorIndices.contains($0.offset) }
             .map { $0.element }
             
-        let unmatchedVision = remainingVision.enumerated()
-            .filter { !matchedVisionIndices.contains($0.offset) }
+        let unmatchedCompared = remainingCompared.enumerated()
+            .filter { !matchedComparedIndices.contains($0.offset) }
             .map { $0.element }
             
-        return (paired, unmatchedManga, unmatchedVision)
+        return (paired, unmatchedAnchor, unmatchedCompared)
     }
 }

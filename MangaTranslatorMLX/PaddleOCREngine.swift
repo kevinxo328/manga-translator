@@ -401,6 +401,11 @@ private struct GeneratorRuntime {
             if stopTokens.contains(nextTokenId) { break }
             generatedTokens.append(nextTokenId)
 
+            // Loop detection: check for 2, 3, or 4 token repetitive patterns
+            if generatedTokens.count >= 12 {
+                if detectLoop(in: generatedTokens) { break }
+            }
+
             inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
             let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
             let nextHidden = model.languageModel.forward(nextEmbeds, cache: cache)
@@ -410,6 +415,20 @@ private struct GeneratorRuntime {
             for c in cache { if let cs = c as? (any Updatable) { eval(cs) } }
         }
         return generatedTokens
+    }
+
+    private func detectLoop(in tokens: [Int]) -> Bool {
+        for n in 2...4 {
+            if tokens.count >= n * 3 {
+                let tail = Array(tokens.suffix(n))
+                let prev = Array(tokens.dropLast(n).suffix(n))
+                let prevPrev = Array(tokens.dropLast(n * 2).suffix(n))
+                if tail == prev && prev == prevPrev {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 

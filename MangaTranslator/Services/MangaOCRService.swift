@@ -8,6 +8,7 @@ final class MangaOCRService {
     private let logger = Logger(subsystem: "MangaTranslator", category: "MangaOCR")
 
     func resetRecognizer() {
+        recognizer?.unload()
         recognizer = nil
     }
 

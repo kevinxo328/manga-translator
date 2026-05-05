@@ -88,8 +88,6 @@
 		PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		PH1000000200000000000004 /* MangaTranslatorMLX.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
-		SP1000000100000000000001 /* PaddleOCRIntegrationSpikeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP2000000100000000000003 /* PaddleOCRIntegrationSpikeTests.swift */; };
-		SP1000000100000000000002 /* MangaTranslatorMLX.framework in Frameworks (Spike) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,13 +113,6 @@
 			remoteInfo = MangaTranslatorMLX;
 		};
 		PH4000000200000000000002 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A90000010000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = M50000010000000000000001;
-			remoteInfo = MangaTranslatorMLX;
-		};
-		SPC000000100000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
 			proxyType = 1;
@@ -221,9 +212,7 @@
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
 		PH2000000200000000000003 /* PaddleOCREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCREngine.swift; sourceTree = "<group>"; };
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
-		SP2000000100000000000001 /* MangaTranslatorSpikeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorSpikeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		SP2000000100000000000002 /* MangaTranslatorSpikeTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MangaTranslatorSpikeTests.entitlements; sourceTree = "<group>"; };
-		SP2000000100000000000003 /* PaddleOCRIntegrationSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRIntegrationSpikeTests.swift; sourceTree = "<group>"; };
+
 		M20000010000000000000010 /* MangaTranslatorMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MangaTranslatorMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -256,14 +245,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		SP3000000100000000000001 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				SP1000000100000000000002 /* MangaTranslatorMLX.framework in Frameworks (Spike) */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -273,7 +254,6 @@
 				A40000010000000000000002 /* MangaTranslator */,
 				M40000010000000000000001 /* MangaTranslatorMLX */,
 				T40000010000000000000001 /* MangaTranslatorTests */,
-				SP4000000100000000000001 /* MangaTranslatorSpikeTests */,
 				BK40000010000000000000001 /* OCRBenchmarkTests */,
 				A40000010000000000000009 /* Products */,
 			);
@@ -365,19 +345,9 @@
 				A20000010000000000000010 /* MangaTranslator.app */,
 				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
 				M20000010000000000000010 /* MangaTranslatorMLX.framework */,
-				SP2000000100000000000001 /* MangaTranslatorSpikeTests.xctest */,
 				BK20000010000000000000001 /* OCRBenchmarkTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		SP4000000100000000000001 /* MangaTranslatorSpikeTests */ = {
-			isa = PBXGroup;
-			children = (
-				SP2000000100000000000002 /* MangaTranslatorSpikeTests.entitlements */,
-				SP2000000100000000000003 /* PaddleOCRIntegrationSpikeTests.swift */,
-			);
-			path = MangaTranslatorSpikeTests;
 			sourceTree = "<group>";
 		};
 		BK40000010000000000000001 /* OCRBenchmarkTests */ = {
@@ -530,23 +500,6 @@
 			productReference = T20000010000000000000010 /* MangaTranslatorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		SP5000000100000000000001 /* MangaTranslatorSpikeTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = SPA000000100000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorSpikeTests" */;
-			buildPhases = (
-				SP6000000100000000000001 /* Sources */,
-				SP3000000100000000000001 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				SPD000000100000000000001 /* PBXTargetDependency */,
-			);
-			name = MangaTranslatorSpikeTests;
-			productName = MangaTranslatorSpikeTests;
-			productReference = SP2000000100000000000001 /* MangaTranslatorSpikeTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -570,9 +523,6 @@
 					T50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = A50000010000000000000001;
-					};
-					SP5000000100000000000001 = {
-						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -599,7 +549,6 @@
 				A50000010000000000000001 /* MangaTranslator */,
 				M50000010000000000000001 /* MangaTranslatorMLX */,
 				T50000010000000000000001 /* MangaTranslatorTests */,
-				SP5000000100000000000001 /* MangaTranslatorSpikeTests */,
 				BK50000010000000000000001 /* OCRBenchmarkTests */,
 			);
 		};
@@ -716,14 +665,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		SP6000000100000000000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				SP1000000100000000000001 /* PaddleOCRIntegrationSpikeTests.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -746,11 +687,6 @@
 			isa = PBXTargetDependency;
 			target = M50000010000000000000001 /* MangaTranslatorMLX */;
 			targetProxy = PH4000000200000000000002 /* PBXContainerItemProxy */;
-		};
-		SPD000000100000000000001 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = M50000010000000000000001 /* MangaTranslatorMLX */;
-			targetProxy = SPC000000100000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -943,7 +879,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				GENERATE_INFOPLIST_FILE = YES;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorMLX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -968,7 +904,7 @@
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				GENERATE_INFOPLIST_FILE = YES;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorMLX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1050,54 +986,6 @@
 			};
 			name = Release;
 		};
-		SP7000000100000000000001 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				CODE_SIGN_ENTITLEMENTS = MangaTranslatorSpikeTests/MangaTranslatorSpikeTests.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-					"$(BUILT_PRODUCTS_DIR)",
-					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorSpikeTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		SP7000000100000000000002 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				CODE_SIGN_ENTITLEMENTS = MangaTranslatorSpikeTests/MangaTranslatorSpikeTests.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-					"$(BUILT_PRODUCTS_DIR)",
-					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorSpikeTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1124,15 +1012,6 @@
 			buildConfigurations = (
 				MB0000010000000000000001 /* Debug */,
 				MB0000010000000000000002 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		SPA000000100000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorSpikeTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				SP7000000100000000000001 /* Debug */,
-				SP7000000100000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

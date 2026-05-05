@@ -288,6 +288,64 @@ struct PaddleOCRVLRecognizerTests {
         #expect(Bool(true))
     }
 
+    // MARK: - Memory pressure release
+
+    @Test("Memory pressure notification releases model and reloads on next inference")
+    func memoryPressureReleasesAndReloads() async throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var loadCount = 0
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in
+            loadCount += 1
+            return MockOCREngine()
+        }
+
+        guard let image = makeSolidCGImage(width: 50, height: 50) else { return }
+        let region = CGRect(x: 0, y: 0, width: 50, height: 50)
+
+        _ = try recognizer.recognizeText(in: image, region: region)
+        #expect(loadCount == 1)
+
+        NotificationCenter.default.post(name: .paddleOCRVLMemoryPressure, object: nil)
+        await Task.yield()
+
+        _ = try recognizer.recognizeText(in: image, region: region)
+        #expect(loadCount == 2, "Memory pressure should release model, forcing reload on next inference")
+    }
+
+    // MARK: - Decode-stability: cleanRecognizedText
+
+    @Test("Repeated punctuation tail is collapsed to a single character")
+    func repeatedPunctuationIsCollapsed() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mockEngine = MockOCREngine()
+        mockEngine.result = ("Degraded output...............", 0.8)
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in mockEngine }
+
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+        let (text, _) = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
+
+        #expect(text == "Degraded output.", "Repeated dots should be collapsed to one period, not replaced with '['")
+    }
+
+    @Test("Repeated phrase loop is stripped to its first occurrence")
+    func repeatedPhraseTailIsStripped() throws {
+        let dir = try makeModelDirectoryWithWeights()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let mockEngine = MockOCREngine()
+        mockEngine.result = ("This is a loop. This is a loop. This is a loop. This is a loop.", 0.9)
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: dir) { _ in mockEngine }
+
+        guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
+        let (text, _) = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
+
+        #expect(text == "This is a loop.", "Repeated phrase tail should be stripped to a single occurrence")
+    }
+
     @Test("Default engine reports explicit inference failure instead of silent empty result")
     func defaultEngineReturnsExplicitFailure() throws {
         let dir = try makeModelDirectoryWithRuntimeArtifacts()
