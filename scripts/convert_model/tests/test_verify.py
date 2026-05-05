@@ -11,8 +11,8 @@ from scripts.convert_model.verify import (
     Sample,
     clamp_crop_box,
     compute_cer,
-    detect_ordering_mismatch,
     expand_crop_box,
+    format_report_block,
     load_crop_samples,
     normalize_text,
     percentile,
@@ -47,10 +47,9 @@ class VerifyHelpersTests(unittest.TestCase):
         clamped = clamp_crop_box(CropBox(x=-10, y=-5, width=30, height=20), image_width=100, image_height=80)
         self.assertEqual(clamped, CropBox(x=0, y=0, width=20, height=15))
 
-    def test_detect_ordering_mismatch_requires_same_line_multiset(self):
-        self.assertTrue(detect_ordering_mismatch("a\nb", "b\na"))
-        self.assertFalse(detect_ordering_mismatch("a\nb", "a\nc"))
-        self.assertFalse(detect_ordering_mismatch("abc", "cba"))
+    def test_format_report_block_indents_multiline_output(self):
+        self.assertEqual(format_report_block("a\nb"), "      a\n      b")
+        self.assertEqual(format_report_block(""), "      [empty]")
 
     def test_load_crop_samples_resolves_relative_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -108,15 +107,11 @@ class VerifyHelpersTests(unittest.TestCase):
                 prepared_image_path="a.png",
                 crop_box=None,
                 crop_padding=0.0,
-                reference_source="bf16",
                 original_text="abc",
                 quantized_text="abc",
                 cer_delta=0.01,
-                original_loop_detected=False,
                 quantized_loop_detected=False,
                 empty_output=False,
-                ordering_mismatch=False,
-                catastrophic=False,
             ),
             EvaluationRecord(
                 sample_id="b",
@@ -125,24 +120,19 @@ class VerifyHelpersTests(unittest.TestCase):
                 prepared_image_path="b.png",
                 crop_box=None,
                 crop_padding=0.0,
-                reference_source="bf16",
                 original_text="abc",
                 quantized_text="",
                 cer_delta=0.4,
-                original_loop_detected=False,
                 quantized_loop_detected=True,
                 empty_output=True,
-                ordering_mismatch=True,
-                catastrophic=True,
             ),
         ]
 
         summary = summarize_records(records, fail_threshold=0.05)
         self.assertEqual(summary["sample_count"], 2)
         self.assertEqual(summary["fail_count"], 1)
-        self.assertEqual(summary["catastrophic_count"], 1)
-        self.assertEqual(summary["ordering_mismatch_count"], 1)
         self.assertEqual(summary["empty_output_count"], 1)
+        self.assertEqual(summary["quantized_loop_count"], 1)
 
 
 if __name__ == "__main__":

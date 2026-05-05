@@ -13,6 +13,7 @@ import math
 import os
 import sys
 import tempfile
+import textwrap
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,13 @@ def normalize_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace("…", "...").replace("……", "......").replace("！", "!").replace("？", "?")
     return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+
+
+def format_report_block(text: str) -> str:
+    """Render model output as an indented multi-line block for terminal reports."""
+    if not text:
+        return textwrap.indent("[empty]", " " * 6)
+    return textwrap.indent(text, " " * 6)
 
 
 def compute_cer(reference: str, hypothesis: str) -> float:
@@ -417,8 +425,10 @@ def print_human_report(records: list[EvaluationRecord], summary: dict[str, Any])
         status = "PASS" if record.cer_delta <= summary["fail_threshold"] else "FAIL"
         print(f"  [{status}] {record.sample_id} ({record.mode})")
         print(f"    Image:       {record.image_path}")
-        print(f"    Original:    {record.original_text!r}")
-        print(f"    Quantized:   {record.quantized_text!r}")
+        print("    Original:")
+        print(format_report_block(record.original_text))
+        print("    Quantized:")
+        print(format_report_block(record.quantized_text))
         print(f"    CER delta:   {record.cer_delta:.4f}")
         flags = []
         if record.quantized_loop_detected:
