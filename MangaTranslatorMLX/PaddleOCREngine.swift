@@ -18,6 +18,44 @@ public protocol PaddleOCRInferencing: AnyObject {
     func infer(image: CGImage) throws -> (text: String, confidence: Float)
 }
 
+struct PaddleOCRDebugTrace {
+    let rawText: String
+    let trimmedText: String
+    let generatedTokens: [Int]
+    let terminationToken: Int?
+    let firstStepTopTokens: [PaddleOCRDebugToken]
+}
+
+struct PaddleOCRDebugToken {
+    let tokenId: Int
+    let logit: Float
+}
+
+struct PaddleOCRPrefillDebug {
+    let pixelValues: MLXArray
+    let encodedVisionFeatures: MLXArray
+    let projectedImageFeatures: MLXArray
+    let mergedEmbeddings: MLXArray
+    let firstLayerInputNormLastToken: MLXArray
+    let firstLayerAttentionOutputLastToken: MLXArray
+    let firstLayerAttentionRawQueriesLastToken: MLXArray
+    let firstLayerAttentionRawKeysLastToken: MLXArray
+    let firstLayerAttentionRawValuesLastToken: MLXArray
+    let firstLayerAttentionQueriesLastToken: MLXArray
+    let firstLayerAttentionKeysLastToken: MLXArray
+    let firstLayerAttentionValuesLastToken: MLXArray
+    let firstLayerAttentionWeightsLastRow: MLXArray
+    let firstLayerResidualAfterAttentionLastToken: MLXArray
+    let firstLayerPostAttentionNormLastToken: MLXArray
+    let firstLayerMLPOutputLastToken: MLXArray
+    let firstLayerOutputLastToken: MLXArray
+    let layerLastTokenHiddenStates: [MLXArray]
+    let firstStepLogits: MLXArray
+    let inputIds: [Int]
+    let targetWidth: Int
+    let targetHeight: Int
+}
+
 // MARK: - Rotary PE helpers
 
 private func rotateHalfVision(_ x: MLXArray) -> MLXArray {
@@ -220,7 +258,6 @@ private class MangaVisionEncoder: Module {
     // Compute 2D rotary frequencies for a (t, h, w) patch grid.
     // Returns (t*h*w, rotaryDim*2) where rotaryDim*2 = head_dim = 72.
     private func computeRotaryFreqs(t: Int, h: Int, w: Int) -> MLXArray {
-        let halfDim = rotaryDim / 2  // 18
         // inv_freq: (18,) via theta^(-arange/rotaryDim)
         let arangeVals = MLXArray(Array(stride(from: 0, to: rotaryDim, by: 2)).map { Float($0) })
         let invFreq = MLX.exp(-log(rotaryTheta) * arangeVals / Float(rotaryDim)).asType(.float32)
@@ -381,6 +418,12 @@ private struct TokenizerAdapter {
 }
 
 private struct GeneratorRuntime {
+    struct GenerationTrace {
+        let generatedTokens: [Int]
+        let terminationToken: Int?
+        let firstStepTopTokens: [PaddleOCRDebugToken]
+    }
+
     struct GenerationSettings {
         let maxNewTokens: Int
         let noRepeatNgramSize: Int
@@ -391,6 +434,10 @@ private struct GeneratorRuntime {
     let settings: GenerationSettings
 
     func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int] {
+        generateTrace(imageFeatures: imageFeatures, inputIds: inputIds, maxNewTokens: maxNewTokens).generatedTokens
+    }
+
+    func generateTrace(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> GenerationTrace {
         var inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
         let cache = model.newCache()
 
@@ -400,23 +447,35 @@ private struct GeneratorRuntime {
 
         var generatedTokens: [Int] = []
         let tokenBudget = effectiveMaxNewTokens(requested: maxNewTokens, configured: settings.maxNewTokens)
+        var terminationToken: Int?
+        var firstStepTopTokens: [PaddleOCRDebugToken] = []
 
-        for _ in 0..<tokenBudget {
+        for step in 0..<tokenBudget {
             let lastLogits = logits[0, -1]
+            if step == 0 {
+                firstStepTopTokens = topTokens(from: lastLogits, count: 5)
+            }
             let nextTokenId = argMax(lastLogits).item(Int.self)
 
-            if stopTokens.contains(nextTokenId) { break }
+            if stopTokens.contains(nextTokenId) {
+                terminationToken = nextTokenId
+                break
+            }
             if wouldRepeatNgram(
                 generatedTokens: generatedTokens,
                 nextTokenId: nextTokenId,
                 noRepeatNgramSize: settings.noRepeatNgramSize
             ) {
+                terminationToken = nextTokenId
                 break
             }
 
             generatedTokens.append(nextTokenId)
 
-            if detectLoop(in: generatedTokens) { break }
+            if detectLoop(in: generatedTokens) {
+                terminationToken = nextTokenId
+                break
+            }
 
             inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
             let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
@@ -426,7 +485,11 @@ private struct GeneratorRuntime {
             eval(logits)
             for c in cache { if let cs = c as? (any Updatable) { eval(cs) } }
         }
-        return generatedTokens
+        return GenerationTrace(
+            generatedTokens: generatedTokens,
+            terminationToken: terminationToken,
+            firstStepTopTokens: firstStepTopTokens
+        )
     }
 
     private func detectLoop(in tokens: [Int]) -> Bool {
@@ -441,6 +504,17 @@ private struct GeneratorRuntime {
             }
         }
         return false
+    }
+
+    private func topTokens(from logits: MLXArray, count: Int) -> [PaddleOCRDebugToken] {
+        let sortedIndices = argSort(logits).asArray(Int32.self)
+        let topIndices = Array(sortedIndices.suffix(count).reversed()).map(Int.init)
+        return topIndices.map { tokenId in
+            PaddleOCRDebugToken(
+                tokenId: tokenId,
+                logit: logits[tokenId].item(Float.self)
+            )
+        }
     }
 }
 
@@ -488,6 +562,10 @@ private struct PaddleOCRVLRuntime {
     let numVisionLayers: Int
 
     func recognize(ciImage: CIImage) -> String {
+        recognizeDebug(ciImage: ciImage).trimmedText
+    }
+
+    func recognizeDebug(ciImage: CIImage) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize
         let hiddenSize = config.visionConfig.hiddenSize
         let srcW = Int(ciImage.extent.width)
@@ -498,13 +576,70 @@ private struct PaddleOCRVLRuntime {
                                  hiddenSize: hiddenSize, numLayers: numVisionLayers,
                                  availableMemoryBytes: availableMemory) {
             let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
-            return recognizeSmartResize(ciImage: ciImage, targetW: targetW, targetH: targetH)
+            return recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH)
         } else {
-            return recognizeTiled(ciImage: ciImage)
+            return recognizeTiledDebug(ciImage: ciImage)
         }
     }
 
+    func prefillDebug(ciImage: CIImage) -> PaddleOCRPrefillDebug? {
+        let patchSize = config.visionConfig.patchSize
+        let hiddenSize = config.visionConfig.hiddenSize
+        let srcW = Int(ciImage.extent.width)
+        let srcH = Int(ciImage.extent.height)
+
+        let availableMemory = availableGPUMemoryBytes()
+        guard shouldUseSmartResize(srcW: srcW, srcH: srcH, patchSize: patchSize,
+                                   hiddenSize: hiddenSize, numLayers: numVisionLayers,
+                                   availableMemoryBytes: availableMemory) else {
+            return nil
+        }
+
+        let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
+        let hPatches = targetH / patchSize
+        let wPatches = targetW / patchSize
+        let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
+        let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
+        let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1))
+        let inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
+        let mergedEmbeddings = model.mergeInputIdsWithImageFeatures(inputIds: inputIdArray, imageFeatures: projected)
+        let cache = model.newCache()
+        let firstLayerDebug = model.languageModel.forwardFirstLayerDebug(mergedEmbeddings, cache: cache)
+        let forwardDebug = model.languageModel.forwardDebug(mergedEmbeddings, cache: model.newCache())
+        let layerLastTokenHiddenStates = forwardDebug.layerOutputs.map { $0[0, -1] }
+        let firstStepLogits = model.lmHead(firstLayerDebug.finalHidden)[0, -1]
+        return PaddleOCRPrefillDebug(
+            pixelValues: pixelValues,
+            encodedVisionFeatures: visionFeatures,
+            projectedImageFeatures: projected,
+            mergedEmbeddings: mergedEmbeddings,
+            firstLayerInputNormLastToken: firstLayerDebug.firstLayerInputNorm[0, -1],
+            firstLayerAttentionOutputLastToken: firstLayerDebug.firstLayerAttentionOutput[0, -1],
+            firstLayerAttentionRawQueriesLastToken: firstLayerDebug.firstLayerAttentionRawQueries[0, 0..., -1, 0...],
+            firstLayerAttentionRawKeysLastToken: firstLayerDebug.firstLayerAttentionRawKeys[0, 0..., -1, 0...],
+            firstLayerAttentionRawValuesLastToken: firstLayerDebug.firstLayerAttentionRawValues[0, 0..., -1, 0...],
+            firstLayerAttentionQueriesLastToken: firstLayerDebug.firstLayerAttentionQueries[0, 0..., -1, 0...],
+            firstLayerAttentionKeysLastToken: firstLayerDebug.firstLayerAttentionKeys[0, 0..., -1, 0...],
+            firstLayerAttentionValuesLastToken: firstLayerDebug.firstLayerAttentionValues[0, 0..., -1, 0...],
+            firstLayerAttentionWeightsLastRow: firstLayerDebug.firstLayerAttentionWeights[0, 0..., -1, 0...],
+            firstLayerResidualAfterAttentionLastToken: firstLayerDebug.firstLayerResidualAfterAttention[0, -1],
+            firstLayerPostAttentionNormLastToken: firstLayerDebug.firstLayerPostAttentionNorm[0, -1],
+            firstLayerMLPOutputLastToken: firstLayerDebug.firstLayerMLPOutput[0, -1],
+            firstLayerOutputLastToken: firstLayerDebug.firstLayerOutput[0, -1],
+            layerLastTokenHiddenStates: layerLastTokenHiddenStates,
+            firstStepLogits: firstStepLogits,
+            inputIds: inputIds,
+            targetWidth: targetW,
+            targetHeight: targetH
+        )
+    }
+
     private func recognizeSmartResize(ciImage: CIImage, targetW: Int, targetH: Int) -> String {
+        recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH).trimmedText
+    }
+
+    private func recognizeSmartResizeDebug(ciImage: CIImage, targetW: Int, targetH: Int) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize
         let hPatches = targetH / patchSize
         let wPatches = targetW / patchSize
@@ -513,15 +648,27 @@ private struct PaddleOCRVLRuntime {
         let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
 
         let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1))
-        let generatedTokens = generator.generate(imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024)
-        let result = tokenizerAdapter.decode(generatedTokens)
-        if result.isEmpty {
+        let generationTrace = generator.generateTrace(imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024)
+        let generatedTokens = generationTrace.generatedTokens
+        let rawText = tokenizerAdapter.decode(generatedTokens)
+        let trimmedText = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedText.isEmpty {
             print("[PaddleOCREngine] Warning: Empty OCR result from smart_resize path. Tokens: \(generatedTokens)")
         }
-        return result
+        return PaddleOCRDebugTrace(
+            rawText: rawText,
+            trimmedText: trimmedText,
+            generatedTokens: generatedTokens,
+            terminationToken: generationTrace.terminationToken,
+            firstStepTopTokens: generationTrace.firstStepTopTokens
+        )
     }
 
     private func recognizeTiled(ciImage: CIImage) -> String {
+        recognizeTiledDebug(ciImage: ciImage).trimmedText
+    }
+
+    private func recognizeTiledDebug(ciImage: CIImage) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize  // 14
         let tileSize = 392  // 28 patches per side → 14×14 merged tokens per tile
         let srcW = Int(ciImage.extent.width)
@@ -555,12 +702,20 @@ private struct PaddleOCRVLRuntime {
             : concatenated(allProjectedFeatures, axis: 1)
 
         let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1))
-        let generatedTokens = generator.generate(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
-        let result = tokenizerAdapter.decode(generatedTokens)
-        if result.isEmpty {
+        let generationTrace = generator.generateTrace(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
+        let generatedTokens = generationTrace.generatedTokens
+        let rawText = tokenizerAdapter.decode(generatedTokens)
+        let trimmedText = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedText.isEmpty {
             print("[PaddleOCREngine] Warning: Empty OCR result from tiling path. Tokens: \(generatedTokens)")
         }
-        return result
+        return PaddleOCRDebugTrace(
+            rawText: rawText,
+            trimmedText: trimmedText,
+            generatedTokens: generatedTokens,
+            terminationToken: generationTrace.terminationToken,
+            firstStepTopTokens: generationTrace.firstStepTopTokens
+        )
     }
 }
 
@@ -627,9 +782,27 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         }
         let rt = try loadRuntimeIfNeeded()
         let ciImage = CIImage(cgImage: image)
-        let text = rt.recognize(ciImage: ciImage).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = rt.recognize(ciImage: ciImage)
         let confidence: Float = text.isEmpty ? 0 : 1
         return (text, confidence)
+    }
+
+    func inferDebug(image: CGImage) throws -> PaddleOCRDebugTrace {
+        guard image.width > 0 && image.height > 0 else {
+            throw PaddleOCREngineError.invalidInputImage
+        }
+        let rt = try loadRuntimeIfNeeded()
+        let ciImage = CIImage(cgImage: image)
+        return rt.recognizeDebug(ciImage: ciImage)
+    }
+
+    func prefillDebug(image: CGImage) throws -> PaddleOCRPrefillDebug? {
+        guard image.width > 0 && image.height > 0 else {
+            throw PaddleOCREngineError.invalidInputImage
+        }
+        let rt = try loadRuntimeIfNeeded()
+        let ciImage = CIImage(cgImage: image)
+        return rt.prefillDebug(ciImage: ciImage)
     }
 
     private func loadRuntimeIfNeeded() throws -> PaddleOCRVLRuntime {

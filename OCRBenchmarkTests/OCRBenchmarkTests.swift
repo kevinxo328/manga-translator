@@ -1,9 +1,11 @@
 import XCTest
 @testable import MangaTranslator
 import AppKit
+import Foundation
 
 #if arch(arm64)
 @testable import MangaTranslatorMLX
+import MLX
 #endif
 
 @MainActor
@@ -20,6 +22,37 @@ final class OCRBenchmarkTests: XCTestCase {
     private var examplesDir: URL {
         projectRoot.appendingPathComponent("examples")
     }
+
+    #if arch(arm64)
+    private func benchmarkExpandedCrop(
+        image: CGImage,
+        region: CGRect
+    ) -> CGImage? {
+        let imageBounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let cropPaddingRatio: CGFloat = 0.18
+        let minimumHorizontalPadding: CGFloat = 10
+        let minimumVerticalPadding: CGFloat = 6
+        let elongatedBubbleThreshold: CGFloat = 1.6
+        let tallBubbleThreshold: CGFloat = 0.7
+        let elongatedHorizontalBoostRatio: CGFloat = 0.08
+        let tallVerticalBoostRatio: CGFloat = 0.08
+
+        let aspectRatio = region.width / region.height
+        var horizontalPadding = max(minimumHorizontalPadding, region.width * cropPaddingRatio)
+        var verticalPadding = max(minimumVerticalPadding, region.height * cropPaddingRatio)
+
+        if aspectRatio >= elongatedBubbleThreshold {
+            horizontalPadding += region.width * elongatedHorizontalBoostRatio
+        } else if aspectRatio <= tallBubbleThreshold {
+            verticalPadding += region.height * tallVerticalBoostRatio
+        }
+
+        let expanded = region.insetBy(dx: -horizontalPadding, dy: -verticalPadding)
+        let clamped = expanded.intersection(imageBounds).integral
+        guard clamped.width > 0 && clamped.height > 0 else { return nil }
+        return image.cropping(to: clamped)
+    }
+    #endif
 
     // Integration test: full pipeline on a single known test image
     func testSingleImagePipeline() async throws {
@@ -138,6 +171,255 @@ final class OCRBenchmarkTests: XCTestCase {
 
         XCTAssertFalse(imageResults.isEmpty, "Expected results for at least one image")
     }
+
+    #if arch(arm64)
+    func testCaptureDebugTokenTracesForBenchmarkEmptyRegions() throws {
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available for debug trace capture — skipping")
+            return
+        }
+
+        let cases: [(String, String, CGRect)] = [
+            ("book1/001#r2", "book1/001.jpg", CGRect(x: 292.0651, y: 669.7273, width: 22.0659, height: 71.1165)),
+            ("book1/001#r3", "book1/001.jpg", CGRect(x: 963.3900, y: 1138.7845, width: 21.4628, height: 70.9517)),
+            ("book1/002#r9", "book1/002.jpg", CGRect(x: 244.2680, y: 942.5192, width: 72.4024, height: 141.1021)),
+            ("book1/004#r12", "book1/004.jpg", CGRect(x: 806.2938, y: 1452.3148, width: 33.9647, height: 98.4724)),
+            ("book1/004#r13", "book1/004.jpg", CGRect(x: 125.4072, y: 1151.9563, width: 146.3098, height: 375.1194)),
+        ]
+
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var captured = 0
+
+        for (label, relativePath, region) in cases {
+            let imageURL = examplesDir.appendingPathComponent(relativePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let cropped = benchmarkExpandedCrop(image: cgImage, region: region) else {
+                XCTFail("Could not prepare crop for \(label)")
+                continue
+            }
+
+            let trace = try engine.inferDebug(image: cropped)
+            captured += 1
+            print("TRACE \(label)")
+            print("  rawText: \(String(reflecting: trace.rawText))")
+            print("  trimmedText: \(String(reflecting: trace.trimmedText))")
+            print("  tokens: \(trace.generatedTokens)")
+            print("  terminationToken: \(String(describing: trace.terminationToken))")
+            let firstStepTopTokens = trace.firstStepTopTokens.map { token in
+                "tokenId=\(token.tokenId), logit=\(token.logit)"
+            }.joined(separator: "; ")
+            print("  firstStepTopTokens: [\(firstStepTopTokens)]")
+
+        }
+
+        XCTAssertEqual(captured, cases.count)
+    }
+
+    func testCapturePrefillFeatureSummariesForBenchmarkEmptyRegions() throws {
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available for prefill debug capture — skipping")
+            return
+        }
+
+        let cases: [(String, String, CGRect)] = [
+            ("book1/001#r2", "book1/001.jpg", CGRect(x: 292.0651, y: 669.7273, width: 22.0659, height: 71.1165)),
+            ("book1/001#r3", "book1/001.jpg", CGRect(x: 963.3900, y: 1138.7845, width: 21.4628, height: 70.9517)),
+            ("book1/002#r9", "book1/002.jpg", CGRect(x: 244.2680, y: 942.5192, width: 72.4024, height: 141.1021)),
+            ("book1/004#r12", "book1/004.jpg", CGRect(x: 806.2938, y: 1452.3148, width: 33.9647, height: 98.4724)),
+            ("book1/004#r13", "book1/004.jpg", CGRect(x: 125.4072, y: 1151.9563, width: 146.3098, height: 375.1194)),
+        ]
+
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var captured = 0
+
+        for (label, relativePath, region) in cases {
+            let imageURL = examplesDir.appendingPathComponent(relativePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let cropped = benchmarkExpandedCrop(image: cgImage, region: region) else {
+                XCTFail("Could not prepare crop for \(label)")
+                continue
+            }
+
+            guard let prefill = try engine.prefillDebug(image: cropped) else {
+                XCTFail("Expected smart-resize prefill for \(label)")
+                continue
+            }
+
+            captured += 1
+            print("PREFILL \(label)")
+            print("  targetSize: \(prefill.targetWidth)x\(prefill.targetHeight)")
+            print("  inputIdCount: \(prefill.inputIds.count)")
+            print("  pixelValues: \(tensorSummary(prefill.pixelValues))")
+            print("  encodedVisionFeatures: \(tensorSummary(prefill.encodedVisionFeatures))")
+            print("  projectedImageFeatures: \(tensorSummary(prefill.projectedImageFeatures))")
+            print("  mergedEmbeddings: \(tensorSummary(prefill.mergedEmbeddings))")
+            print("  layerLastTokenHiddenStateCount: \(prefill.layerLastTokenHiddenStates.count)")
+            print("  firstStepLogits: \(tensorSummary(prefill.firstStepLogits))")
+        }
+
+        XCTAssertEqual(captured, cases.count)
+    }
+
+    func testExportSwiftProjectedFeaturesForBenchmarkEmptyRegions() throws {
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available for projected feature export — skipping")
+            return
+        }
+
+        let cases: [(String, String, CGRect)] = [
+            ("book1/001#r2", "book1/001.jpg", CGRect(x: 292.0651, y: 669.7273, width: 22.0659, height: 71.1165)),
+            ("book1/001#r3", "book1/001.jpg", CGRect(x: 963.3900, y: 1138.7845, width: 21.4628, height: 70.9517)),
+            ("book1/002#r9", "book1/002.jpg", CGRect(x: 244.2680, y: 942.5192, width: 72.4024, height: 141.1021)),
+            ("book1/004#r12", "book1/004.jpg", CGRect(x: 806.2938, y: 1452.3148, width: 33.9647, height: 98.4724)),
+            ("book1/004#r13", "book1/004.jpg", CGRect(x: 125.4072, y: 1151.9563, width: 146.3098, height: 375.1194)),
+        ]
+
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var exportedEntries: [[String: Any]] = []
+
+        for (label, relativePath, region) in cases {
+            let imageURL = examplesDir.appendingPathComponent(relativePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let cropped = benchmarkExpandedCrop(image: cgImage, region: region),
+                  let prefill = try engine.prefillDebug(image: cropped) else {
+                XCTFail("Could not export projected features for \(label)")
+                continue
+            }
+
+            exportedEntries.append([
+                "label": label,
+                "targetWidth": prefill.targetWidth,
+                "targetHeight": prefill.targetHeight,
+                "inputIds": prefill.inputIds,
+                "projectedShape": prefill.projectedImageFeatures.shape,
+                "projectedValues": prefill.projectedImageFeatures.asType(.float32).asArray(Float.self),
+            ])
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("paddle-swift-projected-features.json")
+        let data = try JSONSerialization.data(withJSONObject: exportedEntries, options: [.prettyPrinted])
+        try data.write(to: outputURL)
+        print("Exported Swift projected features to \(outputURL.path)")
+        XCTAssertEqual(exportedEntries.count, cases.count)
+    }
+
+    func testExportSwiftMergedEmbeddingsAndFirstStepLogitsForBenchmarkEmptyRegions() throws {
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available for merged embedding export — skipping")
+            return
+        }
+
+        let cases: [(String, String, CGRect)] = [
+            ("book1/001#r2", "book1/001.jpg", CGRect(x: 292.0651, y: 669.7273, width: 22.0659, height: 71.1165)),
+            ("book1/001#r3", "book1/001.jpg", CGRect(x: 963.3900, y: 1138.7845, width: 21.4628, height: 70.9517)),
+            ("book1/002#r9", "book1/002.jpg", CGRect(x: 244.2680, y: 942.5192, width: 72.4024, height: 141.1021)),
+            ("book1/004#r12", "book1/004.jpg", CGRect(x: 806.2938, y: 1452.3148, width: 33.9647, height: 98.4724)),
+            ("book1/004#r13", "book1/004.jpg", CGRect(x: 125.4072, y: 1151.9563, width: 146.3098, height: 375.1194)),
+        ]
+
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var exportedEntries: [[String: Any]] = []
+
+        for (label, relativePath, region) in cases {
+            let imageURL = examplesDir.appendingPathComponent(relativePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let cropped = benchmarkExpandedCrop(image: cgImage, region: region),
+                  let prefill = try engine.prefillDebug(image: cropped) else {
+                XCTFail("Could not export merged embeddings for \(label)")
+                continue
+            }
+
+            exportedEntries.append([
+                "label": label,
+                "targetWidth": prefill.targetWidth,
+                "targetHeight": prefill.targetHeight,
+                "inputIds": prefill.inputIds,
+                "mergedShape": prefill.mergedEmbeddings.shape,
+                "mergedValues": prefill.mergedEmbeddings.asType(.float32).asArray(Float.self),
+                "firstLayerInputNormShape": prefill.firstLayerInputNormLastToken.shape,
+                "firstLayerInputNormValues": prefill.firstLayerInputNormLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionOutputShape": prefill.firstLayerAttentionOutputLastToken.shape,
+                "firstLayerAttentionOutputValues": prefill.firstLayerAttentionOutputLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionRawQueriesShape": prefill.firstLayerAttentionRawQueriesLastToken.shape,
+                "firstLayerAttentionRawQueriesValues": prefill.firstLayerAttentionRawQueriesLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionRawKeysShape": prefill.firstLayerAttentionRawKeysLastToken.shape,
+                "firstLayerAttentionRawKeysValues": prefill.firstLayerAttentionRawKeysLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionRawValuesShape": prefill.firstLayerAttentionRawValuesLastToken.shape,
+                "firstLayerAttentionRawValuesValues": prefill.firstLayerAttentionRawValuesLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionQueriesShape": prefill.firstLayerAttentionQueriesLastToken.shape,
+                "firstLayerAttentionQueriesValues": prefill.firstLayerAttentionQueriesLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionKeysShape": prefill.firstLayerAttentionKeysLastToken.shape,
+                "firstLayerAttentionKeysValues": prefill.firstLayerAttentionKeysLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionValuesShape": prefill.firstLayerAttentionValuesLastToken.shape,
+                "firstLayerAttentionValuesValues": prefill.firstLayerAttentionValuesLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerAttentionWeightsShape": prefill.firstLayerAttentionWeightsLastRow.shape,
+                "firstLayerAttentionWeightsValues": prefill.firstLayerAttentionWeightsLastRow.asType(.float32).asArray(Float.self),
+                "firstLayerResidualAfterAttentionShape": prefill.firstLayerResidualAfterAttentionLastToken.shape,
+                "firstLayerResidualAfterAttentionValues": prefill.firstLayerResidualAfterAttentionLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerPostAttentionNormShape": prefill.firstLayerPostAttentionNormLastToken.shape,
+                "firstLayerPostAttentionNormValues": prefill.firstLayerPostAttentionNormLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerMLPOutputShape": prefill.firstLayerMLPOutputLastToken.shape,
+                "firstLayerMLPOutputValues": prefill.firstLayerMLPOutputLastToken.asType(.float32).asArray(Float.self),
+                "firstLayerOutputShape": prefill.firstLayerOutputLastToken.shape,
+                "firstLayerOutputValues": prefill.firstLayerOutputLastToken.asType(.float32).asArray(Float.self),
+                "layerLastTokenHiddenStates": prefill.layerLastTokenHiddenStates.map { layerState in
+                    [
+                        "shape": layerState.shape,
+                        "values": layerState.asType(.float32).asArray(Float.self),
+                    ]
+                },
+                "firstStepLogitsShape": prefill.firstStepLogits.shape,
+                "firstStepLogitsValues": prefill.firstStepLogits.asType(.float32).asArray(Float.self),
+            ])
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("paddle-swift-merged-embeddings-and-logits.json")
+        let data = try JSONSerialization.data(withJSONObject: exportedEntries, options: [.prettyPrinted])
+        try data.write(to: outputURL)
+        print("Exported Swift merged embeddings and first-step logits to \(outputURL.path)")
+        XCTAssertEqual(exportedEntries.count, cases.count)
+    }
+
+    private func tensorSummary(_ array: MLXArray) -> String {
+        let floatArray = array.asType(.float32)
+        let values = floatArray.asArray(Float.self)
+        let shape = array.shape.map(String.init).joined(separator: "x")
+        guard !values.isEmpty else {
+            return "shape=\(shape), empty"
+        }
+
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 0
+        let meanValue = values.reduce(0, +) / Float(values.count)
+        let variance = values.reduce(0) { partial, value in
+            let delta = value - meanValue
+            return partial + delta * delta
+        } / Float(values.count)
+        let stdValue = sqrt(variance)
+        let l2Value = sqrt(values.reduce(0) { $0 + $1 * $1 })
+        let prefix = values.prefix(8).map { String(format: "%.5f", $0) }.joined(separator: ", ")
+        return String(
+            format: "shape=%@, min=%.5f, max=%.5f, mean=%.5f, std=%.5f, l2=%.5f, prefix=[%@]",
+            shape,
+            minValue,
+            maxValue,
+            meanValue,
+            stdValue,
+            l2Value,
+            prefix
+        )
+    }
+    #endif
 
     private func productionRouter() async throws -> OCRRouter {
         #if arch(arm64)
