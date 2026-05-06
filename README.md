@@ -52,6 +52,8 @@ xcodebuild -project MangaTranslator.xcodeproj \
     build
 ```
 
+The `PaddleOCRVL` dependency is vendored at `Vendor/paddleocr-vl.swift` so the text-side rotary parity fix stays versioned in this repository instead of living in SwiftPM or Xcode cache directories.
+
 ### Configuration
 
 1. Launch the app and open **Settings** (`Cmd + ,`).

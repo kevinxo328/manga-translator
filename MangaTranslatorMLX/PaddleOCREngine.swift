@@ -582,58 +582,6 @@ private struct PaddleOCRVLRuntime {
         }
     }
 
-    func prefillDebug(ciImage: CIImage) -> PaddleOCRPrefillDebug? {
-        let patchSize = config.visionConfig.patchSize
-        let hiddenSize = config.visionConfig.hiddenSize
-        let srcW = Int(ciImage.extent.width)
-        let srcH = Int(ciImage.extent.height)
-
-        let availableMemory = availableGPUMemoryBytes()
-        guard shouldUseSmartResize(srcW: srcW, srcH: srcH, patchSize: patchSize,
-                                   hiddenSize: hiddenSize, numLayers: numVisionLayers,
-                                   availableMemoryBytes: availableMemory) else {
-            return nil
-        }
-
-        let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
-        let hPatches = targetH / patchSize
-        let wPatches = targetW / patchSize
-        let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
-        let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
-        let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
-        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1))
-        let inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
-        let mergedEmbeddings = model.mergeInputIdsWithImageFeatures(inputIds: inputIdArray, imageFeatures: projected)
-        let cache = model.newCache()
-        let firstLayerDebug = model.languageModel.forwardFirstLayerDebug(mergedEmbeddings, cache: cache)
-        let forwardDebug = model.languageModel.forwardDebug(mergedEmbeddings, cache: model.newCache())
-        let layerLastTokenHiddenStates = forwardDebug.layerOutputs.map { $0[0, -1] }
-        let firstStepLogits = model.lmHead(firstLayerDebug.finalHidden)[0, -1]
-        return PaddleOCRPrefillDebug(
-            pixelValues: pixelValues,
-            encodedVisionFeatures: visionFeatures,
-            projectedImageFeatures: projected,
-            mergedEmbeddings: mergedEmbeddings,
-            firstLayerInputNormLastToken: firstLayerDebug.firstLayerInputNorm[0, -1],
-            firstLayerAttentionOutputLastToken: firstLayerDebug.firstLayerAttentionOutput[0, -1],
-            firstLayerAttentionRawQueriesLastToken: firstLayerDebug.firstLayerAttentionRawQueries[0, 0..., -1, 0...],
-            firstLayerAttentionRawKeysLastToken: firstLayerDebug.firstLayerAttentionRawKeys[0, 0..., -1, 0...],
-            firstLayerAttentionRawValuesLastToken: firstLayerDebug.firstLayerAttentionRawValues[0, 0..., -1, 0...],
-            firstLayerAttentionQueriesLastToken: firstLayerDebug.firstLayerAttentionQueries[0, 0..., -1, 0...],
-            firstLayerAttentionKeysLastToken: firstLayerDebug.firstLayerAttentionKeys[0, 0..., -1, 0...],
-            firstLayerAttentionValuesLastToken: firstLayerDebug.firstLayerAttentionValues[0, 0..., -1, 0...],
-            firstLayerAttentionWeightsLastRow: firstLayerDebug.firstLayerAttentionWeights[0, 0..., -1, 0...],
-            firstLayerResidualAfterAttentionLastToken: firstLayerDebug.firstLayerResidualAfterAttention[0, -1],
-            firstLayerPostAttentionNormLastToken: firstLayerDebug.firstLayerPostAttentionNorm[0, -1],
-            firstLayerMLPOutputLastToken: firstLayerDebug.firstLayerMLPOutput[0, -1],
-            firstLayerOutputLastToken: firstLayerDebug.firstLayerOutput[0, -1],
-            layerLastTokenHiddenStates: layerLastTokenHiddenStates,
-            firstStepLogits: firstStepLogits,
-            inputIds: inputIds,
-            targetWidth: targetW,
-            targetHeight: targetH
-        )
-    }
 
     private func recognizeSmartResize(ciImage: CIImage, targetW: Int, targetH: Int) -> String {
         recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH).trimmedText
@@ -796,14 +744,6 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         return rt.recognizeDebug(ciImage: ciImage)
     }
 
-    func prefillDebug(image: CGImage) throws -> PaddleOCRPrefillDebug? {
-        guard image.width > 0 && image.height > 0 else {
-            throw PaddleOCREngineError.invalidInputImage
-        }
-        let rt = try loadRuntimeIfNeeded()
-        let ciImage = CIImage(cgImage: image)
-        return rt.prefillDebug(ciImage: ciImage)
-    }
 
     private func loadRuntimeIfNeeded() throws -> PaddleOCRVLRuntime {
         runtimeLock.lock()
@@ -906,6 +846,7 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
 
         let textConfig = PaddleOCRVLTextConfig(
             vocabSize: (textConfigDict["vocab_size"] as? Int) ?? (raw["vocab_size"] as? Int) ?? 48000,
+            headDim: (textConfigDict["head_dim"] as? Int) ?? (raw["head_dim"] as? Int),
             hiddenSize: (textConfigDict["hidden_size"] as? Int) ?? (raw["hidden_size"] as? Int) ?? 896,
             intermediateSize: (textConfigDict["intermediate_size"] as? Int) ?? (raw["intermediate_size"] as? Int) ?? 4864,
             numHiddenLayers: (textConfigDict["num_hidden_layers"] as? Int) ?? (raw["num_hidden_layers"] as? Int) ?? 24,

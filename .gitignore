@@ -15,6 +15,7 @@ xcuserdata/
 # Add this line if you want to avoid committing the test-generated folder
 .build/
 /.xcodebuild-env/
+**/.swiftpm/
 
 # macOS
 #

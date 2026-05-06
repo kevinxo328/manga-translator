@@ -542,7 +542,7 @@
 				C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
 				E10000010000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */,
-				PV0000010000000000000001 /* XCRemoteSwiftPackageReference "paddleocr-vl.swift" */,
+				PV0000010000000000000001 /* XCLocalSwiftPackageReference "paddleocr-vl.swift" */,
 				SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */,
 			);
 			productRefGroup = A40000010000000000000009 /* Products */;
@@ -1040,6 +1040,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		PV0000010000000000000001 /* XCLocalSwiftPackageReference "paddleocr-vl.swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/paddleocr-vl.swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1063,14 +1070,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.29.1;
-			};
-		};
-		PV0000010000000000000001 /* XCRemoteSwiftPackageReference "paddleocr-vl.swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/mlx-community/paddleocr-vl.swift";
-			requirement = {
-				branch = master;
-				kind = branch;
 			};
 		};
 		SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */ = {
@@ -1106,7 +1105,7 @@
 		};
 		PV0000010000000000000002 /* PaddleOCRVL */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = PV0000010000000000000001 /* XCRemoteSwiftPackageReference "paddleocr-vl.swift" */;
+			package = PV0000010000000000000001 /* XCLocalSwiftPackageReference "paddleocr-vl.swift" */;
 			productName = PaddleOCRVL;
 		};
 /* End XCSwiftPackageProductDependency section */

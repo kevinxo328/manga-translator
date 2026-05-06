@@ -123,6 +123,8 @@ The system SHALL allow users to delete the downloaded model, freeing disk space.
 ### Requirement: Run high-accuracy OCR inference on Apple Silicon
 The system SHALL load the quantized MLX model from Application Support and run text recognition on cropped image regions. The recognizer SHALL conform to `OCRRecognizing`. The system SHALL lazy-load the model on first inference. The system SHALL expose deterministic unload/reset hooks for app-controlled lifecycle events and SHALL release in-memory model resources when those hooks are invoked. The system SHALL also release the model from memory when the system sends a memory pressure notification, and reload on next inference.
 
+The high-accuracy PaddleOCR text runtime SHALL use a text-side rotary implementation that is compatible with the verified PaddleOCR-VL reference path. The runtime SHALL NOT rely on a text rotary path that causes the confirmed first-step parity failure on known benchmark crops.
+
 #### Scenario: Successful inference on cropped region
 - **WHEN** a cropped image region containing Japanese text is provided
 - **THEN** the recognizer returns a result without crashing (text may be empty and confidence may be 0 for difficult inputs)
@@ -166,6 +168,14 @@ The system SHALL load the quantized MLX model from Application Support and run t
 #### Scenario: Very large input image (boundary)
 - **WHEN** a 4K+ resolution image is provided
 - **THEN** inference completes without out-of-memory crash
+
+#### Scenario: Known benchmark crop no longer terminates with first-step EOS
+- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step `EOS`
+- **THEN** the runtime SHALL produce non-empty text generation behavior consistent with the verified reference path
+
+#### Scenario: Known benchmark crop no longer terminates with first-step newline
+- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step newline-only output
+- **THEN** the runtime SHALL produce text generation behavior instead of terminating with a newline-only result
 
 ---
 

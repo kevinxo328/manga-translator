@@ -29,15 +29,6 @@
       }
     },
     {
-      "identity" : "paddleocr-vl.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mlx-community/paddleocr-vl.swift",
-      "state" : {
-        "branch" : "master",
-        "revision" : "b31d5ab0bdb87a77ae80b74ec3380fed99f5b706"
-      }
-    },
-    {
       "identity" : "sparkle",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
