@@ -397,10 +397,10 @@ private struct TokenizerAdapter {
         return [2, 100272, eosId]
     }
 
-    func buildInputIds(numMergedTokens: Int) -> [Int] {
-        let textPrompt = "Perform OCR on this manga image. Output only the text, no explanation."
+    func buildInputIds(numMergedTokens: Int, textPrompt: String? = nil) -> [Int] {
+        let prompt = textPrompt ?? "OCR:"
         let userPrefixIds = tokenizer.encode(text: "User: ", addSpecialTokens: false)
-        let textIds = tokenizer.encode(text: textPrompt + "\nAssistant: ", addSpecialTokens: false)
+        let textIds = tokenizer.encode(text: prompt + "\nAssistant: ", addSpecialTokens: false)
 
         var inputIds: [Int] = []
         inputIds.append(100273)  // <|begin_of_sentence|>
@@ -565,7 +565,7 @@ private struct PaddleOCRVLRuntime {
         recognizeDebug(ciImage: ciImage).trimmedText
     }
 
-    func recognizeDebug(ciImage: CIImage) -> PaddleOCRDebugTrace {
+    func recognizeDebug(ciImage: CIImage, promptOverride: String? = nil) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize
         let hiddenSize = config.visionConfig.hiddenSize
         let srcW = Int(ciImage.extent.width)
@@ -576,18 +576,18 @@ private struct PaddleOCRVLRuntime {
                                  hiddenSize: hiddenSize, numLayers: numVisionLayers,
                                  availableMemoryBytes: availableMemory) {
             let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
-            return recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH)
+            return recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH, promptOverride: promptOverride)
         } else {
-            return recognizeTiledDebug(ciImage: ciImage)
+            return recognizeTiledDebug(ciImage: ciImage, promptOverride: promptOverride)
         }
     }
 
 
     private func recognizeSmartResize(ciImage: CIImage, targetW: Int, targetH: Int) -> String {
-        recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH).trimmedText
+        recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH, promptOverride: nil).trimmedText
     }
 
-    private func recognizeSmartResizeDebug(ciImage: CIImage, targetW: Int, targetH: Int) -> PaddleOCRDebugTrace {
+    private func recognizeSmartResizeDebug(ciImage: CIImage, targetW: Int, targetH: Int, promptOverride: String?) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize
         let hPatches = targetH / patchSize
         let wPatches = targetW / patchSize
@@ -595,7 +595,7 @@ private struct PaddleOCRVLRuntime {
         let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
         let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
 
-        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1))
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1), textPrompt: promptOverride)
         let generationTrace = generator.generateTrace(imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024)
         let generatedTokens = generationTrace.generatedTokens
         let rawText = tokenizerAdapter.decode(generatedTokens)
@@ -613,10 +613,10 @@ private struct PaddleOCRVLRuntime {
     }
 
     private func recognizeTiled(ciImage: CIImage) -> String {
-        recognizeTiledDebug(ciImage: ciImage).trimmedText
+        recognizeTiledDebug(ciImage: ciImage, promptOverride: nil).trimmedText
     }
 
-    private func recognizeTiledDebug(ciImage: CIImage) -> PaddleOCRDebugTrace {
+    private func recognizeTiledDebug(ciImage: CIImage, promptOverride: String?) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize  // 14
         let tileSize = 392  // 28 patches per side → 14×14 merged tokens per tile
         let srcW = Int(ciImage.extent.width)
@@ -649,7 +649,7 @@ private struct PaddleOCRVLRuntime {
             ? allProjectedFeatures[0]
             : concatenated(allProjectedFeatures, axis: 1)
 
-        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1))
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1), textPrompt: promptOverride)
         let generationTrace = generator.generateTrace(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
         let generatedTokens = generationTrace.generatedTokens
         let rawText = tokenizerAdapter.decode(generatedTokens)
@@ -735,13 +735,13 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         return (text, confidence)
     }
 
-    func inferDebug(image: CGImage) throws -> PaddleOCRDebugTrace {
+    func inferDebug(image: CGImage, promptOverride: String? = nil) throws -> PaddleOCRDebugTrace {
         guard image.width > 0 && image.height > 0 else {
             throw PaddleOCREngineError.invalidInputImage
         }
         let rt = try loadRuntimeIfNeeded()
         let ciImage = CIImage(cgImage: image)
-        return rt.recognizeDebug(ciImage: ciImage)
+        return rt.recognizeDebug(ciImage: ciImage, promptOverride: promptOverride)
     }
 
 
