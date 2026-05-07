@@ -95,7 +95,7 @@ final class OCRBenchmarkTests: XCTestCase {
         }
 
         let router = try await productionRouter()
-        let paddleBubbles = try? router.processWithPaddleOCR(image: nsImage)
+        let paddleBubbles = try? await router.processWithPaddleOCR(image: nsImage)
         let mangaBubbles = try await router.processWithMangaOCR(image: nsImage)
 
         print(
@@ -130,7 +130,7 @@ final class OCRBenchmarkTests: XCTestCase {
             let paddleStart = clock.now
             let paddleBubbles: [BubbleCluster]
             do {
-                paddleBubbles = try router.processWithPaddleOCR(image: nsImage)
+                paddleBubbles = try await router.processWithPaddleOCR(image: nsImage)
                 let elapsed = paddleStart.duration(to: clock.now)
                 latency["PaddleOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
