@@ -88,6 +88,10 @@
 		PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		PH1000000200000000000004 /* MangaTranslatorMLX.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
+		SN0000010000000000000003 /* Numerics in Frameworks */ = {isa = PBXBuildFile; productRef = SN0000010000000000000002 /* Numerics */; };
+		A10000010000000000000051 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
+		A10000010000000000000052 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
+		A10000010000000000000053 /* PaddleOCRVL in Frameworks */ = {isa = PBXBuildFile; productRef = PV0000010000000000000002 /* PaddleOCRVL */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -224,6 +228,10 @@
 				C10000010000000000000003 /* onnxruntime in Frameworks */,
 				E10000010000000000000001 /* Sparkle in Frameworks */,
 				PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */,
+				SN0000010000000000000003 /* Numerics in Frameworks */,
+				A10000010000000000000051 /* MLX in Frameworks */,
+				A10000010000000000000052 /* MLXNN in Frameworks */,
+				A10000010000000000000053 /* PaddleOCRVL in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -440,6 +448,10 @@
 			packageProductDependencies = (
 				C10000010000000000000001 /* onnxruntime */,
 				E10000010000000000000002 /* Sparkle */,
+				SN0000010000000000000002 /* Numerics */,
+				ML0000010000000000000002 /* MLX */,
+				ML0000010000000000000003 /* MLXNN */,
+				PV0000010000000000000002 /* PaddleOCRVL */,
 			);
 			productName = MangaTranslator;
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
@@ -1103,6 +1115,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = PV0000010000000000000001 /* XCLocalSwiftPackageReference "paddleocr-vl.swift" */;
 			productName = PaddleOCRVL;
+		};
+		SN0000010000000000000002 /* Numerics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */;
+			productName = Numerics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
