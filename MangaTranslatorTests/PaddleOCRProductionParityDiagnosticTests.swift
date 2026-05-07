@@ -169,6 +169,16 @@ final class PaddleOCRProductionParityDiagnosticTests: XCTestCase {
             "book1/011#region-006",
             "book1/001#region-001",
             "book1/003#region-002",
+            "book1/009#region-006",
+            "book1/014#region-007",
+            "book2/001#region-010",
+            "book2/006#region-005",
+            "book2/010#region-009",
+            "book2/012#region-008",
+            "book3/001#region-010",
+            "book3/006#region-005",
+            "book3/010#region-009",
+            "book3/012#region-008",
         ]
 
         let detectorSamples = try loadDetectorSamples()
@@ -177,6 +187,7 @@ final class PaddleOCRProductionParityDiagnosticTests: XCTestCase {
         let currentPrompt = "Perform OCR on this manga image. Output only the text, no explanation."
         let vendorOCRPrompt = "OCR:"
         var compared = 0
+        var records: [[String: Any]] = []
 
         for sampleID in targetIDs {
             guard let sample = detectorSamples[sampleID] else {
@@ -197,21 +208,209 @@ final class PaddleOCRProductionParityDiagnosticTests: XCTestCase {
             let verifyText = verifyTexts[sampleID] ?? "<missing>"
             compared += 1
 
-            print("PROMPT TRACE \(sampleID)")
-            print("  verifyText: \(String(reflecting: verifyText))")
-            print("  currentPromptRaw: \(String(reflecting: currentTrace.rawText))")
-            print("  currentPromptTokens: \(currentTrace.generatedTokens)")
-            print("  currentPromptTermination: \(String(describing: currentTrace.terminationToken))")
-            let currentTop = currentTrace.firstStepTopTokens.map { "tokenId=\($0.tokenId), logit=\($0.logit)" }.joined(separator: "; ")
-            print("  currentPromptFirstStepTopTokens: [\(currentTop)]")
-            print("  vendorPromptRaw: \(String(reflecting: vendorTrace.rawText))")
-            print("  vendorPromptTokens: \(vendorTrace.generatedTokens)")
-            print("  vendorPromptTermination: \(String(describing: vendorTrace.terminationToken))")
-            let vendorTop = vendorTrace.firstStepTopTokens.map { "tokenId=\($0.tokenId), logit=\($0.logit)" }.joined(separator: "; ")
-            print("  vendorPromptFirstStepTopTokens: [\(vendorTop)]")
+            records.append([
+                "sample_id": sampleID,
+                "verify_text": verifyText,
+                "current_prompt_raw": currentTrace.rawText,
+                "current_prompt_trimmed": currentTrace.trimmedText,
+                "current_prompt_tokens": currentTrace.generatedTokens,
+                "current_prompt_termination": currentTrace.terminationToken ?? NSNull(),
+                "vendor_prompt_raw": vendorTrace.rawText,
+                "vendor_prompt_trimmed": vendorTrace.trimmedText,
+                "vendor_prompt_tokens": vendorTrace.generatedTokens,
+                "vendor_prompt_termination": vendorTrace.terminationToken ?? NSNull(),
+            ])
         }
 
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("paddle-prompt-variant-blockers.json")
+        let outputData = try JSONSerialization.data(
+            withJSONObject: ["records": records],
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outputData.write(to: outputURL, options: .atomic)
+        print("Prompt variant diagnostics wrote \(records.count) records to \(outputURL.path)")
         XCTAssertEqual(compared, targetIDs.count)
+    }
+
+    func testCompareRoutingOnResidualEmptyCases() throws {
+        executionTimeAllowance = 20 * 60
+
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available — skipping")
+            return
+        }
+
+        let targetIDs = [
+            "book1/007#region-010",
+            "book1/009#region-006",
+            "book1/011#region-005",
+            "book1/014#region-007",
+        ]
+
+        let detectorSamples = try loadDetectorSamples()
+        let verifyTexts = try loadVerifyTexts()
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var records: [[String: Any]] = []
+
+        for sampleID in targetIDs {
+            guard let sample = detectorSamples[sampleID] else {
+                XCTFail("Missing detector sample for \(sampleID)")
+                continue
+            }
+
+            let imageURL = URL(fileURLWithPath: sample.imagePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let debugCrop = expandedCropImage(for: sample.region, in: cgImage) else {
+                XCTFail("Could not prepare crop for \(sampleID)")
+                continue
+            }
+
+            let autoTrace = try engine.inferDebug(image: debugCrop, routeOverride: .automatic)
+            let smartResizeTrace = try engine.inferDebug(image: debugCrop, routeOverride: .smartResize)
+            let tiledTrace = try engine.inferDebug(image: debugCrop, routeOverride: .tiled)
+
+            records.append([
+                "sample_id": sampleID,
+                "verify_text": verifyTexts[sampleID] ?? "<missing>",
+                "auto_trimmed": autoTrace.trimmedText,
+                "auto_tokens": autoTrace.generatedTokens,
+                "smart_resize_trimmed": smartResizeTrace.trimmedText,
+                "smart_resize_tokens": smartResizeTrace.generatedTokens,
+                "tiled_trimmed": tiledTrace.trimmedText,
+                "tiled_tokens": tiledTrace.generatedTokens,
+            ])
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("paddle-routing-empty-cases.json")
+        let outputData = try JSONSerialization.data(
+            withJSONObject: ["records": records],
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outputData.write(to: outputURL, options: .atomic)
+        print("Routing diagnostics wrote \(records.count) records to \(outputURL.path)")
+        XCTAssertEqual(records.count, targetIDs.count)
+    }
+
+    func testCompareRoutingOnShortTextCases() throws {
+        executionTimeAllowance = 20 * 60
+
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available — skipping")
+            return
+        }
+
+        let targetIDs = [
+            "book1/007#region-010",
+            "book1/009#region-006",
+            "book1/011#region-005",
+            "book1/014#region-007",
+            "book2/001#region-010",
+            "book2/006#region-005",
+            "book2/010#region-009",
+            "book3/001#region-010",
+            "book3/006#region-005",
+            "book3/010#region-009",
+        ]
+
+        let detectorSamples = try loadDetectorSamples()
+        let verifyTexts = try loadVerifyTexts()
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        var records: [[String: Any]] = []
+
+        for sampleID in targetIDs {
+            guard let sample = detectorSamples[sampleID] else {
+                XCTFail("Missing detector sample for \(sampleID)")
+                continue
+            }
+
+            let imageURL = URL(fileURLWithPath: sample.imagePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let debugCrop = expandedCropImage(for: sample.region, in: cgImage) else {
+                XCTFail("Could not prepare crop for \(sampleID)")
+                continue
+            }
+
+            let autoTrace = try engine.inferDebug(image: debugCrop, routeOverride: .automatic)
+            let smartResizeTrace = try engine.inferDebug(image: debugCrop, routeOverride: .smartResize)
+            let tiledTrace = try engine.inferDebug(image: debugCrop, routeOverride: .tiled)
+
+            records.append([
+                "sample_id": sampleID,
+                "verify_text": verifyTexts[sampleID] ?? "<missing>",
+                "auto_trimmed": autoTrace.trimmedText,
+                "auto_tokens": autoTrace.generatedTokens,
+                "smart_resize_trimmed": smartResizeTrace.trimmedText,
+                "smart_resize_tokens": smartResizeTrace.generatedTokens,
+                "tiled_trimmed": tiledTrace.trimmedText,
+                "tiled_tokens": tiledTrace.generatedTokens,
+            ])
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("paddle-routing-short-text-cases.json")
+        let outputData = try JSONSerialization.data(
+            withJSONObject: ["records": records],
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outputData.write(to: outputURL, options: .atomic)
+        print("Short-text routing diagnostics wrote \(records.count) records to \(outputURL.path)")
+        XCTAssertEqual(records.count, targetIDs.count)
+    }
+
+    func testExportRoutingParityComparisonForVerifyExamples() throws {
+        executionTimeAllowance = 30 * 60
+
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available — skipping")
+            return
+        }
+
+        let detectorSamples = try loadDetectorSamples()
+        let verifyTexts = try loadVerifyTexts()
+        let engine = try DefaultPaddleOCREngine(modelDirectory: resolvedDir)
+        let sampleIDs = detectorSamples.keys.sorted()
+        var records: [[String: Any]] = []
+
+        for sampleID in sampleIDs {
+            guard let sample = detectorSamples[sampleID] else {
+                continue
+            }
+
+            let imageURL = URL(fileURLWithPath: sample.imagePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let debugCrop = expandedCropImage(for: sample.region, in: cgImage) else {
+                XCTFail("Could not prepare crop for \(sampleID)")
+                return
+            }
+
+            let smartResizeTrace = try engine.inferDebug(image: debugCrop, routeOverride: .smartResize)
+            let tiledTrace = try engine.inferDebug(image: debugCrop, routeOverride: .tiled)
+
+            records.append([
+                "sample_id": sampleID,
+                "verify_text": verifyTexts[sampleID] ?? "",
+                "crop_width": debugCrop.width,
+                "crop_height": debugCrop.height,
+                "smart_resize_trimmed": smartResizeTrace.trimmedText,
+                "smart_resize_tokens": smartResizeTrace.generatedTokens,
+                "tiled_trimmed": tiledTrace.trimmedText,
+                "tiled_tokens": tiledTrace.generatedTokens,
+            ])
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("paddle-routing-parity-examples.json")
+        let outputData = try JSONSerialization.data(
+            withJSONObject: ["records": records],
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try outputData.write(to: outputURL, options: .atomic)
+        print("Routing parity comparison wrote \(records.count) records to \(outputURL.path)")
+        XCTAssertEqual(records.count, sampleIDs.count)
     }
 
     private func loadDetectorSamples() throws -> [String: DetectorRegionSample] {

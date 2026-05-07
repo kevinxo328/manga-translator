@@ -31,6 +31,12 @@ struct PaddleOCRDebugToken {
     let logit: Float
 }
 
+enum PaddleOCRDebugRoute: Equatable {
+    case automatic
+    case smartResize
+    case tiled
+}
+
 struct PaddleOCRPrefillDebug {
     let pixelValues: MLXArray
     let encodedVisionFeatures: MLXArray
@@ -565,18 +571,50 @@ private struct PaddleOCRVLRuntime {
         recognizeDebug(ciImage: ciImage).trimmedText
     }
 
-    func recognizeDebug(ciImage: CIImage, promptOverride: String? = nil) -> PaddleOCRDebugTrace {
+    func recognizeDebug(
+        ciImage: CIImage,
+        promptOverride: String? = nil,
+        routeOverride: PaddleOCRDebugRoute = .automatic
+    ) -> PaddleOCRDebugTrace {
         let patchSize = config.visionConfig.patchSize
         let hiddenSize = config.visionConfig.hiddenSize
         let srcW = Int(ciImage.extent.width)
         let srcH = Int(ciImage.extent.height)
+        let shouldUseSmartResizeRoute: Bool
+        switch routeOverride {
+        case .automatic:
+            let availableMemory = availableGPUMemoryBytes()
+            shouldUseSmartResizeRoute = shouldUseSmartResize(
+                srcW: srcW,
+                srcH: srcH,
+                patchSize: patchSize,
+                hiddenSize: hiddenSize,
+                numLayers: numVisionLayers,
+                availableMemoryBytes: availableMemory
+            )
+        case .smartResize:
+            shouldUseSmartResizeRoute = true
+        case .tiled:
+            shouldUseSmartResizeRoute = false
+        }
 
-        let availableMemory = availableGPUMemoryBytes()
-        if shouldUseSmartResize(srcW: srcW, srcH: srcH, patchSize: patchSize,
-                                 hiddenSize: hiddenSize, numLayers: numVisionLayers,
-                                 availableMemoryBytes: availableMemory) {
+        if shouldUseSmartResizeRoute {
             let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
-            return recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH, promptOverride: promptOverride)
+            let smartResizeTrace = recognizeSmartResizeDebug(
+                ciImage: ciImage,
+                targetW: targetW,
+                targetH: targetH,
+                promptOverride: promptOverride
+            )
+            if routeOverride == .automatic,
+               shouldRetryTiledAfterSuspiciousSmartResizeResult(
+                trimmedText: smartResizeTrace.trimmedText,
+                srcW: srcW,
+                srcH: srcH
+               ) {
+                return recognizeTiledDebug(ciImage: ciImage, promptOverride: promptOverride)
+            }
+            return smartResizeTrace
         } else {
             return recognizeTiledDebug(ciImage: ciImage, promptOverride: promptOverride)
         }
@@ -665,6 +703,27 @@ private struct PaddleOCRVLRuntime {
             firstStepTopTokens: generationTrace.firstStepTopTokens
         )
     }
+
+    private func shouldRetryTiledAfterSuspiciousSmartResizeResult(
+        trimmedText: String,
+        srcW: Int,
+        srcH: Int
+    ) -> Bool {
+        let normalized = trimmedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maxSide = max(srcW, srcH)
+        guard maxSide <= 80 else { return false }
+        guard !normalized.isEmpty else { return false }
+
+        let isRepeatedQuestionMarks = normalized.count >= 2 && normalized.allSatisfy { char in
+            char == "?" || char == "？"
+        }
+        if isRepeatedQuestionMarks {
+            return true
+        }
+
+        return normalized.allSatisfy(\.isNumber)
+    }
+
 }
 
 // MARK: - Smart-resize routing helpers (internal for testability)
@@ -735,13 +794,17 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         return (text, confidence)
     }
 
-    func inferDebug(image: CGImage, promptOverride: String? = nil) throws -> PaddleOCRDebugTrace {
+    func inferDebug(
+        image: CGImage,
+        promptOverride: String? = nil,
+        routeOverride: PaddleOCRDebugRoute = .automatic
+    ) throws -> PaddleOCRDebugTrace {
         guard image.width > 0 && image.height > 0 else {
             throw PaddleOCREngineError.invalidInputImage
         }
         let rt = try loadRuntimeIfNeeded()
         let ciImage = CIImage(cgImage: image)
-        return rt.recognizeDebug(ciImage: ciImage, promptOverride: promptOverride)
+        return rt.recognizeDebug(ciImage: ciImage, promptOverride: promptOverride, routeOverride: routeOverride)
     }
 
 
