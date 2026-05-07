@@ -96,17 +96,14 @@ final class OCRBenchmarkTests: XCTestCase {
 
         let router = try await productionRouter()
         let paddleBubbles = try? router.processWithPaddleOCR(image: nsImage)
-        let mangaBubbles = try await router.processWithMangaOCR(image: nsImage, sourceLanguage: .ja, allowVisionFallback: false)
-        let visionBubbles = try await router.processWithVisionOCR(image: nsImage, sourceLanguage: .ja)
+        let mangaBubbles = try await router.processWithMangaOCR(image: nsImage)
 
         print(
             "Image: \(firstImageURL.path), " +
             "Paddle bubbles: \(paddleBubbles?.count ?? 0), " +
-            "Manga bubbles: \(mangaBubbles.count), " +
-            "Vision bubbles: \(visionBubbles.count)"
+            "Manga bubbles: \(mangaBubbles.count)"
         )
         XCTAssertGreaterThanOrEqual(mangaBubbles.count, 0)
-        XCTAssertGreaterThanOrEqual(visionBubbles.count, 0)
     }
 
     // Full benchmark: scan → tri-engine OCR (production paths) → IoU → report
@@ -145,7 +142,7 @@ final class OCRBenchmarkTests: XCTestCase {
             let mangaStart = clock.now
             let mangaBubbles: [BubbleCluster]
             do {
-                mangaBubbles = try await router.processWithMangaOCR(image: nsImage, sourceLanguage: .ja, allowVisionFallback: false)
+                mangaBubbles = try await router.processWithMangaOCR(image: nsImage)
                 let elapsed = mangaStart.duration(to: clock.now)
                 latency["MangaOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
             } catch {
@@ -154,29 +151,13 @@ final class OCRBenchmarkTests: XCTestCase {
                 failures.insert("MangaOCR")
             }
 
-            let visionStart = clock.now
-            let visionBubbles: [BubbleCluster]
-            do {
-                visionBubbles = try await router.processWithVisionOCR(image: nsImage, sourceLanguage: .ja)
-                let elapsed = visionStart.duration(to: clock.now)
-                latency["Vision"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-            } catch {
-                print("VisionOCR failed for \(imagePath.lastPathComponent): \(error)")
-                visionBubbles = []
-                failures.insert("Vision")
-            }
-
             let paddleVsManga = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: mangaBubbles)
-            let paddleVsVision = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: visionBubbles)
 
             imageResults.append(ImageResult(
                 imagePath: imagePath.path,
                 paddleVsManga: paddleVsManga.paired,
-                paddleVsVision: paddleVsVision.paired,
                 unmatchedPaddleManga: paddleVsManga.unmatchedAnchor,
-                unmatchedPaddleVision: paddleVsVision.unmatchedAnchor,
                 unmatchedManga: paddleVsManga.unmatchedCompared,
-                unmatchedVision: paddleVsVision.unmatchedCompared,
                 latency: latency,
                 failures: failures
             ))

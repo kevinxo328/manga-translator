@@ -1,11 +1,11 @@
 ## Purpose
 
-Routing OCR requests to the appropriate engine based on language and handling fallbacks.
+Routing OCR requests to the appropriate engine based on model availability and user preference.
 
 ## Requirements
 
 ### Requirement: Route OCR based on source language
-The system SHALL use the high-accuracy OCR pipeline when the source language is Japanese (.ja), the device is Apple Silicon (`#if arch(arm64)`), the model is downloaded and verified, and the user has enabled high-accuracy OCR in preferences. The system SHALL use the standard manga-ocr ONNX pipeline for Japanese when the high-accuracy model is unavailable or disabled. The system SHALL use the Vision framework OCR pipeline for all other source languages (.en, .zhHant).
+The system SHALL use the high-accuracy OCR pipeline when the device is Apple Silicon (`#if arch(arm64)`), the model is downloaded and verified, and the user has enabled high-accuracy OCR in preferences. Otherwise, the system SHALL use the standard manga-ocr ONNX pipeline. This routing rule SHALL apply to all supported source languages (`.ja`, `.en`, `.zhHant`).
 
 #### Scenario: Japanese source language, high-accuracy enabled and model downloaded
 - **WHEN** the user has set source language to Japanese, the device is Apple Silicon, the model is downloaded, and high-accuracy OCR is enabled
@@ -13,7 +13,7 @@ The system SHALL use the high-accuracy OCR pipeline when the source language is 
 
 #### Scenario: Japanese source language, high-accuracy enabled and recognizer fails
 - **WHEN** the user has set source language to Japanese, high-accuracy OCR is enabled, and `PaddleOCRVLRecognizer` throws
-- **THEN** the system returns a user-visible high-accuracy OCR error and does not execute `MangaOCRRecognizer` or `VisionOCRService`
+- **THEN** the system returns a user-visible high-accuracy OCR error and does not execute `MangaOCRRecognizer`
 
 #### Scenario: Japanese source language, model not downloaded
 - **WHEN** the user has set source language to Japanese and the model has not been downloaded
@@ -29,22 +29,22 @@ The system SHALL use the high-accuracy OCR pipeline when the source language is 
 
 #### Scenario: English source language
 - **WHEN** the user has set source language to English
-- **THEN** the system uses `VisionOCRService` + `BubbleDetector` for text detection and recognition
+- **THEN** the system applies the same PaddleOCR/MangaOCR routing rule used for Japanese
 
 #### Scenario: Traditional Chinese source language
 - **WHEN** the user has set source language to Traditional Chinese
-- **THEN** the system uses `VisionOCRService` + `BubbleDetector` for text detection and recognition
+- **THEN** the system applies the same PaddleOCR/MangaOCR routing rule used for Japanese
 
-### Requirement: Fallback to Vision OCR on manga-ocr failure only
-The system SHALL fall back to the Vision OCR pipeline if the manga-ocr pipeline fails. The system SHALL log a warning when fallback occurs. When high-accuracy OCR is enabled and selected, `PaddleOCRVLRecognizer` failures SHALL be surfaced as explicit errors and SHALL NOT fall back.
+### Requirement: No fallback OCR engine after manga-ocr failure
+The system SHALL NOT fall back to a secondary OCR engine when the manga-ocr pipeline fails. When high-accuracy OCR is enabled and selected, `PaddleOCRVLRecognizer` failures SHALL be surfaced as explicit errors and SHALL NOT fall back.
 
 #### Scenario: High-accuracy recognizer failure in strict mode
 - **WHEN** `PaddleOCRVLRecognizer` throws an error during inference while high-accuracy OCR is enabled
 - **THEN** the system surfaces a user-visible error and does not run fallback OCR engines
 
-#### Scenario: Model load failure fallback
+#### Scenario: Model load failure
 - **WHEN** the manga-ocr ONNX models fail to load
-- **THEN** the system falls back to `VisionOCRService` and logs a warning
+- **THEN** the system surfaces the error without running another OCR engine
 
 ### Requirement: High-accuracy mode requires downloaded model
 The system SHALL prevent entering high-accuracy enabled state unless the model is downloaded and verified.
@@ -80,10 +80,6 @@ The system SHALL reset the active recognizer instance when the user toggles high
 - **WHEN** a 1×1 pixel image is passed to the OCR router
 - **THEN** the system returns an empty `BubbleCluster` array without crashing
 
-## Known Limitations of VisionOCRService
+## Known Limitations
 
-The following limitations are documented for future reference. VisionOCR is a secondary engine (fallback for Japanese, primary for EN/ZH) and not intended to replace MangaOCR for Japanese manga:
-
-- **Bubble segmentation**: VisionOCRService returns individual text-line observations. BubbleDetector clusters these by proximity (distance threshold = 2× median line height). This approach cannot separate adjacent speech bubbles that are physically close on the page. MangaOCR uses a dedicated YOLO-based comic-text-detector trained on manga layouts.
-- **Furigana (振り仮名)**: With minimumTextHeightFraction = 0.01, small furigana annotations are now detected. They are merged into the parent bubble cluster by BubbleDetector, producing mixed output (e.g., furigana characters concatenated with the main text). Filtering by relative glyph height is a potential mitigation but is not currently implemented.
-- **Reading direction**: ReadingOrderSorter assumes right-to-left column ordering for all content. The `RecognizedTextObservation.Direction` API (leftToRight / rightToLeft / topToBottom) that would enable per-page direction detection requires macOS 26+, which is not the current minimum deployment target (macOS 15).
+- **Reading direction**: ReadingOrderSorter assumes right-to-left column ordering for all content. Per-page direction detection is not currently implemented.

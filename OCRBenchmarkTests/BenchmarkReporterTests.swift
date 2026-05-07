@@ -16,42 +16,32 @@ final class BenchmarkReporterTests: XCTestCase {
     func testReportPerImageSection() {
         let paddle = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 100, height: 100), text: "Paddle Text", observations: [])
         let manga = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 100, height: 100), text: "Manga Text", observations: [])
-        let vision = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 100, height: 100), text: "Vision Text", observations: [])
-        
+
         let paddleVsManga = PairedRegionResult(anchorBubble: paddle, comparedBubble: manga, iou: 1.0)
-        let paddleVsVision = PairedRegionResult(anchorBubble: paddle, comparedBubble: vision, iou: 1.0)
-        
+
         let unmatchedM = BubbleCluster(boundingBox: CGRect(x: 200, y: 0, width: 50, height: 50), text: "Only Manga", observations: [])
-        let unmatchedV = BubbleCluster(boundingBox: CGRect(x: 0, y: 200, width: 50, height: 50), text: "Only Vision", observations: [])
         let unmatchedP = BubbleCluster(boundingBox: CGRect(x: 300, y: 300, width: 50, height: 50), text: "Only Paddle", observations: [])
-        
+
         let imageResult = ImageResult(
             imagePath: "test.jpg",
             paddleVsManga: [paddleVsManga],
-            paddleVsVision: [paddleVsVision],
             unmatchedPaddleManga: [unmatchedP],
-            unmatchedPaddleVision: [],
             unmatchedManga: [unmatchedM],
-            unmatchedVision: [unmatchedV],
             latency: ["PaddleOCR": 150.0, "MangaOCR": 100.0],
-            failures: ["Vision"]
+            failures: ["MangaOCR"]
         )
         let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [imageResult])
         let report = reporter.generateReport(from: result)
-        
+
         XCTAssertTrue(report.contains("test.jpg"))
         XCTAssertTrue(report.contains("PaddleOCR vs MangaOCR Paired: 1"))
-        XCTAssertTrue(report.contains("PaddleOCR vs Vision OCR Paired: 1"))
         XCTAssertTrue(report.contains("IoU: 1.00"))
         XCTAssertTrue(report.contains("PaddleOCR: Paddle Text"))
         XCTAssertTrue(report.contains("MangaOCR: Manga Text"))
-        XCTAssertTrue(report.contains("VisionOCR: Vision Text"))
         XCTAssertTrue(report.contains("[Unmatched PaddleOCR (vs Manga)]"))
         XCTAssertTrue(report.contains("Only Paddle"))
         XCTAssertTrue(report.contains("[Unmatched MangaOCR]"))
         XCTAssertTrue(report.contains("Only Manga"))
-        XCTAssertTrue(report.contains("[Unmatched Vision]"))
-        XCTAssertTrue(report.contains("Only Vision"))
         XCTAssertTrue(report.contains("Latency:"))
         XCTAssertTrue(report.contains("PaddleOCR: 150.00ms"))
         XCTAssertTrue(report.contains("MangaOCR: 100.00ms"))
@@ -62,14 +52,10 @@ final class BenchmarkReporterTests: XCTestCase {
         let report = reporter.generateReport(from: result)
         XCTAssertTrue(report.contains("=== Summary ==="))
         XCTAssertTrue(report.contains("PaddleOCR vs MangaOCR paired:"))
-        XCTAssertTrue(report.contains("PaddleOCR vs Vision paired:"))
         XCTAssertTrue(report.contains("Unmatched PaddleOCR (vs Manga):"))
-        XCTAssertTrue(report.contains("Unmatched PaddleOCR (vs Vision):"))
         XCTAssertTrue(report.contains("Unmatched MangaOCR:"))
-        XCTAssertTrue(report.contains("Unmatched Vision:"))
         XCTAssertTrue(report.contains("PaddleOCR image failures:"))
         XCTAssertTrue(report.contains("MangaOCR image failures:"))
-        XCTAssertTrue(report.contains("Vision image failures:"))
     }
 
     func testNoImagesWarningInReport() {

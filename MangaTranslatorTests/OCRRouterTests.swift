@@ -72,6 +72,33 @@ final class OCRRouterTests: XCTestCase {
         XCTAssertFalse(factoryCalled, "Factory must not be called when model is not downloaded, even if enabled flag is set")
     }
 
+    func testNonJapaneseDownloadedEnabledCallsPaddleOCRFactory() async {
+        var factoryCalled = false
+        let router = OCRRouter(
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: {
+                factoryCalled = true
+                return MockOCRRecognizer(name: "paddle")
+            }
+        )
+
+        _ = try? await router.processPage(image: NSImage(), sourceLanguage: .en)
+        XCTAssertTrue(factoryCalled, "Non-Japanese route must still select PaddleOCR when available")
+    }
+
+    func testNonJapaneseWithoutDownloadDoesNotCallFactory() async {
+        var factoryCalled = false
+        let router = OCRRouter(
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+            paddleOCRFactory: { factoryCalled = true; return MockOCRRecognizer(name: "paddle") }
+        )
+
+        _ = try? await router.processPage(image: NSImage(), sourceLanguage: .zhHant)
+        XCTAssertFalse(factoryCalled, "Non-Japanese route must not call PaddleOCR factory when model is unavailable")
+    }
+
     // MARK: - Task 6.2: Strict-mode failure
 
     func testPaddleOCRFactoryFailureThrowsPaddleOCRError() async throws {

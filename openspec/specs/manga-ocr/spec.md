@@ -13,7 +13,7 @@ The system SHALL load comic-text-detector and manga-ocr ONNX model files from th
 
 #### Scenario: Model files missing
 - **WHEN** the ONNX model files are not found in the bundle
-- **THEN** the system throws a descriptive error and falls back to Vision OCR
+- **THEN** the system throws a descriptive error
 
 ### Requirement: Detect text regions using comic-text-detector
 The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output.

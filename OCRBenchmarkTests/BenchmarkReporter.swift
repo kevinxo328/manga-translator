@@ -9,18 +9,15 @@ struct OverlapWarning {
 
 struct PairedRegionResult {
     let anchorBubble: BubbleCluster? // PaddleOCR
-    let comparedBubble: BubbleCluster? // MangaOCR or Vision
+    let comparedBubble: BubbleCluster? // MangaOCR
     let iou: Float
 }
 
 struct ImageResult {
     let imagePath: String
     let paddleVsManga: [PairedRegionResult]
-    let paddleVsVision: [PairedRegionResult]
     let unmatchedPaddleManga: [BubbleCluster]
-    let unmatchedPaddleVision: [BubbleCluster]
     let unmatchedManga: [BubbleCluster]
-    let unmatchedVision: [BubbleCluster]
     let latency: [String: Double] // engine id -> ms
     let failures: Set<String> // engine ids that failed
 }
@@ -50,12 +47,9 @@ struct BenchmarkReporter {
         }
 
         var totalPaddleVsManga = 0
-        var totalPaddleVsVision = 0
         var totalUnmatchedPaddleManga = 0
-        var totalUnmatchedPaddleVision = 0
         var totalUnmatchedManga = 0
-        var totalUnmatchedVision = 0
-        
+
         var engineFailures: [String: Int] = [:]
 
         for imgResult in result.imageResults {
@@ -99,42 +93,15 @@ struct BenchmarkReporter {
                 }
             }
 
-            // PaddleOCR vs Vision
-            lines += ["", "PaddleOCR vs Vision OCR Paired: \(imgResult.paddleVsVision.count)"]
-            for (i, paired) in imgResult.paddleVsVision.enumerated() {
-                totalPaddleVsVision += 1
-                let rect = paired.anchorBubble?.boundingBox ?? paired.comparedBubble?.boundingBox ?? .zero
-                lines += ["", "  Pair \(i + 1): \(rect) (IoU: \(String(format: "%.2f", paired.iou)))"]
-                lines.append("  PaddleOCR: \(paired.anchorBubble?.text ?? "[empty]")")
-                lines.append("  VisionOCR: \(paired.comparedBubble?.text ?? "[empty]")")
-            }
-
-            if !imgResult.unmatchedPaddleVision.isEmpty {
-                lines += ["", "  [Unmatched PaddleOCR (vs Vision)]"]
-                for bubble in imgResult.unmatchedPaddleVision {
-                    totalUnmatchedPaddleVision += 1
-                    lines.append("  - \(bubble.boundingBox): \(bubble.text)")
-                }
-            }
-
-            if !imgResult.unmatchedVision.isEmpty {
-                lines += ["", "  [Unmatched Vision]"]
-                for bubble in imgResult.unmatchedVision {
-                    totalUnmatchedVision += 1
-                    lines.append("  - \(bubble.boundingBox): \(bubble.text)")
-                }
-            }
         }
 
         lines += ["", "=== Summary ===",
                   "PaddleOCR vs MangaOCR paired: \(totalPaddleVsManga)",
-                  "PaddleOCR vs Vision paired: \(totalPaddleVsVision)",
                   "Unmatched PaddleOCR (vs Manga): \(totalUnmatchedPaddleManga)",
-                  "Unmatched PaddleOCR (vs Vision): \(totalUnmatchedPaddleVision)",
                   "Unmatched MangaOCR: \(totalUnmatchedManga)",
-                  "Unmatched Vision: \(totalUnmatchedVision)"]
-        
-        for engine in ["PaddleOCR", "MangaOCR", "Vision"].sorted() {
+                  ]
+
+        for engine in ["PaddleOCR", "MangaOCR"].sorted() {
             let count = engineFailures[engine] ?? 0
             lines.append("\(engine) image failures: \(count)")
         }

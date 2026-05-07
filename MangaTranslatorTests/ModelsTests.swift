@@ -11,10 +11,10 @@ struct ModelsTests {
         #expect(Language.zhHant.displayName == "🇹🇼 Traditional Chinese")
     }
 
-    @Test("Language.visionLanguageCode uses Vision-compatible locale identifiers")
-    func visionLanguageCodeLocales() {
-        #expect(Language.ja.visionLanguageCode == "ja-JP")
-        #expect(Language.en.visionLanguageCode == "en-US")
-        #expect(Language.zhHant.visionLanguageCode == "zh-Hant")
+    @Test("Language.rawValue remains stable for persistence and routing")
+    func languageRawValues() {
+        #expect(Language.ja.rawValue == "ja")
+        #expect(Language.en.rawValue == "en")
+        #expect(Language.zhHant.rawValue == "zh-Hant")
     }
 }

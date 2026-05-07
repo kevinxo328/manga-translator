@@ -9,8 +9,6 @@ import MangaTranslatorMLX
 @MainActor
 final class OCRRouter {
     let mangaOCRService: MangaOCRService
-    private let visionOCRService: VisionOCRService
-    private let bubbleDetector = BubbleDetector()
     private let readingOrderSorter = ReadingOrderSorter()
     private let capabilityChecker: any DeviceCapabilityChecking
     private let downloadManager: any ModelDownloadManaging
@@ -21,13 +19,11 @@ final class OCRRouter {
 
     init(
         mangaOCRService: MangaOCRService? = nil,
-        visionOCRService: VisionOCRService? = nil,
         capabilityChecker: any DeviceCapabilityChecking = DeviceCapabilityService.shared,
         downloadManager: (any ModelDownloadManaging)? = nil,
         paddleOCRFactory: @escaping () throws -> any OCRRecognizing = { throw PaddleOCRError.modelUnavailable }
     ) {
         self.mangaOCRService = mangaOCRService ?? MangaOCRService()
-        self.visionOCRService = visionOCRService ?? VisionOCRService()
         self.capabilityChecker = capabilityChecker
         self.downloadManager = downloadManager ?? ModelDownloadService.shared
         self.paddleOCRFactory = paddleOCRFactory
@@ -37,7 +33,6 @@ final class OCRRouter {
     @MainActor
     static func makeProductionRouter(
         mangaOCRService: MangaOCRService? = nil,
-        visionOCRService: VisionOCRService? = nil,
         capabilityChecker: any DeviceCapabilityChecking = DeviceCapabilityService.shared,
         downloadManager: (any ModelDownloadManaging)? = nil
     ) -> OCRRouter {
@@ -54,7 +49,6 @@ final class OCRRouter {
 
         return OCRRouter(
             mangaOCRService: mangaOCRService,
-            visionOCRService: visionOCRService,
             capabilityChecker: capabilityChecker,
             downloadManager: downloadManager,
             paddleOCRFactory: {
@@ -68,34 +62,27 @@ final class OCRRouter {
     #endif
 
     func processPage(image: NSImage, sourceLanguage: Language) async throws -> [BubbleCluster] {
-        if sourceLanguage == .ja {
-            let (downloadState, downloadEnabled) = await MainActor.run {
-                (downloadManager.state, downloadManager.isPaddleOCREnabled)
-            }
-            let capability = capabilityChecker.checkPaddleOCRCapability()
-            let shouldUsePaddleOCR = capability != .unsupported
-                && downloadState == .downloaded
-                && downloadEnabled
-
-            logRoutingDecision(
-                sourceLanguage: sourceLanguage,
-                capability: capability,
-                downloadState: downloadState,
-                downloadEnabled: downloadEnabled,
-                selectedEngine: shouldUsePaddleOCR ? "PaddleOCR" : "MangaOCR"
-            )
-
-            if shouldUsePaddleOCR {
-                return try processWithPaddleOCR(image: image)
-            }
-
-            return try await processWithMangaOCR(image: image, sourceLanguage: sourceLanguage, allowVisionFallback: true)
-        } else {
-            logger.info(
-                "OCR route selected: VisionOCR because sourceLanguage=\(sourceLanguage.rawValue, privacy: .public)"
-            )
-            return try await processWithVisionOCR(image: image, sourceLanguage: sourceLanguage)
+        let (downloadState, downloadEnabled) = await MainActor.run {
+            (downloadManager.state, downloadManager.isPaddleOCREnabled)
         }
+        let capability = capabilityChecker.checkPaddleOCRCapability()
+        let shouldUsePaddleOCR = capability != .unsupported
+            && downloadState == .downloaded
+            && downloadEnabled
+
+        logRoutingDecision(
+            sourceLanguage: sourceLanguage,
+            capability: capability,
+            downloadState: downloadState,
+            downloadEnabled: downloadEnabled,
+            selectedEngine: shouldUsePaddleOCR ? "PaddleOCR" : "MangaOCR"
+        )
+
+        if shouldUsePaddleOCR {
+            return try processWithPaddleOCR(image: image)
+        }
+
+        return try await processWithMangaOCR(image: image)
     }
 
     func resetPaddleOCRRecognizer() {
@@ -121,31 +108,15 @@ final class OCRRouter {
     }
 
     func processWithMangaOCR(
-        image: NSImage,
-        sourceLanguage: Language = .ja,
-        allowVisionFallback: Bool
+        image: NSImage
     ) async throws -> [BubbleCluster] {
         if usingPaddleOCR {
             mangaOCRService.resetRecognizer()
             usingPaddleOCR = false
         }
-        do {
-            logger.info("Starting OCR with MangaOCR")
-            let bubbles = try mangaOCRService.recognizeAndCluster(in: image)
-            logger.info("Completed OCR with MangaOCR, bubbles=\(bubbles.count, privacy: .public)")
-            return readingOrderSorter.sort(bubbles)
-        } catch {
-            guard allowVisionFallback else { throw error }
-            logger.warning("MangaOCR failed, falling back to VisionOCR: \(error.localizedDescription, privacy: .public)")
-            return try await processWithVisionOCR(image: image, sourceLanguage: sourceLanguage)
-        }
-    }
-
-    func processWithVisionOCR(image: NSImage, sourceLanguage: Language) async throws -> [BubbleCluster] {
-        logger.info("Starting OCR with VisionOCR for sourceLanguage=\(sourceLanguage.rawValue, privacy: .public)")
-        let observations = try await visionOCRService.recognizeText(in: image, sourceLanguage: sourceLanguage)
-        let bubbles = bubbleDetector.detectBubbles(from: observations)
-        logger.info("Completed OCR with VisionOCR, bubbles=\(bubbles.count, privacy: .public)")
+        logger.info("Starting OCR with MangaOCR")
+        let bubbles = try mangaOCRService.recognizeAndCluster(in: image)
+        logger.info("Completed OCR with MangaOCR, bubbles=\(bubbles.count, privacy: .public)")
         return readingOrderSorter.sort(bubbles)
     }
 

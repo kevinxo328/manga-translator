@@ -14,7 +14,7 @@ func imagePixelSize(of image: NSImage) -> CGSize {
 }
 
 // Pure scale-and-offset mapping from image pixel coordinates to display coordinates.
-// Both OCR pipelines (Vision and ComicTextDetector) produce bounding boxes in pixel space,
+// The text detector produces bounding boxes in pixel space,
 // so imagePixelSize must be used as the reference when computing overlay positions.
 func scaledBubbleRect(
     _ rect: CGRect,

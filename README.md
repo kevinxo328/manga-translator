@@ -6,7 +6,7 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ## Core Features
 
-- **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. Apple Vision (macOS 15 `RecognizeTextRequest` API) is used as a secondary fallback with language correction enabled, mixed JP/EN language support, and a lowered text-height threshold (1%) to capture small text that the legacy Vision API missed.
+- **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. On Apple Silicon, an optional downloadable PaddleOCR-VL path provides higher-accuracy recognition.
 - **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
 - **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible backend auto-detects new proper nouns during translation and adds them to the active glossary automatically.
 - **Cross-page Context** — When using the OpenAI-compatible engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
@@ -17,11 +17,11 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ## Supported Languages
 
-| Source              | OCR Method                            | Target                        |
-| ------------------- | ------------------------------------- | ----------------------------- |
-| Japanese            | Manga-OCR (ONNX) with Vision fallback | English, Traditional Chinese  |
-| English             | Apple Vision (`RecognizeTextRequest`, macOS 15+) | Japanese, Traditional Chinese |
-| Traditional Chinese | Apple Vision (`RecognizeTextRequest`, macOS 15+) | Japanese, English             |
+| Source              | OCR Method                                | Target                        |
+| ------------------- | ----------------------------------------- | ----------------------------- |
+| Japanese            | Manga-OCR (ONNX), optional PaddleOCR-VL   | English, Traditional Chinese  |
+| English             | Manga-OCR (ONNX), optional PaddleOCR-VL   | Japanese, Traditional Chinese |
+| Traditional Chinese | Manga-OCR (ONNX), optional PaddleOCR-VL   | Japanese, English             |
 
 ## Installation
 
@@ -81,7 +81,7 @@ scripts/                      # Build and release automation scripts
 ```
 Image Input ─► ComicTextDetector (YOLO) ─► BubbleDetector ─► ReadingOrderSorter
                                                 │
-                                    MangaOCR / Vision OCR
+                                    MangaOCR / PaddleOCR
                                                 │
                                     TranslationService (OpenAI / DeepL / Google / Copilot)
                                                 │
@@ -115,7 +115,7 @@ Or press `⌘U` in Xcode with the **MangaTranslator** scheme selected.
 
 ### OCR Benchmark
 
-A separate benchmark tool compares PaddleOCR, MangaOCR, and Vision OCR side-by-side on real manga pages. Each engine runs as an independent production pipeline; results are anchored on PaddleOCR and paired by greedy IoU matching (threshold ≥ 0.5) against the other two engines. The report shows paired regions with texts and IoU score, unmatched sections for each comparison, per-engine latency, and image failure counts.
+A separate benchmark tool compares PaddleOCR and MangaOCR side-by-side on real manga pages. Each engine runs as an independent production pipeline; results are anchored on PaddleOCR and paired by greedy IoU matching (threshold ≥ 0.5) against MangaOCR. The report shows paired regions with texts and IoU score, unmatched sections, per-engine latency, and image failure counts.
 
 **Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
 

@@ -70,7 +70,6 @@ let package = Package(
                 "ReadingOrderSorter.swift",
                 "TranslationError.swift",
                 "UpdateChecker.swift",
-                "VisionOCRService.swift",
             ],
             sources: [
                 "ComicTextDetectorService.swift",
