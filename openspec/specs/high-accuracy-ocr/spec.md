@@ -125,6 +125,10 @@ The system SHALL load the quantized MLX model from Application Support and run t
 
 The high-accuracy PaddleOCR text runtime SHALL use a text-side rotary implementation that is compatible with the verified PaddleOCR-VL reference path. The runtime SHALL NOT rely on a text rotary path that causes the confirmed first-step parity failure on known benchmark crops.
 
+To preserve responsiveness, high-accuracy OCR inference MUST execute outside the UI-critical execution context while preserving strict-mode error semantics.
+
+Any responsiveness optimization for this requirement MUST preserve baseline regression text output exactly for the approved high-accuracy OCR regression dataset.
+
 #### Scenario: Successful inference on cropped region
 - **WHEN** a cropped image region containing Japanese text is provided
 - **THEN** the recognizer returns a result without crashing (text may be empty and confidence may be 0 for difficult inputs)
@@ -176,6 +180,14 @@ The high-accuracy PaddleOCR text runtime SHALL use a text-side rotary implementa
 #### Scenario: Known benchmark crop no longer terminates with first-step newline
 - **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step newline-only output
 - **THEN** the runtime SHALL produce text generation behavior instead of terminating with a newline-only result
+
+#### Scenario: UI remains responsive during high-accuracy inference
+- **WHEN** high-accuracy OCR processes one or more regions for an in-progress page translation
+- **THEN** OCR compute does not block the UI-critical execution context and the app remains responsive
+
+#### Scenario: Baseline regression output parity is preserved
+- **WHEN** the optimized high-accuracy OCR path runs on the approved regression dataset
+- **THEN** recognized text output matches the pre-optimization baseline exactly
 
 ---
 

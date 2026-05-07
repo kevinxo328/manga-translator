@@ -11,8 +11,7 @@ extension Notification.Name {
 
 // MARK: - PaddleOCRVLRecognizer
 
-@MainActor
-public final class PaddleOCRVLRecognizer: OCRRecognizing {
+public final class PaddleOCRVLRecognizer: OCRRecognizing, @unchecked Sendable {
     private static let cropPaddingRatio: CGFloat = 0.18
     private static let minimumHorizontalPadding: CGFloat = 10
     private static let minimumVerticalPadding: CGFloat = 6
@@ -22,6 +21,7 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
     private static let tallVerticalBoostRatio: CGFloat = 0.08
 
     private var engine: (any PaddleOCRInferencing)?
+    private let engineLock = NSLock()
     private let modelDirectory: URL
     private let engineFactory: (URL) throws -> any PaddleOCRInferencing
     private let logger = Logger(subsystem: "MangaTranslator", category: "PaddleOCRVL")
@@ -48,6 +48,8 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
     }
 
     public func unload() {
+        engineLock.lock()
+        defer { engineLock.unlock() }
         engine = nil
     }
 
@@ -82,18 +84,24 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
             return ("", 0)
         }
 
-        if engine == nil {
+        engineLock.lock()
+        var currentEngine = engine
+        if currentEngine == nil {
             guard let resolvedModelDirectory = ModelDownloadService.resolvedModelDirectory(in: modelDirectory) else {
+                engineLock.unlock()
                 throw PaddleOCRError.modelUnavailable
             }
             do {
-                engine = try engineFactory(resolvedModelDirectory)
+                currentEngine = try engineFactory(resolvedModelDirectory)
+                engine = currentEngine
             } catch {
+                engineLock.unlock()
                 throw PaddleOCRError.modelUnavailable
             }
         }
+        engineLock.unlock()
 
-        guard let engine else {
+        guard let activeEngine = currentEngine else {
             throw PaddleOCRError.modelUnavailable
         }
 
@@ -102,7 +110,7 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing {
         }
 
         do {
-            let (text, confidence) = try engine.infer(image: cropped)
+            let (text, confidence) = try activeEngine.infer(image: cropped)
             return (cleanRecognizedText(text), confidence)
         } catch {
             throw Self.mapEngineError(error)

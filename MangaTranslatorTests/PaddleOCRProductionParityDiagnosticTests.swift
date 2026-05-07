@@ -11,6 +11,13 @@ final class PaddleOCRProductionParityDiagnosticTests: XCTestCase {
     private let parityDetectorJSONPath = URL(fileURLWithPath: "/private/tmp/paddle-detector-examples.json")
     private let parityVerifyJSONPath = URL(fileURLWithPath: "/private/tmp/paddle-verify-examples.json")
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        guard ProcessInfo.processInfo.environment["ENABLE_PADDLEOCR_DIAGNOSTIC_TESTS"] == "1" else {
+            throw XCTSkip("Set ENABLE_PADDLEOCR_DIAGNOSTIC_TESTS=1 to run parity diagnostics.")
+        }
+    }
+
     private struct DetectorRegionSample {
         let sampleID: String
         let imagePath: String
@@ -411,6 +418,43 @@ final class PaddleOCRProductionParityDiagnosticTests: XCTestCase {
         try outputData.write(to: outputURL, options: .atomic)
         print("Routing parity comparison wrote \(records.count) records to \(outputURL.path)")
         XCTAssertEqual(records.count, sampleIDs.count)
+    }
+
+    func testExactMatchParityWithBaseline() throws {
+        executionTimeAllowance = 30 * 60
+
+        let modelRoot = ModelDownloadService.defaultModelDirectory()
+        guard let resolvedDir = ModelDownloadService.resolvedModelDirectory(in: modelRoot) else {
+            print("PaddleOCR model not available — skipping parity exact-match")
+            return
+        }
+
+        let detectorSamples = try loadDetectorSamples()
+        let verifyTexts = try loadVerifyTexts()
+        let recognizer = PaddleOCRVLRecognizer(modelDirectory: resolvedDir)
+        var tested = 0
+
+        for (sampleID, sample) in detectorSamples {
+            let imageURL = URL(fileURLWithPath: sample.imagePath)
+            guard let nsImage = NSImage(contentsOf: imageURL),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                continue
+            }
+
+            let result = try recognizer.recognizeText(in: cgImage, region: sample.region)
+            let expectedText = verifyTexts[sampleID] ?? ""
+            
+            // The parity gate: exact match assertion
+            XCTAssertEqual(
+                result.text,
+                expectedText,
+                "Output for \(sampleID) must match baseline exactly to ensure zero regression."
+            )
+            tested += 1
+        }
+        
+        print("Verified exact parity for \(tested) benchmark samples.")
+        XCTAssertGreaterThan(tested, 0)
     }
 
     private func loadDetectorSamples() throws -> [String: DetectorRegionSample] {

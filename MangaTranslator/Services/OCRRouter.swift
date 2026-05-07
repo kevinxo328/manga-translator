@@ -79,23 +79,23 @@ final class OCRRouter {
         )
 
         if shouldUsePaddleOCR {
-            return try processWithPaddleOCR(image: image)
+            return try await processWithPaddleOCR(image: image)
         }
 
         return try await processWithMangaOCR(image: image)
     }
 
-    func resetPaddleOCRRecognizer() {
-        mangaOCRService.resetRecognizer()
+    func resetPaddleOCRRecognizer() async {
+        await mangaOCRService.resetRecognizer()
         usingPaddleOCR = false
     }
 
-    func processWithPaddleOCR(image: NSImage) throws -> [BubbleCluster] {
+    func processWithPaddleOCR(image: NSImage) async throws -> [BubbleCluster] {
         usingPaddleOCR = true
         do {
             logger.info("Starting OCR with PaddleOCR")
-            mangaOCRService.recognizer = try paddleOCRFactory()
-            let bubbles = try mangaOCRService.recognizeAndCluster(in: image)
+            await mangaOCRService.setRecognizer(try paddleOCRFactory())
+            let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
             logger.info("Completed OCR with PaddleOCR, bubbles=\(bubbles.count, privacy: .public)")
             return readingOrderSorter.sort(bubbles)
         } catch let error as PaddleOCRError {
@@ -111,11 +111,11 @@ final class OCRRouter {
         image: NSImage
     ) async throws -> [BubbleCluster] {
         if usingPaddleOCR {
-            mangaOCRService.resetRecognizer()
+            await mangaOCRService.resetRecognizer()
             usingPaddleOCR = false
         }
         logger.info("Starting OCR with MangaOCR")
-        let bubbles = try mangaOCRService.recognizeAndCluster(in: image)
+        let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
         logger.info("Completed OCR with MangaOCR, bubbles=\(bubbles.count, privacy: .public)")
         return readingOrderSorter.sort(bubbles)
     }

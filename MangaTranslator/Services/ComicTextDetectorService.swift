@@ -106,7 +106,13 @@ public struct ComicTextDetectorExporter {
     }
 }
 
-public final class ComicTextDetectorService {
+protocol ComicTextDetecting: Sendable {
+    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion]
+}
+
+extension ComicTextDetectorService: ComicTextDetecting, @unchecked Sendable {}
+
+public class ComicTextDetectorService: ComicTextRegionDetecting {
     private static let inputSize = 1024
     private static let confidenceThreshold: Float = 0.4
     private static let nmsThreshold: Float = 0.35
@@ -339,8 +345,6 @@ public final class ComicTextDetectorService {
         return unionArea > 0 ? intersectionArea / unionArea : 0
     }
 }
-
-extension ComicTextDetectorService: ComicTextRegionDetecting {}
 
 enum ComicTextDetectorError: LocalizedError {
     case modelNotFound

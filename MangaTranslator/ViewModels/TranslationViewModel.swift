@@ -26,11 +26,9 @@ final class TranslationViewModel: ObservableObject {
     }
 
     #if arch(arm64)
-    private lazy var ocrRouter: OCRRouter = {
-        OCRRouter.makeProductionRouter()
-    }()
+    var ocrRouter: OCRRouter
     #else
-    private let ocrRouter = OCRRouter()
+    var ocrRouter: OCRRouter
     #endif
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
@@ -40,8 +38,13 @@ final class TranslationViewModel: ObservableObject {
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
     private var recentPageTranslations: [String] = []
 
-    init(preferences: PreferencesService) {
+    init(preferences: PreferencesService, ocrRouter: OCRRouter? = nil) {
         self.preferences = preferences
+        #if arch(arm64)
+        self.ocrRouter = ocrRouter ?? OCRRouter.makeProductionRouter()
+        #else
+        self.ocrRouter = ocrRouter ?? OCRRouter()
+        #endif
         glossaries = cacheService.glossaryService.listGlossaries()
         preferences.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }

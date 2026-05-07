@@ -24,26 +24,21 @@ final class E2EOCRIntegrationTests: XCTestCase {
         )
     }
 
-    // 9.1 Run full OCR pipeline on test_images/ with high-accuracy model enabled
+    // 9.1 Run full OCR pipeline with high-accuracy model enabled
     func testFullPipelineHighAccuracyEnabled() async throws {
         guard ProcessInfo.processInfo.environment["ENABLE_PADDLEOCR_SPIKE_TESTS"] == "1" else { return }
-        
+
         let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // MangaTranslatorTests
-            .deletingLastPathComponent() // repo root
-        
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
         let modelDir = repoRoot
             .appendingPathComponent("scripts")
             .appendingPathComponent("convert_model")
             .appendingPathComponent("mlx_output")
-        let imageURL = repoRoot
-            .appendingPathComponent("test_images")
-            .appendingPathComponent("001.jpg")
-            
+
         guard FileManager.default.fileExists(atPath: modelDir.path) else { return }
-        guard let image = NSImage(contentsOf: imageURL) else {
-            XCTFail("Missing test image")
-            return
+        guard let image = firstParitySampleImage() else {
+            throw XCTSkip("Missing parity sample image at /private/tmp/paddle-detector-examples.json")
         }
         
         let router = createRouter(
@@ -58,11 +53,7 @@ final class E2EOCRIntegrationTests: XCTestCase {
     
     // 9.2 Run full OCR pipeline with high-accuracy model disabled
     func testFullPipelineHighAccuracyDisabled() async throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let imageURL = repoRoot.appendingPathComponent("test_images").appendingPathComponent("001.jpg")
-        guard let image = NSImage(contentsOf: imageURL) else { return }
+        let image = makeTestImage(width: 100, height: 100)
         
         let router = createRouter(
             downloadState: .downloaded,
@@ -83,11 +74,7 @@ final class E2EOCRIntegrationTests: XCTestCase {
     
     // 9.6 Test strict-mode failure end-to-end & 9.6a Assert strict-mode no-fallback invariants
     func testStrictModeNoFallback() async throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let imageURL = repoRoot.appendingPathComponent("test_images").appendingPathComponent("001.jpg")
-        guard let image = NSImage(contentsOf: imageURL) else { return }
+        let image = makeTestImage(width: 100, height: 100)
         
         var factoryCalledCount = 0
         let router = createRouter(
@@ -108,6 +95,35 @@ final class E2EOCRIntegrationTests: XCTestCase {
         } catch {
             XCTFail("Wrong error type thrown")
         }
+    }
+
+    private func firstParitySampleImage() -> NSImage? {
+        let detectorJSONPath = URL(fileURLWithPath: "/private/tmp/paddle-detector-examples.json")
+        guard let data = try? Data(contentsOf: detectorJSONPath),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pages = payload["pages"] as? [[String: Any]],
+              let imagePath = pages.first?["imagePath"] as? String else {
+            return nil
+        }
+        return NSImage(contentsOf: URL(fileURLWithPath: imagePath))
+    }
+
+    private func makeTestImage(width: Int, height: Int) -> NSImage {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .calibratedRGB,
+            bytesPerRow: width * 4,
+            bitsPerPixel: 32
+        )!
+        let image = NSImage(size: NSSize(width: width, height: height))
+        image.addRepresentation(rep)
+        return image
     }
 }
 

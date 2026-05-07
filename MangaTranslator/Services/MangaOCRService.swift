@@ -2,15 +2,22 @@ import Foundation
 import AppKit
 import os
 
-@MainActor
-final class MangaOCRService {
-    private let detector = ComicTextDetectorService()
+actor MangaOCRService {
+    private let detector: ComicTextDetecting
     var recognizer: (any OCRRecognizing)?
     private let logger = Logger(subsystem: "MangaTranslator", category: "MangaOCR")
+
+    init(detector: ComicTextDetecting = ComicTextDetectorService()) {
+        self.detector = detector
+    }
 
     func resetRecognizer() {
         recognizer?.unload()
         recognizer = nil
+    }
+
+    func setRecognizer(_ recognizer: (any OCRRecognizing)?) {
+        self.recognizer = recognizer
     }
 
     static func makeRecognizer() throws -> any OCRRecognizing {
