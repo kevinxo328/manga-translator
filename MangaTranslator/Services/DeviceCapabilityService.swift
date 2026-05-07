@@ -41,11 +41,7 @@ struct DeviceCapabilityService: DeviceCapabilityChecking {
     func checkPaddleOCRCapability() -> PaddleOCRCapability {
         guard deviceInfo.isAppleSilicon else { return .unsupported }
         let ram = deviceInfo.physicalMemoryGB
-        guard ram > 0 else { return .unsupported }
-        if ram >= 16 {
-            return .supported
-        } else {
-            return .supportedWithWarning(ram: ram)
-        }
+        guard ram >= 16 else { return .unsupported }
+        return .supported
     }
 }

@@ -5,7 +5,7 @@ High-accuracy on-device OCR for Japanese manga text using a quantized MLX model 
 ## Requirements
 
 ### Requirement: Detect device capability for high-accuracy OCR
-The system SHALL detect whether the current device supports high-accuracy OCR. The system SHALL return `.supported` for Apple Silicon with ≥16GB RAM, `.supportedWithWarning(ram:)` for Apple Silicon with <16GB RAM, and `.unsupported` for Intel architecture or 0GB detected RAM.
+The system SHALL detect whether the current device supports high-accuracy OCR. The system SHALL return `.supported` for Apple Silicon with ≥16GB RAM, and `.unsupported` for all other cases (Intel architecture, Apple Silicon with <16GB RAM, or 0GB detected RAM). The 16GB minimum reflects peak inference memory usage of ~13GB for the full-precision model.
 
 #### Scenario: Apple Silicon with 16GB RAM
 - **WHEN** the device is Apple Silicon with 16GB unified memory
@@ -13,7 +13,11 @@ The system SHALL detect whether the current device supports high-accuracy OCR. T
 
 #### Scenario: Apple Silicon with 8GB RAM
 - **WHEN** the device is Apple Silicon with 8GB unified memory
-- **THEN** `DeviceCapabilityService.checkPaddleOCRCapability()` returns `.supportedWithWarning(ram: 8)`
+- **THEN** `DeviceCapabilityService.checkPaddleOCRCapability()` returns `.unsupported`
+
+#### Scenario: Apple Silicon with 12GB RAM
+- **WHEN** the device is Apple Silicon with 12GB unified memory
+- **THEN** `DeviceCapabilityService.checkPaddleOCRCapability()` returns `.unsupported`
 
 #### Scenario: Intel architecture
 - **WHEN** the device is Intel architecture

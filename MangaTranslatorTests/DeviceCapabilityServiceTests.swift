@@ -18,18 +18,18 @@ struct DeviceCapabilityServiceTests {
         #expect(service.checkPaddleOCRCapability() == .supported)
     }
 
-    // MARK: - Apple Silicon with 8GB RAM
+    // MARK: - Apple Silicon with less than 16GB RAM
 
-    @Test("checkPaddleOCRCapability returns .supportedWithWarning(ram: 8) for Apple Silicon with 8GB")
+    @Test("checkPaddleOCRCapability returns .unsupported for Apple Silicon with 8GB")
     func appleSilicon8GB() {
         let service = DeviceCapabilityService(deviceInfo: MockDeviceInfo(isAppleSilicon: true, physicalMemoryGB: 8))
-        #expect(service.checkPaddleOCRCapability() == .supportedWithWarning(ram: 8))
+        #expect(service.checkPaddleOCRCapability() == .unsupported)
     }
 
-    @Test("checkPaddleOCRCapability returns .supportedWithWarning for Apple Silicon with less than 16GB")
+    @Test("checkPaddleOCRCapability returns .unsupported for Apple Silicon with 12GB")
     func appleSilicon12GB() {
         let service = DeviceCapabilityService(deviceInfo: MockDeviceInfo(isAppleSilicon: true, physicalMemoryGB: 12))
-        #expect(service.checkPaddleOCRCapability() == .supportedWithWarning(ram: 12))
+        #expect(service.checkPaddleOCRCapability() == .unsupported)
     }
 
     // MARK: - Intel architecture
@@ -54,12 +54,12 @@ struct DeviceCapabilityServiceTests {
         #expect(service.checkPaddleOCRCapability() == .unsupported)
     }
 
-    // MARK: - Boundary: 1GB (below warning threshold but above 0)
+    // MARK: - Boundary: 1GB (below minimum threshold)
 
-    @Test("checkPaddleOCRCapability returns .supportedWithWarning for Apple Silicon with 1GB")
+    @Test("checkPaddleOCRCapability returns .unsupported for Apple Silicon with 1GB")
     func appleSilicon1GB() {
         let service = DeviceCapabilityService(deviceInfo: MockDeviceInfo(isAppleSilicon: true, physicalMemoryGB: 1))
-        #expect(service.checkPaddleOCRCapability() == .supportedWithWarning(ram: 1))
+        #expect(service.checkPaddleOCRCapability() == .unsupported)
     }
 }
 

@@ -110,14 +110,14 @@ struct PaddleOCRSettingsCapabilityTests {
         #expect(service.checkPaddleOCRCapability() == .supported)
     }
 
-    @Test("Capability is .supportedWithWarning for 8GB Apple Silicon")
-    func siliconWith8GBShowsWarning() {
+    @Test("Capability is .unsupported for 8GB Apple Silicon")
+    func siliconWith8GBIsUnsupported() {
         struct SiliconDeviceInfo: DeviceInfoProviding {
             var isAppleSilicon: Bool { true }
             var physicalMemoryGB: Int { 8 }
         }
         let service = DeviceCapabilityService(deviceInfo: SiliconDeviceInfo())
-        #expect(service.checkPaddleOCRCapability() == .supportedWithWarning(ram: 8))
+        #expect(service.checkPaddleOCRCapability() == .unsupported)
     }
 }
 
