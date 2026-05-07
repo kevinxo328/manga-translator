@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.0 (2026-05-07)
+
+### New Features
+
+- **High-Accuracy PaddleOCR** — Added support for the high-accuracy PaddleOCR engine, optimized specifically for Apple Silicon (M-series) chips to provide superior text recognition.
+
 ## v1.3.0 (2026-04-22)
 
 ### New Features
