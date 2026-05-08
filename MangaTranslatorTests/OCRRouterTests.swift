@@ -284,8 +284,7 @@ final class OCRRouterTests: XCTestCase {
         )
         
         let prefs = PreferencesService()
-        prefs.translationEngine = .githubCopilot // bypass keychain
-        let viewModel = await MainActor.run { TranslationViewModel(preferences: prefs, ocrRouter: router) }
+        let viewModel = await MainActor.run { TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: MockTranslationService()) }
         
         await MainActor.run {
             var page1 = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/1.jpg"))
@@ -434,6 +433,14 @@ private struct MockComicTextDetector: ComicTextDetecting {
 private final class ThrowingOCRRecognizer: OCRRecognizing {
     func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
         throw PaddleOCRError.inferenceFailed("forced failure")
+    }
+}
+
+private final class MockTranslationService: TranslationService {
+    var engine: TranslationEngine { .githubCopilot }
+    func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
+        let translated = bubbles.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
     }
 }
 

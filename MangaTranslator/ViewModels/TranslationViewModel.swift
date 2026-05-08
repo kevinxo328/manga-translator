@@ -33,13 +33,15 @@ final class TranslationViewModel: ObservableObject {
     private let cacheService = CacheService()
     private let keychainService = KeychainService()
     private var cancellables = Set<AnyCancellable>()
+    private let translationServiceOverride: (any TranslationService)?
 
     private var glossaryService: GlossaryService { cacheService.glossaryService }
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
     private var recentPageTranslations: [String] = []
 
-    init(preferences: PreferencesService, ocrRouter: OCRRouter? = nil) {
+    init(preferences: PreferencesService, ocrRouter: OCRRouter? = nil, translationService: (any TranslationService)? = nil) {
         self.preferences = preferences
+        self.translationServiceOverride = translationService
         #if arch(arm64)
         self.ocrRouter = ocrRouter ?? OCRRouter.makeProductionRouter()
         #else
@@ -100,7 +102,8 @@ final class TranslationViewModel: ObservableObject {
         return true
     }
 
-    var translationService: TranslationService {
+    var translationService: any TranslationService {
+        if let override = translationServiceOverride { return override }
         switch preferences.translationEngine {
         case .deepL: return DeepLTranslationService(keychainService: keychainService)
         case .google: return GoogleTranslationService(keychainService: keychainService)
