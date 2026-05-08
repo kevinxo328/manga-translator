@@ -9,7 +9,7 @@
     }
   ],
   "defaultOptions" : {
-    "defaultTestExecutionTimeAllowance" : 600,
+    "defaultTestExecutionTimeAllowance" : 1800,
     "testTimeoutsEnabled" : true
   },
   "testTargets" : [

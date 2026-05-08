@@ -9,8 +9,6 @@ import MLXNN
 import MLXFast
 import Metal
 import PaddleOCRVL
-import Tokenizers
-import Hub
 
 // MARK: - Inference engine protocol (for testability)
 
@@ -395,16 +393,16 @@ private struct ImagePreprocessor {
 }
 
 private struct TokenizerAdapter {
-    let tokenizer: any Tokenizer
+    let tokenizer: any PaddleOCRTokenizer
     let config: PaddleOCRVLConfig
 
     var stopTokens: Set<Int> {
         let eosId = tokenizer.eosTokenId ?? 2
-        return [2, 100272, eosId]
+        return [eosId]
     }
 
     func buildInputIds(numMergedTokens: Int, textPrompt: String? = nil) -> [Int] {
-        let prompt = textPrompt ?? "OCR:"
+        let prompt = textPrompt ?? "Perform OCR on this manga image. Output only the text, no explanation."
         let userPrefixIds = tokenizer.encode(text: "User: ", addSpecialTokens: false)
         let textIds = tokenizer.encode(text: prompt + "\nAssistant: ", addSpecialTokens: false)
 
@@ -419,7 +417,7 @@ private struct TokenizerAdapter {
     }
 
     func decode(_ tokens: [Int]) -> String {
-        tokenizer.decode(tokens: tokens, skipSpecialTokens: true)
+        tokenizer.decode(tokens: tokens, skipSpecialTokens: false)
     }
 }
 
@@ -438,17 +436,51 @@ private struct GeneratorRuntime {
     let model: PaddleOCRVLModel
     let stopTokens: Set<Int>
     let settings: GenerationSettings
+    let mropeSection: [Int]?
+    let visionTokenId: Int
 
-    func generate(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> [Int] {
-        generateTrace(imageFeatures: imageFeatures, inputIds: inputIds, maxNewTokens: maxNewTokens).generatedTokens
+    func generate(
+        imageFeatures: MLXArray,
+        inputIds: [Int],
+        maxNewTokens: Int,
+        hMerged: Int = 0,
+        wMerged: Int = 0
+    ) -> [Int] {
+        generateTrace(
+            imageFeatures: imageFeatures, inputIds: inputIds, maxNewTokens: maxNewTokens,
+            hMerged: hMerged, wMerged: wMerged
+        ).generatedTokens
     }
 
-    func generateTrace(imageFeatures: MLXArray, inputIds: [Int], maxNewTokens: Int) -> GenerationTrace {
+    func generateTrace(
+        imageFeatures: MLXArray,
+        inputIds: [Int],
+        maxNewTokens: Int,
+        hMerged: Int = 0,
+        wMerged: Int = 0
+    ) -> GenerationTrace {
         var inputIdArray = MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1)
         let cache = model.newCache()
 
         let mergedEmbeds = model.mergeInputIdsWithImageFeatures(inputIds: inputIdArray, imageFeatures: imageFeatures)
-        let hiddenStates = model.languageModel.forward(mergedEmbeds, cache: cache)
+
+        // Compute 3D position IDs for prefill when multimodal RoPE is enabled
+        let prefillPositionIds: MLXArray?
+        let ropeDelta: Int
+        if mropeSection != nil && hMerged > 0 && wMerged > 0 {
+            let (posIds, delta) = computeMultimodalPositionIds(
+                inputIds: inputIds, hMerged: hMerged, wMerged: wMerged, imageTokenId: visionTokenId
+            )
+            prefillPositionIds = posIds
+            ropeDelta = delta
+        } else {
+            prefillPositionIds = nil
+            ropeDelta = 0
+        }
+
+        let hiddenStates = model.languageModel.forward(
+            mergedEmbeds, positionIds: prefillPositionIds, cache: cache
+        )
         var logits = model.lmHead(hiddenStates)
 
         var generatedTokens: [Int] = []
@@ -485,7 +517,19 @@ private struct GeneratorRuntime {
 
             inputIdArray = MLXArray([Int32(nextTokenId)]).reshaped(1, 1)
             let nextEmbeds = model.languageModel.getEmbedding(inputIdArray)
-            let nextHidden = model.languageModel.forward(nextEmbeds, cache: cache)
+
+            // Compute single-token position ID for decode step
+            let decodePositionIds: MLXArray?
+            if mropeSection != nil {
+                let decodePos = Int32(cache[0].offset + ropeDelta)
+                decodePositionIds = MLXArray([decodePos, decodePos, decodePos]).reshaped(3, 1)
+            } else {
+                decodePositionIds = nil
+            }
+
+            let nextHidden = model.languageModel.forward(
+                nextEmbeds, positionIds: decodePositionIds, cache: cache
+            )
             logits = model.lmHead(nextHidden)
 
             eval(logits)
@@ -499,16 +543,6 @@ private struct GeneratorRuntime {
     }
 
     private func detectLoop(in tokens: [Int]) -> Bool {
-        for n in 1...4 {
-            if tokens.count >= n * 3 {
-                let tail = Array(tokens.suffix(n))
-                let prev = Array(tokens.dropLast(n).suffix(n))
-                let prevPrev = Array(tokens.dropLast(n * 2).suffix(n))
-                if tail == prev && prev == prevPrev {
-                    return true
-                }
-            }
-        }
         return false
     }
 
@@ -522,6 +556,64 @@ private struct GeneratorRuntime {
             )
         }
     }
+}
+
+// Compute 3D multimodal position IDs for PaddleOCR-VL.
+// Text tokens before/after image get sequential (pos, pos, pos).
+// Image tokens at grid (row, col) get (textBefore, textBefore+row, textBefore+col).
+// Returns positionIds shaped (3, seqLen) and ropeDelta = max(hMerged,wMerged) - hMerged*wMerged.
+func computeMultimodalPositionIds(
+    inputIds: [Int],
+    hMerged: Int,
+    wMerged: Int,
+    imageTokenId: Int
+) -> (positionIds: MLXArray, ropeDelta: Int) {
+    let seqLen = inputIds.count
+    var tIds = [Int32](repeating: 0, count: seqLen)
+    var hIds = [Int32](repeating: 0, count: seqLen)
+    var wIds = [Int32](repeating: 0, count: seqLen)
+
+    guard let imageStart = inputIds.firstIndex(of: imageTokenId) else {
+        for i in 0..<seqLen {
+            tIds[i] = Int32(i); hIds[i] = Int32(i); wIds[i] = Int32(i)
+        }
+        return (MLXArray(tIds + hIds + wIds).reshaped(3, seqLen), 0)
+    }
+
+    let textBefore = imageStart
+    let nImage = hMerged * wMerged
+    let imageEnd = imageStart + nImage
+
+    for i in 0..<textBefore {
+        tIds[i] = Int32(i); hIds[i] = Int32(i); wIds[i] = Int32(i)
+    }
+
+    for imgIdx in 0..<nImage {
+        let seqIdx = imageStart + imgIdx
+        let row = imgIdx / wMerged
+        let col = imgIdx % wMerged
+        tIds[seqIdx] = Int32(textBefore)
+        hIds[seqIdx] = Int32(textBefore + row)
+        wIds[seqIdx] = Int32(textBefore + col)
+    }
+
+    let textAfterStart = textBefore + max(hMerged, wMerged)
+    for i in imageEnd..<seqLen {
+        let pos = textAfterStart + (i - imageEnd)
+        tIds[i] = Int32(pos); hIds[i] = Int32(pos); wIds[i] = Int32(pos)
+    }
+
+    let ropeDelta = max(hMerged, wMerged) - nImage
+    let positionIds = MLXArray(tIds + hIds + wIds).reshaped(3, seqLen)
+    return (positionIds, ropeDelta)
+}
+
+// Extract (t, h, w) axes from a (3, seqLen) position ID MLXArray into Swift arrays.
+// Used by tests to inspect position IDs without linking MLX directly.
+func extractPositionIdAxes(_ positionIds: MLXArray) -> (t: [Int32], h: [Int32], w: [Int32]) {
+    (positionIds[0].asArray(Int32.self),
+     positionIds[1].asArray(Int32.self),
+     positionIds[2].asArray(Int32.self))
 }
 
 func effectiveMaxNewTokens(requested: Int, configured: Int) -> Int {
@@ -629,12 +721,18 @@ private struct PaddleOCRVLRuntime {
         let patchSize = config.visionConfig.patchSize
         let hPatches = targetH / patchSize
         let wPatches = targetW / patchSize
+        let spatialMergeSize = 2
+        let hMerged = hPatches / spatialMergeSize
+        let wMerged = wPatches / spatialMergeSize
         let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
         let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
         let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
 
         let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1), textPrompt: promptOverride)
-        let generationTrace = generator.generateTrace(imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024)
+        let generationTrace = generator.generateTrace(
+            imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024,
+            hMerged: hMerged, wMerged: wMerged
+        )
         let generatedTokens = generationTrace.generatedTokens
         let rawText = tokenizerAdapter.decode(generatedTokens)
         let trimmedText = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -709,19 +807,7 @@ private struct PaddleOCRVLRuntime {
         srcW: Int,
         srcH: Int
     ) -> Bool {
-        let normalized = trimmedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let maxSide = max(srcW, srcH)
-        guard maxSide <= 80 else { return false }
-        guard !normalized.isEmpty else { return false }
-
-        let isRepeatedQuestionMarks = normalized.count >= 2 && normalized.allSatisfy { char in
-            char == "?" || char == "？"
-        }
-        if isRepeatedQuestionMarks {
-            return true
-        }
-
-        return normalized.allSatisfy(\.isNumber)
+        return false
     }
 
 }
@@ -731,7 +817,8 @@ private struct PaddleOCRVLRuntime {
 /// Compute smart_resize target dimensions with max_pixels cap, matching Python image_processing.py.
 func smartResizeClampedDimensions(srcW: Int, srcH: Int, patchSize: Int) -> (targetW: Int, targetH: Int) {
     let factor = patchSize * 2  // spatialMergeSize = 2 → 28
-    let maxPixels = 28 * 28 * 1280  // 1,003,520 — Python default
+    let minPixels = 147_384
+    let maxPixels = 2_822_400
 
     var targetH = max(factor, Int(round(Double(srcH) / Double(factor))) * factor)
     var targetW = max(factor, Int(round(Double(srcW) / Double(factor))) * factor)
@@ -740,6 +827,10 @@ func smartResizeClampedDimensions(srcW: Int, srcH: Int, patchSize: Int) -> (targ
         let beta = sqrt(Double(srcH * srcW) / Double(maxPixels))
         targetH = max(factor, Int(floor(Double(srcH) / beta / Double(factor))) * factor)
         targetW = max(factor, Int(floor(Double(srcW) / beta / Double(factor))) * factor)
+    } else if targetH * targetW < minPixels {
+        let beta = sqrt(Double(minPixels) / Double(srcH * srcW))
+        targetH = max(factor, Int(ceil(Double(srcH) * beta / Double(factor))) * factor)
+        targetW = max(factor, Int(ceil(Double(srcW) * beta / Double(factor))) * factor)
     }
     return (targetW, targetH)
 }
@@ -877,13 +968,15 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
 
         try loadWeights(into: model, projector: projector, visionEncoder: visionEncoder, from: modelDirectory)
 
-        let tokenizer = try await AutoTokenizer.from(modelFolder: modelDirectory)
+        let tokenizer = try await PaddleOCRTokenizerLoader.from(modelFolder: modelDirectory)
         let tokenizerAdapter = TokenizerAdapter(tokenizer: tokenizer, config: config)
         let imagePreprocessor = ImagePreprocessor(context: CIContext())
         let generator = GeneratorRuntime(
             model: model,
             stopTokens: tokenizerAdapter.stopTokens,
-            settings: generationSettings
+            settings: generationSettings,
+            mropeSection: config.textConfig.mropeSection,
+            visionTokenId: config.visionTokenId
         )
 
         return PaddleOCRVLRuntime(
@@ -907,6 +1000,8 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         let textConfigDict = raw["text_config"] as? [String: Any] ?? [:]
         let visionConfigDict = raw["vision_config"] as? [String: Any] ?? [:]
 
+        let ropeScaling = (textConfigDict["rope_scaling"] as? [String: Any]) ?? (raw["rope_scaling"] as? [String: Any])
+        let mropeSection = ropeScaling?["mrope_section"] as? [Int]
         let textConfig = PaddleOCRVLTextConfig(
             vocabSize: (textConfigDict["vocab_size"] as? Int) ?? (raw["vocab_size"] as? Int) ?? 48000,
             headDim: (textConfigDict["head_dim"] as? Int) ?? (raw["head_dim"] as? Int),
@@ -916,7 +1011,8 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
             numAttentionHeads: (textConfigDict["num_attention_heads"] as? Int) ?? (raw["num_attention_heads"] as? Int) ?? 14,
             numKeyValueHeads: (textConfigDict["num_key_value_heads"] as? Int) ?? (raw["num_key_value_heads"] as? Int) ?? 2,
             rmsNormEps: (textConfigDict["rms_norm_eps"] as? Float) ?? (raw["rms_norm_eps"] as? Float) ?? 1e-6,
-            ropeTheta: (textConfigDict["rope_theta"] as? Float) ?? (raw["rope_theta"] as? Float) ?? 10_000
+            ropeTheta: (textConfigDict["rope_theta"] as? Float) ?? (raw["rope_theta"] as? Float) ?? 10_000,
+            mropeSection: mropeSection
         )
         let visionConfig = PaddleOCRVLVisionConfig(
             hiddenSize: (visionConfigDict["hidden_size"] as? Int) ?? 1152,
@@ -957,7 +1053,7 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
     }
 
     private static func readGenerationSettings(from directory: URL) -> GeneratorRuntime.GenerationSettings {
-        let fallback = GeneratorRuntime.GenerationSettings(maxNewTokens: 300, noRepeatNgramSize: 3)
+        let fallback = GeneratorRuntime.GenerationSettings(maxNewTokens: 1024, noRepeatNgramSize: 0)
         let url = directory.appendingPathComponent("generation_config.json")
         guard let data = try? Data(contentsOf: url),
               let config = try? JSONDecoder().decode(PaddleOCRGenerationConfig.self, from: data) else {

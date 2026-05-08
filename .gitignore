@@ -9,6 +9,7 @@ xcuserdata/
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
+Package.resolved
 
 # Swift Package Manager
 #

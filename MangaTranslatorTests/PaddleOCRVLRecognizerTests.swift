@@ -354,8 +354,8 @@ struct PaddleOCRVLRecognizerTests {
 
     // MARK: - Decode-stability: cleanRecognizedText
 
-    @Test("Repeated punctuation tail is collapsed to a single character")
-    func repeatedPunctuationIsCollapsed() throws {
+    @Test("Repeated punctuation tail is preserved for verify parity")
+    func repeatedPunctuationIsPreserved() throws {
         let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -366,7 +366,7 @@ struct PaddleOCRVLRecognizerTests {
         guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
         let (text, _) = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
 
-        #expect(text == "Degraded output.", "Repeated dots should be collapsed to one period, not replaced with '['")
+        #expect(text == "Degraded output...............")
     }
 
     @Test("Replacement characters are stripped from PaddleOCR output")
@@ -384,8 +384,8 @@ struct PaddleOCRVLRecognizerTests {
         #expect(text == "さぁいってきてください!!")
     }
 
-    @Test("Repeated phrase loop is stripped to its first occurrence")
-    func repeatedPhraseTailIsStripped() throws {
+    @Test("Repeated phrase loop is preserved for verify parity")
+    func repeatedPhraseLoopIsPreserved() throws {
         let dir = try makeModelDirectoryWithWeights()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -396,7 +396,7 @@ struct PaddleOCRVLRecognizerTests {
         guard let image = makeSolidCGImage(width: 100, height: 50) else { return }
         let (text, _) = try recognizer.recognizeText(in: image, region: CGRect(x: 0, y: 0, width: 100, height: 50))
 
-        #expect(text == "This is a loop.", "Repeated phrase tail should be stripped to a single occurrence")
+        #expect(text == "This is a loop. This is a loop. This is a loop. This is a loop.")
     }
 
     @Test("Default engine reports explicit inference failure instead of silent empty result")
@@ -421,6 +421,7 @@ struct PaddleOCRVLRecognizerTests {
             Issue.record("Expected PaddleOCRError, got \(error)")
         }
     }
+
 }
 
 @Suite("DefaultPaddleOCREngine")
@@ -472,6 +473,94 @@ struct DefaultPaddleOCREngineTests {
         #expect(throws: PaddleOCREngineError.modelUnavailable) {
             _ = try DefaultPaddleOCREngine(modelDirectory: dir)
         }
+    }
+}
+
+// MARK: - Multimodal Position ID tests
+
+@Suite("MultimodalPositionIds")
+struct MultimodalPositionIdsTests {
+
+    // 2×2 grid: text_before=4 tokens, 4 image tokens, 2 text_after tokens
+    @Test("2x2 grid: image tokens get correct t/h/w positions")
+    func grid2x2ImagePositions() {
+        let imageTokenId = 99
+        // [bos, u1, u2, visStart, img(0,0), img(0,1), img(1,0), img(1,1), visEnd, task]
+        let inputIds = [0, 1, 2, 3, imageTokenId, imageTokenId, imageTokenId, imageTokenId, 4, 5]
+        let (positionIds, ropeDelta) = computeMultimodalPositionIds(
+            inputIds: inputIds, hMerged: 2, wMerged: 2, imageTokenId: imageTokenId
+        )
+
+        #expect(ropeDelta == -2)  // max(2,2) - 4 = -2
+
+        let (tIds, hIds, wIds) = extractPositionIdAxes(positionIds)
+
+        // Text before: sequential positions 0-3
+        #expect(tIds[0] == 0 && hIds[0] == 0 && wIds[0] == 0)
+        #expect(tIds[3] == 3 && hIds[3] == 3 && wIds[3] == 3)
+
+        let textBefore = Int32(4)
+        // img(0,0): t=4, h=4+0=4, w=4+0=4
+        #expect(tIds[4] == textBefore && hIds[4] == textBefore && wIds[4] == textBefore)
+        // img(0,1): t=4, h=4, w=5
+        #expect(tIds[5] == textBefore && hIds[5] == textBefore && wIds[5] == textBefore + 1)
+        // img(1,0): t=4, h=5, w=4
+        #expect(tIds[6] == textBefore && hIds[6] == textBefore + 1 && wIds[6] == textBefore)
+        // img(1,1): t=4, h=5, w=5
+        #expect(tIds[7] == textBefore && hIds[7] == textBefore + 1 && wIds[7] == textBefore + 1)
+
+        // Text after: starts at textBefore + max(2,2) = 6
+        #expect(tIds[8] == 6 && hIds[8] == 6 && wIds[8] == 6)
+        #expect(tIds[9] == 7 && hIds[9] == 7 && wIds[9] == 7)
+    }
+
+    // Landscape grid (4 rows × 2 cols): max(h,w)=4, n_img=8, delta=-4
+    @Test("4x2 grid: rope delta is max(h,w) - h*w")
+    func grid4x2RopeDelta() {
+        let imageTokenId = 99
+        let inputIds = [0] + Array(repeating: imageTokenId, count: 8) + [1]
+        let (_, ropeDelta) = computeMultimodalPositionIds(
+            inputIds: inputIds, hMerged: 4, wMerged: 2, imageTokenId: imageTokenId
+        )
+        #expect(ropeDelta == -4)  // max(4,2) - 8 = -4
+    }
+
+    // Portrait grid (2 rows × 4 cols): max(h,w)=4, n_img=8, delta=-4
+    @Test("2x4 grid: rope delta accounts for wider width")
+    func grid2x4RopeDelta() {
+        let imageTokenId = 99
+        let inputIds = [0] + Array(repeating: imageTokenId, count: 8) + [1]
+        let (_, ropeDelta) = computeMultimodalPositionIds(
+            inputIds: inputIds, hMerged: 2, wMerged: 4, imageTokenId: imageTokenId
+        )
+        #expect(ropeDelta == -4)  // max(2,4) - 8 = -4
+    }
+
+    // 1×1 grid (single patch): max(1,1)=1, n_img=1, delta=0
+    @Test("1x1 grid: rope delta is zero")
+    func grid1x1RopeDelta() {
+        let imageTokenId = 99
+        let inputIds = [0, imageTokenId, 1]
+        let (positionIds, ropeDelta) = computeMultimodalPositionIds(
+            inputIds: inputIds, hMerged: 1, wMerged: 1, imageTokenId: imageTokenId
+        )
+        #expect(ropeDelta == 0)
+        let (tIds, hIds, wIds) = extractPositionIdAxes(positionIds)
+        // bos: (0,0,0), img: (1,1,1), task: (2,2,2)
+        #expect(tIds[1] == 1 && hIds[1] == 1 && wIds[1] == 1)
+        #expect(tIds[2] == 2 && hIds[2] == 2 && wIds[2] == 2)
+    }
+
+    // No image tokens: all sequential
+    @Test("no image tokens: all positions sequential")
+    func noImageTokens() {
+        let inputIds = [0, 1, 2, 3]
+        let (positionIds, ropeDelta) = computeMultimodalPositionIds(
+            inputIds: inputIds, hMerged: 1, wMerged: 1, imageTokenId: 99
+        )
+        #expect(ropeDelta == 0)
+        let (tIds, _, _) = extractPositionIdAxes(positionIds)
+        #expect(tIds == [0, 1, 2, 3])
     }
 }
 #endif

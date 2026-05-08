@@ -10,6 +10,53 @@ private func rotateHalfText(_ x: MLXArray) -> MLXArray {
     return concatenated([-x2, x1], axis: -1)
 }
 
+// Compute cos/sin embeddings for 3 axes (t, h, w) using the same invFreq.
+// positionIds: (3, seqLen) — axis 0=t, 1=h, 2=w
+// Returns cosAll, sinAll each shaped (3, seqLen, headDim)
+private func multimodalRotaryEmbedding(
+    positionIds: MLXArray,
+    invFreq: MLXArray
+) -> (cosAll: MLXArray, sinAll: MLXArray) {
+    let posFloat = positionIds.asType(.float32)  // (3, seqLen)
+    // outer product per axis: (3, seqLen, halfDim) via broadcasting
+    let freqs = posFloat.expandedDimensions(axis: -1) * invFreq  // (3,seqLen,1) * (halfDim,)
+    let emb = concatenated([freqs, freqs], axis: -1)  // (3, seqLen, headDim)
+    return (MLX.cos(emb), MLX.sin(emb))
+}
+
+// Reassemble per-section cos/sin using mrope_section axes assignment.
+// cosAll, sinAll: (3, seqLen, headDim) — axis 0=t, 1=h, 2=w
+// mropeSection: e.g. [16, 24, 24] → doubled=[16,24,24,16,24,24] → splitPoints=[16,40,64,80,104]
+// Returns assembled cos, sin each shaped (seqLen, headDim)
+private func assembleMrope(
+    cosAll: MLXArray,
+    sinAll: MLXArray,
+    mropeSection: [Int]
+) -> (cos: MLXArray, sin: MLXArray) {
+    let headDim = cosAll.dim(2)
+    let doubled = mropeSection + mropeSection
+    var splitPoints: [Int] = []
+    var cumsum = 0
+    for v in doubled.dropLast() {
+        cumsum += v
+        splitPoints.append(cumsum)
+    }
+    let boundaries = splitPoints + [headDim]
+
+    var cosSlices: [MLXArray] = []
+    var sinSlices: [MLXArray] = []
+    var start = 0
+    for (i, end) in boundaries.enumerated() {
+        let axis = i % 3
+        let cosAxis = cosAll[axis]  // (seqLen, headDim)
+        let sinAxis = sinAll[axis]
+        cosSlices.append(cosAxis[.ellipsis, start..<end])
+        sinSlices.append(sinAxis[.ellipsis, start..<end])
+        start = end
+    }
+    return (concatenated(cosSlices, axis: -1), concatenated(sinSlices, axis: -1))
+}
+
 public class RoPE: Module {
     let dimensions: Int
     let traditional: Bool
@@ -115,15 +162,17 @@ public class ERNIEAttention: Module {
     public func callAsFunction(
         _ x: MLXArray,
         mask: MLXArray?,
-        cache: KVCache?
+        cache: KVCache?,
+        positionEmbeds: (cos: MLXArray, sin: MLXArray)? = nil
     ) -> MLXArray {
-        debug(x, mask: mask, cache: cache).output
+        debug(x, mask: mask, cache: cache, positionEmbeds: positionEmbeds).output
     }
 
     public func debug(
         _ x: MLXArray,
         mask: MLXArray?,
-        cache: KVCache?
+        cache: KVCache?,
+        positionEmbeds: (cos: MLXArray, sin: MLXArray)? = nil
     ) -> (
         output: MLXArray,
         rawQueries: MLXArray,
@@ -147,9 +196,20 @@ public class ERNIEAttention: Module {
         let rawKeys = keys
         let rawValues = values
 
-        let offset = cache?.offset ?? 0
-        queries = rope(queries, offset: offset)
-        keys = rope(keys, offset: offset)
+        if let (cos, sin) = positionEmbeds {
+            // Multimodal 3D RoPE: cos/sin already assembled per mrope_section
+            // cos, sin: (seqLen, headDim) → expand to (1, 1, seqLen, headDim)
+            let cosExp = cos.expandedDimensions(axis: 0).expandedDimensions(axis: 0)
+            let sinExp = sin.expandedDimensions(axis: 0).expandedDimensions(axis: 0)
+            let qF = queries.asType(.float32)
+            let kF = keys.asType(.float32)
+            queries = (qF * cosExp + rotateHalfText(qF) * sinExp).asType(queries.dtype)
+            keys = (kF * cosExp + rotateHalfText(kF) * sinExp).asType(keys.dtype)
+        } else {
+            let offset = cache?.offset ?? 0
+            queries = rope(queries, offset: offset)
+            keys = rope(keys, offset: offset)
+        }
 
         if let cache = cache {
             (keys, values) = cache.update(keys: keys, values: values)
@@ -237,15 +297,17 @@ public class ERNIEDecoderLayer: Module {
     public func callAsFunction(
         _ x: MLXArray,
         mask: MLXArray?,
-        cache: KVCache?
+        cache: KVCache?,
+        positionEmbeds: (cos: MLXArray, sin: MLXArray)? = nil
     ) -> MLXArray {
-        debug(x, mask: mask, cache: cache).output
+        debug(x, mask: mask, cache: cache, positionEmbeds: positionEmbeds).output
     }
 
     public func debug(
         _ x: MLXArray,
         mask: MLXArray?,
-        cache: KVCache?
+        cache: KVCache?,
+        positionEmbeds: (cos: MLXArray, sin: MLXArray)? = nil
     ) -> (
         output: MLXArray,
         inputNorm: MLXArray,
@@ -262,7 +324,7 @@ public class ERNIEDecoderLayer: Module {
         mlpOutput: MLXArray
     ) {
         let inputNorm = inputLayerNorm(x)
-        let attentionDebug = selfAttn.debug(inputNorm, mask: mask, cache: cache)
+        let attentionDebug = selfAttn.debug(inputNorm, mask: mask, cache: cache, positionEmbeds: positionEmbeds)
         var h = attentionDebug.output
         h = x + h
         let postAttentionNorm = postAttentionLayerNorm(h)
@@ -318,28 +380,47 @@ public class ERNIEModelInner: Module {
 
     public func forward(
         _ inputsEmbeds: MLXArray,
+        positionIds: MLXArray? = nil,
         cache: [KVCache]?
     ) -> MLXArray {
         var h = inputsEmbeds
         let mask = createAttentionMask(h: h, cache: cache)
 
+        let positionEmbeds = makePositionEmbeds(positionIds: positionIds)
+
         for (i, layer) in layers.enumerated() {
-            h = layer(h, mask: mask, cache: cache?[i])
+            h = layer(h, mask: mask, cache: cache?[i], positionEmbeds: positionEmbeds)
         }
 
         return norm(h)
     }
 
+    // Compute assembled (cos, sin) from 3D position IDs, or nil for sequential RoPE fallback.
+    private func makePositionEmbeds(
+        positionIds: MLXArray?
+    ) -> (cos: MLXArray, sin: MLXArray)? {
+        guard let posIds = positionIds,
+              let mropeSec = config.mropeSection else { return nil }
+        let headDim = config.headDim ?? (config.hiddenSize / config.numAttentionHeads)
+        let freqs = MLXArray(stride(from: 0, to: headDim, by: 2).map { Float($0) })
+        let invFreq = 1.0 / MLX.pow(MLXArray(config.ropeTheta), freqs / Float(headDim))
+        let (cosAll, sinAll) = multimodalRotaryEmbedding(positionIds: posIds, invFreq: invFreq)
+        return assembleMrope(cosAll: cosAll, sinAll: sinAll, mropeSection: mropeSec)
+    }
+
     public func forwardDebug(
         _ inputsEmbeds: MLXArray,
+        positionIds: MLXArray? = nil,
         cache: [KVCache]?
     ) -> (finalHidden: MLXArray, layerOutputs: [MLXArray]) {
         var h = inputsEmbeds
         let mask = createAttentionMask(h: h, cache: cache)
         var layerOutputs: [MLXArray] = []
 
+        let positionEmbeds = makePositionEmbeds(positionIds: positionIds)
+
         for (i, layer) in layers.enumerated() {
-            h = layer(h, mask: mask, cache: cache?[i])
+            h = layer(h, mask: mask, cache: cache?[i], positionEmbeds: positionEmbeds)
             layerOutputs.append(h)
         }
 
@@ -348,6 +429,7 @@ public class ERNIEModelInner: Module {
 
     public func forwardFirstLayerDebug(
         _ inputsEmbeds: MLXArray,
+        positionIds: MLXArray? = nil,
         cache: [KVCache]?
     ) -> (
         finalHidden: MLXArray,
@@ -367,11 +449,12 @@ public class ERNIEModelInner: Module {
     ) {
         var h = inputsEmbeds
         let mask = createAttentionMask(h: h, cache: cache)
-        let firstLayerDebug = layers[0].debug(h, mask: mask, cache: cache?[0])
+        let positionEmbeds = makePositionEmbeds(positionIds: positionIds)
+        let firstLayerDebug = layers[0].debug(h, mask: mask, cache: cache?[0], positionEmbeds: positionEmbeds)
         h = firstLayerDebug.output
 
         for (i, layer) in layers.enumerated() where i > 0 {
-            h = layer(h, mask: mask, cache: cache?[i])
+            h = layer(h, mask: mask, cache: cache?[i], positionEmbeds: positionEmbeds)
         }
 
         return (
@@ -447,9 +530,10 @@ public class ERNIELanguageModel: Module {
 
     public func forward(
         inputsEmbeds: MLXArray,
+        positionIds: MLXArray? = nil,
         cache: [KVCache]?
     ) -> MLXArray {
-        var out = model.forward(inputsEmbeds, cache: cache)
+        var out = model.forward(inputsEmbeds, positionIds: positionIds, cache: cache)
         out = computeLogits(out)
         return out
     }

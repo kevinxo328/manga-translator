@@ -120,42 +120,6 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing, @unchecked Sendable {
     private func cleanRecognizedText(_ text: String) -> String {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         cleaned = cleaned.replacingOccurrences(of: "\u{FFFD}", with: "")
-
-        // 1. Remove repeated punctuation loops (e.g. ".....", "!!!!")
-        let punctuationPairs: [(String, String)] = [
-            ("[\\.]{3,}", "."), ("[!]{3,}", "!"), ("[?]{3,}", "?"),
-            ("[。]{3,}", "。"), ("[！]{3,}", "！"), ("[？]{3,}", "？"), ("[…]{2,}", "…")
-        ]
-        for (pattern, replacement) in punctuationPairs {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-                cleaned = regex.stringByReplacingMatches(
-                    in: cleaned, options: [],
-                    range: NSRange(location: 0, length: cleaned.utf16.count),
-                    withTemplate: replacement
-                )
-            }
-        }
-
-        // 2. Phrase loop cleanup: strip all trailing repetitions back to a single occurrence
-        let words = cleaned.components(separatedBy: .whitespaces)
-        if words.count >= 6 {
-            for n in 2...4 {
-                if words.count >= n * 3 {
-                    let tail = Array(words.suffix(n))
-                    let prev = Array(words.dropLast(n).suffix(n))
-                    let prevPrev = Array(words.dropLast(n * 2).suffix(n))
-                    if tail == prev && prev == prevPrev {
-                        var cutAt = words.count
-                        while cutAt >= n && Array(words[(cutAt - n)..<cutAt]) == tail {
-                            cutAt -= n
-                        }
-                        cleaned = (Array(words[0..<cutAt]) + tail).joined(separator: " ")
-                        return cleaned
-                    }
-                }
-            }
-        }
-
         return cleaned
     }
 

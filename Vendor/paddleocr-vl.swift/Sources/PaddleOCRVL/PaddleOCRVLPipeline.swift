@@ -4,6 +4,33 @@ import MLX
 import Tokenizers
 import Hub
 
+public protocol PaddleOCRTokenizer {
+    var eosTokenId: Int? { get }
+    func encode(text: String, addSpecialTokens: Bool) -> [Int]
+    func decode(tokens: [Int], skipSpecialTokens: Bool) -> String
+}
+
+private struct AutoLoadedTokenizerAdapter: PaddleOCRTokenizer {
+    let base: any Tokenizer
+
+    var eosTokenId: Int? { base.eosTokenId }
+
+    func encode(text: String, addSpecialTokens: Bool) -> [Int] {
+        base.encode(text: text, addSpecialTokens: addSpecialTokens)
+    }
+
+    func decode(tokens: [Int], skipSpecialTokens: Bool) -> String {
+        base.decode(tokens: tokens, skipSpecialTokens: skipSpecialTokens)
+    }
+}
+
+public enum PaddleOCRTokenizerLoader {
+    public static func from(modelFolder: URL) async throws -> any PaddleOCRTokenizer {
+        let tokenizer = try await AutoTokenizer.from(modelFolder: modelFolder)
+        return AutoLoadedTokenizerAdapter(base: tokenizer)
+    }
+}
+
 public class PaddleOCRVLPipeline {
     public let model: PaddleOCRVLModel
     public let tokenizer: any Tokenizer

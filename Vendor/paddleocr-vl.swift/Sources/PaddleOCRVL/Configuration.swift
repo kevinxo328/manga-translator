@@ -82,6 +82,7 @@ public struct PaddleOCRVLTextConfig: Codable, Sendable {
     public var rmsNormEps: Float
     public var ropeTheta: Float
     public var tieWordEmbeddings: Bool
+    public var mropeSection: [Int]?
 
     enum CodingKeys: String, CodingKey {
         case vocabSize = "vocab_size"
@@ -110,7 +111,8 @@ public struct PaddleOCRVLTextConfig: Codable, Sendable {
         maxPositionEmbeddings: Int = 32768,
         rmsNormEps: Float = 1e-6,
         ropeTheta: Float = 10_000,
-        tieWordEmbeddings: Bool = false
+        tieWordEmbeddings: Bool = false,
+        mropeSection: [Int]? = nil
     ) {
         self.vocabSize = vocabSize
         self.headDim = headDim
@@ -124,6 +126,7 @@ public struct PaddleOCRVLTextConfig: Codable, Sendable {
         self.rmsNormEps = rmsNormEps
         self.ropeTheta = ropeTheta
         self.tieWordEmbeddings = tieWordEmbeddings
+        self.mropeSection = mropeSection
     }
 
     public init(from decoder: Decoder) throws {
@@ -140,6 +143,7 @@ public struct PaddleOCRVLTextConfig: Codable, Sendable {
         self.rmsNormEps = try container.decodeIfPresent(Float.self, forKey: .rmsNormEps) ?? 1e-6
         self.ropeTheta = try container.decodeIfPresent(Float.self, forKey: .ropeTheta) ?? 10_000
         self.tieWordEmbeddings = try container.decodeIfPresent(Bool.self, forKey: .tieWordEmbeddings) ?? false
+        self.mropeSection = nil  // nested under rope_scaling, populated externally
     }
 }
 
