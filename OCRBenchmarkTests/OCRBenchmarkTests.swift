@@ -117,41 +117,53 @@ final class OCRBenchmarkTests: XCTestCase {
         let router = try await productionRouter()
         let clock = ContinuousClock()
 
-        var imageResults: [ImageResult] = []
-
+        // 1. Batch process all images with PaddleOCR
+        var paddleResults: [URL: (bubbles: [BubbleCluster], latency: Double, failed: Bool)] = [:]
         for imagePath in images {
-            guard let nsImage = NSImage(contentsOf: imagePath) else {
-                continue
+            guard let nsImage = NSImage(contentsOf: imagePath) else { continue }
+            
+            let start = clock.now
+            do {
+                let bubbles = try await router.processWithPaddleOCR(image: nsImage)
+                let elapsed = start.duration(to: clock.now)
+                let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+                paddleResults[imagePath] = (bubbles, ms, false)
+            } catch {
+                print("PaddleOCR failed for \(imagePath.lastPathComponent): \(error)")
+                paddleResults[imagePath] = ([], 0, true)
             }
+        }
+
+        // 2. Batch process all images with MangaOCR
+        var mangaResults: [URL: (bubbles: [BubbleCluster], latency: Double, failed: Bool)] = [:]
+        for imagePath in images {
+            guard let nsImage = NSImage(contentsOf: imagePath) else { continue }
+            
+            let start = clock.now
+            do {
+                let bubbles = try await router.processWithMangaOCR(image: nsImage)
+                let elapsed = start.duration(to: clock.now)
+                let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
+                mangaResults[imagePath] = (bubbles, ms, false)
+            } catch {
+                print("MangaOCR failed for \(imagePath.lastPathComponent): \(error)")
+                mangaResults[imagePath] = ([], 0, true)
+            }
+        }
+
+        // 3. Assemble results and calculate IoU (Report logic remains identical)
+        var imageResults: [ImageResult] = []
+        for imagePath in images {
+            let pRes = paddleResults[imagePath] ?? ([], 0, true)
+            let mRes = mangaResults[imagePath] ?? ([], 0, true)
 
             var latency: [String: Double] = [:]
             var failures: Set<String> = []
+            
+            if !pRes.failed { latency["PaddleOCR"] = pRes.latency } else { failures.insert("PaddleOCR") }
+            if !mRes.failed { latency["MangaOCR"] = mRes.latency } else { failures.insert("MangaOCR") }
 
-            let paddleStart = clock.now
-            let paddleBubbles: [BubbleCluster]
-            do {
-                paddleBubbles = try await router.processWithPaddleOCR(image: nsImage)
-                let elapsed = paddleStart.duration(to: clock.now)
-                latency["PaddleOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-            } catch {
-                print("PaddleOCR failed for \(imagePath.lastPathComponent): \(error)")
-                paddleBubbles = []
-                failures.insert("PaddleOCR")
-            }
-
-            let mangaStart = clock.now
-            let mangaBubbles: [BubbleCluster]
-            do {
-                mangaBubbles = try await router.processWithMangaOCR(image: nsImage)
-                let elapsed = mangaStart.duration(to: clock.now)
-                latency["MangaOCR"] = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-            } catch {
-                print("MangaOCR failed for \(imagePath.lastPathComponent): \(error)")
-                mangaBubbles = []
-                failures.insert("MangaOCR")
-            }
-
-            let paddleVsManga = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: mangaBubbles)
+            let paddleVsManga = BubbleRegionMatcher.match(anchor: pRes.bubbles, compared: mRes.bubbles)
 
             imageResults.append(ImageResult(
                 imagePath: imagePath.path,

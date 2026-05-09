@@ -16,6 +16,7 @@ final class OCRRouter {
     private let logger = Logger(subsystem: "MangaTranslator", category: "OCRRouter")
 
     private var usingPaddleOCR = false
+    private var cachedPaddleOCR: (any OCRRecognizing)?
 
     init(
         mangaOCRService: MangaOCRService? = nil,
@@ -94,7 +95,10 @@ final class OCRRouter {
         usingPaddleOCR = true
         do {
             logger.info("Starting OCR with PaddleOCR")
-            await mangaOCRService.setRecognizer(try paddleOCRFactory())
+            if cachedPaddleOCR == nil {
+                cachedPaddleOCR = try paddleOCRFactory()
+            }
+            await mangaOCRService.setRecognizer(cachedPaddleOCR)
             let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
             logger.info("Completed OCR with PaddleOCR, bubbles=\(bubbles.count, privacy: .public)")
             return readingOrderSorter.sort(bubbles)
