@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.1 (2026-05-09)
+
+### Improvements
+
+- **Improved Recognition Accuracy** — Refined the high-accuracy OCR engine's spatial awareness to provide more precise text recognition, especially in complex manga layouts.
+
 ## v1.4.0 (2026-05-07)
 
 ### New Features
