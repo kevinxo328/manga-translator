@@ -20,7 +20,43 @@ private struct AutoLoadedTokenizerAdapter: PaddleOCRTokenizer {
     }
 
     func decode(tokens: [Int], skipSpecialTokens: Bool) -> String {
-        base.decode(tokens: tokens, skipSpecialTokens: skipSpecialTokens)
+        let decoded = base.decode(tokens: tokens, skipSpecialTokens: skipSpecialTokens)
+        let tokenStrings = base.convertIdsToTokens(tokens).compactMap { $0 }
+        let trailingByteFallback = decodeTrailingByteFallback(from: tokenStrings)
+        guard trailingByteFallback.isEmpty == false, decoded.hasSuffix(trailingByteFallback) == false else {
+            return decoded
+        }
+        return decoded + trailingByteFallback
+    }
+
+    private func decodeTrailingByteFallback(from tokenStrings: [String]) -> String {
+        var trailingBytes: [UInt8] = []
+
+        for token in tokenStrings.reversed() {
+            guard let byte = parseByteFallbackToken(token) else {
+                break
+            }
+            trailingBytes.insert(byte, at: 0)
+        }
+
+        guard trailingBytes.isEmpty == false else {
+            return ""
+        }
+
+        return String(decoding: trailingBytes, as: UTF8.self)
+    }
+
+    private func parseByteFallbackToken(_ token: String) -> UInt8? {
+        guard token.count == 6, token.hasPrefix("<0x"), token.hasSuffix(">") else {
+            return nil
+        }
+
+        let startIndex = token.index(token.startIndex, offsetBy: 3)
+        let endIndex = token.index(token.startIndex, offsetBy: 5)
+        guard let value = UInt8(token[startIndex..<endIndex], radix: 16) else {
+            return nil
+        }
+        return value
     }
 }
 
