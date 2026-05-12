@@ -7,7 +7,7 @@ import Combine
 
 @MainActor
 private final class MockModelDownloadService: ModelDownloadServicing {
-    @Published private(set) var state: ModelDownloadState
+    @Published fileprivate(set) var state: ModelDownloadState
     @Published private(set) var paddleOCREnabled: Bool
 
     var isPaddleOCREnabled: Bool { state == .downloaded && paddleOCREnabled }
@@ -37,6 +37,10 @@ private final class MockModelDownloadService: ModelDownloadServicing {
         setEnabledHistory.append(enabled)
         guard !enabled || state == .downloaded else { return }
         paddleOCREnabled = enabled
+    }
+
+    func setState(_ state: ModelDownloadState) {
+        self.state = state
     }
 }
 
@@ -442,14 +446,41 @@ struct PaddleOCRSettingsEnableRejectionTests {
     @Test("Successful enable clears rejection message")
     @MainActor
     func successfulEnableClearsRejectionMessage() {
-        let (vm, _) = makeViewModel(state: .notDownloaded)
+        let (vm, service) = makeViewModel(state: .notDownloaded)
         vm.enablePaddleOCR() // sets message
+        #expect(vm.enableRejectionMessage != nil)
 
-        // Now simulate model downloaded and try again
-        let (vm2, _) = makeViewModel(state: .downloaded)
-        vm2.enablePaddleOCR()
-        #expect(vm2.enableRejectionMessage == nil,
+        service.setState(.downloaded)
+        vm.enablePaddleOCR()
+
+        #expect(vm.enableRejectionMessage == nil,
                 "Rejection message must be nil after successful enable")
+        #expect(vm.isPaddleOCREnabled == true)
+    }
+
+    @Test("disablePaddleOCR clears an existing rejection message")
+    @MainActor
+    func disableClearsRejectionMessage() {
+        let (vm, _) = makeViewModel(state: .notDownloaded)
+        vm.enablePaddleOCR()
+        #expect(vm.enableRejectionMessage != nil)
+
+        vm.disablePaddleOCR()
+
+        #expect(vm.enableRejectionMessage == nil)
+    }
+
+    @Test("deleteModel clears an existing rejection message")
+    @MainActor
+    func deleteClearsRejectionMessage() async {
+        let (vm, service) = makeViewModel(state: .notDownloaded)
+        vm.enablePaddleOCR()
+        #expect(vm.enableRejectionMessage != nil)
+
+        service.setState(.downloaded)
+        await vm.deleteModel()
+
+        #expect(vm.enableRejectionMessage == nil)
     }
 }
 

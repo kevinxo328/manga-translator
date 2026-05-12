@@ -16,15 +16,24 @@ struct SwiftUIViewCorrectnessTests {
         let _: any ObservableObject.Type = CheckForUpdatesViewModel.self
     }
 
-    @Test("CheckForUpdatesViewModel publishes canCheckForUpdates via objectWillChange")
-    func checkForUpdatesViewModelPublishesCanCheckForUpdates() async {
-        // Verify the @Published property fires objectWillChange
-        // Since SPUUpdater requires actual Sparkle infrastructure we can only
-        // test that CheckForUpdatesViewModel's default published value is false.
-        // The @StateObject fix is verified by compile-time analysis (no @ObservedObject warning).
-        // Initial canCheckForUpdates must be false (updater not started).
-        // (Full integration test would require a live SPUUpdater.)
-        #expect(Bool(true), "CheckForUpdatesViewModel has @Published canCheckForUpdates (compile-verified)")
+    @Test("CheckForUpdatesViewModel republishes canCheckForUpdates updates from its upstream publisher")
+    func checkForUpdatesViewModelRepublishesCanCheckForUpdates() {
+        let subject = PassthroughSubject<Bool, Never>()
+        let viewModel = CheckForUpdatesViewModel(
+            canCheckForUpdatesPublisher: subject.eraseToAnyPublisher(),
+            initialCanCheckForUpdates: false
+        )
+
+        var publishedValues: [Bool] = []
+        let cancellable = viewModel.$canCheckForUpdates.sink { publishedValues.append($0) }
+        defer { _ = cancellable }
+
+        #expect(publishedValues == [false])
+
+        subject.send(true)
+        subject.send(false)
+
+        #expect(publishedValues == [false, true, false])
     }
 
     // MARK: - Group 2: About window singleton

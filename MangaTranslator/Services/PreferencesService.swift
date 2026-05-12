@@ -5,43 +5,46 @@ final class PreferencesService: ObservableObject {
     static let defaultOpenAIModel = "gpt-5"
     static let defaultCopilotModel = "gpt-5-mini"
 
+    private let defaults: UserDefaults
 
     @Published var sourceLanguage: Language {
-        didSet { UserDefaults.standard.set(sourceLanguage.rawValue, forKey: "sourceLanguage") }
+        didSet { defaults.set(sourceLanguage.rawValue, forKey: "sourceLanguage") }
     }
 
     @Published var targetLanguage: Language {
-        didSet { UserDefaults.standard.set(targetLanguage.rawValue, forKey: "targetLanguage") }
+        didSet { defaults.set(targetLanguage.rawValue, forKey: "targetLanguage") }
     }
 
     @Published var translationEngine: TranslationEngine {
-        didSet { UserDefaults.standard.set(translationEngine.rawValue, forKey: "translationEngine") }
+        didSet { defaults.set(translationEngine.rawValue, forKey: "translationEngine") }
     }
 
     @Published var openAIModel: String {
-        didSet { UserDefaults.standard.set(openAIModel, forKey: "openAIModel") }
+        didSet { defaults.set(openAIModel, forKey: "openAIModel") }
     }
 
     @Published var openAIBaseURL: String {
-        didSet { UserDefaults.standard.set(openAIBaseURL, forKey: "openAIBaseURL") }
+        didSet { defaults.set(openAIBaseURL, forKey: "openAIBaseURL") }
     }
 
     @Published var copilotModel: String {
-        didSet { UserDefaults.standard.set(copilotModel, forKey: "copilotModel") }
+        didSet { defaults.set(copilotModel, forKey: "copilotModel") }
     }
 
     @Published var showPathBar: Bool {
-        didSet { UserDefaults.standard.set(showPathBar, forKey: "showPathBar") }
+        didSet { defaults.set(showPathBar, forKey: "showPathBar") }
     }
 
-    init() {
-        let sourceLang = UserDefaults.standard.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
-        let targetLang = UserDefaults.standard.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
-        let engine = UserDefaults.standard.string(forKey: "translationEngine") ?? "openai"
-        let openAIM = UserDefaults.standard.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
-        let openAIURL = UserDefaults.standard.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
-        let copilotM = UserDefaults.standard.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
-        let showP = UserDefaults.standard.object(forKey: "showPathBar") as? Bool ?? true
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+
+        let sourceLang = defaults.string(forKey: "sourceLanguage") ?? Language.ja.rawValue
+        let targetLang = defaults.string(forKey: "targetLanguage") ?? Language.zhHant.rawValue
+        let engine = defaults.string(forKey: "translationEngine") ?? "openai"
+        let openAIM = defaults.string(forKey: "openAIModel") ?? Self.defaultOpenAIModel
+        let openAIURL = defaults.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
+        let copilotM = defaults.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
+        let showP = defaults.object(forKey: "showPathBar") as? Bool ?? true
 
         self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant

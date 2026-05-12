@@ -66,6 +66,7 @@ final class PaddleOCRSettingsViewModel: ObservableObject {
 
     func deleteModel() async {
         try? await downloadService.delete()
+        enableRejectionMessage = nil
         showDeleteConfirmation = false
     }
 

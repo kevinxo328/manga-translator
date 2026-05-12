@@ -1,5 +1,6 @@
 import SwiftUI
 import Sparkle
+import Combine
 
 struct CheckForUpdatesView: View {
     @StateObject private var checkForUpdatesViewModel: CheckForUpdatesViewModel
@@ -9,18 +10,39 @@ struct CheckForUpdatesView: View {
     }
 
     var body: some View {
-        Button("Check for Updates…", action: checkForUpdatesViewModel.updater.checkForUpdates)
+        Button("Check for Updates…", action: checkForUpdatesViewModel.checkForUpdates)
             .disabled(!checkForUpdatesViewModel.canCheckForUpdates)
     }
 }
 
 final class CheckForUpdatesViewModel: ObservableObject {
     @Published var canCheckForUpdates = false
-    let updater: SPUUpdater
+    private let checkForUpdatesAction: () -> Void
+    private var cancellable: AnyCancellable?
 
     init(updater: SPUUpdater) {
-        self.updater = updater
-        updater.publisher(for: \.canCheckForUpdates)
-            .assign(to: &$canCheckForUpdates)
+        self.checkForUpdatesAction = updater.checkForUpdates
+        self.canCheckForUpdates = updater.canCheckForUpdates
+        self.cancellable = updater.publisher(for: \.canCheckForUpdates)
+            .sink { [weak self] canCheck in
+                self?.canCheckForUpdates = canCheck
+            }
+    }
+
+    init(
+        canCheckForUpdatesPublisher: AnyPublisher<Bool, Never>,
+        initialCanCheckForUpdates: Bool = false,
+        checkForUpdatesAction: @escaping () -> Void = {}
+    ) {
+        self.checkForUpdatesAction = checkForUpdatesAction
+        self.canCheckForUpdates = initialCanCheckForUpdates
+        self.cancellable = canCheckForUpdatesPublisher
+            .sink { [weak self] canCheck in
+                self?.canCheckForUpdates = canCheck
+            }
+    }
+
+    func checkForUpdates() {
+        checkForUpdatesAction()
     }
 }
