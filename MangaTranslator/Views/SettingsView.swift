@@ -45,7 +45,7 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 450, height: 600)
+        .frame(width: ViewLayout.Settings.width, height: ViewLayout.Settings.height)
         .onAppear { loadKeys() }
         .task {
             copilotAvailability = CopilotEnvironment.check()
@@ -267,6 +267,21 @@ private struct UpdateSettingsView: View {
 }
 
 struct AboutView: View {
+    private static let info = Bundle.main.infoDictionary
+
+    private var version: String {
+        Self.info?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+    private var copyright: String {
+        Self.info?["NSHumanReadableCopyright"] as? String ?? ""
+    }
+    private var contactEmail: String? {
+        Self.info?["AppContactEmail"] as? String
+    }
+    private var githubURL: URL? {
+        (Self.info?["AppGitHubURL"] as? String).flatMap(URL.init)
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Image(nsImage: NSApp.applicationIconImage)
@@ -276,13 +291,13 @@ struct AboutView: View {
             VStack(spacing: 4) {
                 Text("MangaTranslator")
                     .font(.title2.bold())
-                
-                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+
+                Text("Version \(version)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Text("© 2026 kevinxo328. All rights reserved.")
+            Text(copyright)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -290,16 +305,20 @@ struct AboutView: View {
                 .padding(.vertical, 8)
 
             VStack(spacing: 12) {
-                Link(destination: URL(string: "mailto:kevinxo328@gmail.com")!) {
-                    Label("kevinxo328@gmail.com", systemImage: "envelope")
+                if let email = contactEmail {
+                    Link(destination: URL(string: "mailto:\(email)")!) {
+                        Label(email, systemImage: "envelope")
+                    }
                 }
-                Link(destination: URL(string: "https://github.com/kevinxo328")!) {
-                    Label("GitHub", systemImage: "link")
+                if let url = githubURL {
+                    Link(destination: url) {
+                        Label("GitHub", systemImage: "link")
+                    }
                 }
             }
             .font(.callout)
         }
         .padding(24)
-        .frame(width: 300)
+        .frame(width: ViewLayout.About.width)
     }
 }

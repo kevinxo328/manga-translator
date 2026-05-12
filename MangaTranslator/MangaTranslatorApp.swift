@@ -1,6 +1,26 @@
 import SwiftUI
 import Sparkle
 
+enum ViewLayout {
+    enum Settings {
+        static let width: CGFloat = 450
+        static let height: CGFloat = 630
+    }
+    enum MainWindow {
+        static let minWidth: CGFloat = 800
+        static let minHeight: CGFloat = 600
+        static let imageColumnMinWidth: CGFloat = 500
+    }
+    enum Sidebar {
+        static let minWidth: CGFloat = 300
+        static let idealWidth: CGFloat = 350
+    }
+    enum About {
+        static let width: CGFloat = 300
+        static let windowHeight: CGFloat = 350
+    }
+}
+
 /// Holds a strong reference to the About window so it can be reused on repeated clicks.
 final class AppWindowHolder {
     var aboutWindow: NSWindow?
@@ -42,7 +62,7 @@ struct MangaTranslatorApp: App {
                         existing.makeKeyAndOrderFront(nil)
                     } else {
                         let aboutWindow = NSWindow(
-                            contentRect: NSRect(x: 0, y: 0, width: 300, height: 350),
+                            contentRect: NSRect(x: 0, y: 0, width: ViewLayout.About.width, height: ViewLayout.About.windowHeight),
                             styleMask: [.titled, .closable, .fullSizeContentView],
                             backing: .buffered, defer: false)
                         aboutWindow.title = "About MangaTranslator"

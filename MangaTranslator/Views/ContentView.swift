@@ -15,7 +15,7 @@ struct ContentView: View {
                     dropZone
                 }
             }
-            .frame(minWidth: 500)
+            .frame(minWidth: ViewLayout.MainWindow.imageColumnMinWidth)
 
             Divider()
 
@@ -35,7 +35,7 @@ struct ContentView: View {
                 pathBar(path: path)
             }
         }
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: ViewLayout.MainWindow.minWidth, minHeight: ViewLayout.MainWindow.minHeight)
         .toolbar { toolbarContent }
         .fileImporter(
             isPresented: $viewModel.showFileImporter,

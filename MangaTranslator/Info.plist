@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>AppContactEmail</key>
+	<string>kevinxo328@gmail.com</string>
+	<key>AppGitHubURL</key>
+	<string>https://github.com/kevinxo328</string>
 	<key>SUFeedURL</key>
 	<string>https://github.com/kevinxo328/manga-translator/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>

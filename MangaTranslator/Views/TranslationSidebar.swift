@@ -84,7 +84,7 @@ struct TranslationSidebar: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .frame(minWidth: 300, idealWidth: 350)
+        .frame(minWidth: ViewLayout.Sidebar.minWidth, idealWidth: ViewLayout.Sidebar.idealWidth)
     }
 
     private var emptyState: some View {
