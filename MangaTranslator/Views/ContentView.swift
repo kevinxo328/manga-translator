@@ -88,8 +88,7 @@ struct ContentView: View {
         let translations = viewModel.currentTranslations
         guard !translations.isEmpty else { return }
 
-        // Sort bubbles to ensure logical order matches visual order
-        let sorted = translations.sorted(by: { $0.index < $1.index })
+        let sorted = translations.sortedByIndex
 
         if let currentId = viewModel.highlightedBubbleId,
            let currentPos = sorted.firstIndex(where: { $0.id == currentId }) {

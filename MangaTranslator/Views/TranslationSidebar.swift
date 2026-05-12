@@ -8,7 +8,7 @@ struct TranslationSidebar: View {
     var onRetranslate: (() -> Void)? = nil
 
     private var sortedTranslations: [(offset: Int, element: TranslatedBubble)] {
-        Array(translations.sorted { $0.index < $1.index }.enumerated())
+        Array(translations.sortedByIndex.enumerated())
     }
 
     var body: some View {

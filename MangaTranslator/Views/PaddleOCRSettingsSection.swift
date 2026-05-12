@@ -81,6 +81,13 @@ struct PaddleOCRSettingsSection: View {
         }
     }
 
+    private var deleteModelButton: some View {
+        Button("Delete Model Data", role: .destructive) {
+            viewModel.confirmDeleteModel()
+        }
+        .controlSize(.small)
+    }
+
     private var downloadedView: some View {
         VStack(alignment: .leading, spacing: 8) {
             if viewModel.isPaddleOCREnabled {
@@ -94,10 +101,7 @@ struct PaddleOCRSettingsSection: View {
                     }
                     .controlSize(.small)
 
-                    Button("Delete Model Data", role: .destructive) {
-                        viewModel.confirmDeleteModel()
-                    }
-                    .controlSize(.small)
+                    deleteModelButton
                 }
             } else {
                 Label("High-Accuracy OCR Disabled", systemImage: "circle")
@@ -117,10 +121,7 @@ struct PaddleOCRSettingsSection: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
 
-                    Button("Delete Model Data", role: .destructive) {
-                        viewModel.confirmDeleteModel()
-                    }
-                    .controlSize(.small)
+                    deleteModelButton
                 }
             }
         }
@@ -145,12 +146,13 @@ struct PaddleOCRSettingsSection: View {
 
 // MARK: - Previews
 
-#Preview("Not Downloaded") {
-    let service = ModelDownloadService(configuration: .previewNotDownloaded)
-    let vm = PaddleOCRSettingsViewModel(
-        capability: .supported,
-        downloadService: service
-    )
+@MainActor
+private func makePaddleOCRPreview(
+    configuration: ModelDownloadConfiguration,
+    capability: PaddleOCRCapability = .supported
+) -> some View {
+    let service = ModelDownloadService(configuration: configuration)
+    let vm = PaddleOCRSettingsViewModel(capability: capability, downloadService: service)
     return Form {
         PaddleOCRSettingsSection(viewModel: vm)
     }
@@ -159,60 +161,10 @@ struct PaddleOCRSettingsSection: View {
     .frame(width: 450)
 }
 
-#Preview("Downloading") {
-    let service = ModelDownloadService(configuration: .previewDownloading)
-    let vm = PaddleOCRSettingsViewModel(
-        capability: .supported,
-        downloadService: service
-    )
-    return Form {
-        PaddleOCRSettingsSection(viewModel: vm)
-    }
-    .formStyle(.grouped)
-    .padding()
-    .frame(width: 450)
-}
-
-#Preview("Downloaded + Enabled") {
-    let service = ModelDownloadService(configuration: .previewDownloadedEnabled)
-    let vm = PaddleOCRSettingsViewModel(
-        capability: .supported,
-        downloadService: service
-    )
-    return Form {
-        PaddleOCRSettingsSection(viewModel: vm)
-    }
-    .formStyle(.grouped)
-    .padding()
-    .frame(width: 450)
-}
-
-#Preview("Downloaded + Disabled") {
-    let service = ModelDownloadService(configuration: .previewDownloadedDisabled)
-    let vm = PaddleOCRSettingsViewModel(
-        capability: .supported,
-        downloadService: service
-    )
-    return Form {
-        PaddleOCRSettingsSection(viewModel: vm)
-    }
-    .formStyle(.grouped)
-    .padding()
-    .frame(width: 450)
-}
-
-#Preview("Downloading + 8GB Warning") {
-    let service = ModelDownloadService(configuration: .previewDownloading)
-    let vm = PaddleOCRSettingsViewModel(
-        capability: .supportedWithWarning(ram: 8),
-        downloadService: service
-    )
-    return Form {
-        PaddleOCRSettingsSection(viewModel: vm)
-    }
-    .formStyle(.grouped)
-    .padding()
-    .frame(width: 450)
-}
+#Preview("Not Downloaded") { makePaddleOCRPreview(configuration: .previewNotDownloaded) }
+#Preview("Downloading") { makePaddleOCRPreview(configuration: .previewDownloading) }
+#Preview("Downloaded + Enabled") { makePaddleOCRPreview(configuration: .previewDownloadedEnabled) }
+#Preview("Downloaded + Disabled") { makePaddleOCRPreview(configuration: .previewDownloadedDisabled) }
+#Preview("Downloading + 8GB Warning") { makePaddleOCRPreview(configuration: .previewDownloading, capability: .supportedWithWarning(ram: 8)) }
 
 #endif

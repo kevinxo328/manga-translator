@@ -134,6 +134,12 @@ struct TranslationOutput {
     let detectedTerms: [GlossaryTerm]
 }
 
+extension [TranslatedBubble] {
+    var sortedByIndex: [TranslatedBubble] {
+        sorted { $0.index < $1.index }
+    }
+}
+
 protocol TranslationService {
     var engine: TranslationEngine { get }
     func translate(
