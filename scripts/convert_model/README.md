@@ -29,6 +29,12 @@ python convert.py
 # Scans examples/ directory by default
 python verify.py
 
+# Verify a single image directly with an absolute path
+python verify.py --image /abs/path/to/image.jpg
+
+# Verify a single cropped region from one image
+python verify.py --image /abs/path/to/image.jpg --crop 10,20,120,40
+
 # Or verify a specific directory with detector-driven crops and a token limit
 python verify.py --test-images ../../examples/book1 --max-tokens 100
 
@@ -49,6 +55,7 @@ mathematically close to the original BF16 model. We measure this using
 **Character Error Rate (CER) Delta**.
 
 - **Default data**: `examples/` directory (full manga pages).
+- **`--image` data**: a single image file, optionally constrained with `--crop`.
 - **`--test-images` data**: detector-driven region crops produced by the same
   `ComicTextDetectorService` used by the macOS app.
 - **Primary metric**: CER Delta (BF16 vs. Quantized).
@@ -67,6 +74,10 @@ The verification report includes:
 
 ## Current Guidance
 
+- **Single-image debugging is now first-class**: use `--image /abs/path/to/file`
+  when you want a fast answer for one file without scanning a whole directory.
+- **Optional crop for single-image mode**: `--crop x,y,width,height` runs OCR on
+  one explicit region and avoids detector export entirely.
 - **`--test-images` is crop-first**: page directories are converted into
   region-level OCR samples through the standalone Swift `DetectorExportCLI`.
   Full pages are not sent directly to OCR in this mode.
@@ -81,6 +92,28 @@ The verification report includes:
   location for debugging.
 - **Group Size**: `group_size=64` is the default candidate as it balances
   model size and parity.
+
+## Debug Recipes
+
+```bash
+# Fastest path: one image, no detector
+python verify.py --image /abs/path/to/image.jpg
+
+# One image, one explicit crop
+python verify.py --image /abs/path/to/image.jpg --crop 10,20,120,40
+
+# Directory mode with detector export preserved for later inspection
+python verify.py \
+  --test-images ../../examples/book1 \
+  --detector-json-output ./detector.json \
+  --report-json ./report.json
+
+# Export quantized prefill-stage diagnostics for parity investigation
+python verify.py \
+  --image /abs/path/to/image.jpg \
+  --crop 10,20,120,40 \
+  --prefill-stage-report-json ./prefill.json
+```
 
 ## Tests
 

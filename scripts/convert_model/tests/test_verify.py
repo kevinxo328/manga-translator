@@ -11,20 +11,29 @@ from scripts.convert_model.verify import (
     CropBox,
     EvaluationRecord,
     LoadedDataset,
+    PrefillStageRecord,
+    PrefillVisionLayerSubstepRecord,
     Sample,
+    TensorSummary,
+    TopToken,
     clamp_crop_box,
     compute_cer,
     expand_detector_crop_box,
     expand_crop_box,
+    filter_samples_by_ids,
     format_report_block,
     load_detector_samples,
     load_crop_samples,
+    load_single_image_sample,
     load_samples_from_args,
     normalize_text,
+    parse_crop_box_arg,
     percentile,
     prepare_samples,
     remove_ngram_loops,
+    summarize_tensor,
     summarize_records,
+    write_prefill_stage_report_json,
 )
 
 
@@ -207,6 +216,8 @@ class VerifyHelpersTests(unittest.TestCase):
 
             mock_export.side_effect = write_detector_json
             args = argparse.Namespace(
+                image=None,
+                crop=None,
                 crop_manifest=None,
                 test_images=test_dir.resolve(),
                 keep_detector_json=False,
@@ -243,6 +254,8 @@ class VerifyHelpersTests(unittest.TestCase):
             )
 
             args = argparse.Namespace(
+                image=None,
+                crop=None,
                 crop_manifest=manifest_path.resolve(),
                 test_images=None,
                 keep_detector_json=False,
@@ -253,6 +266,61 @@ class VerifyHelpersTests(unittest.TestCase):
             self.assertEqual(dataset.mode, "crop_manifest")
             self.assertEqual(len(dataset.samples), 1)
             self.assertEqual(dataset.samples[0].mode, "crop")
+
+    def test_parse_crop_box_arg_parses_four_floats(self):
+        self.assertEqual(
+            parse_crop_box_arg("1,2,3,4"),
+            CropBox(x=1.0, y=2.0, width=3.0, height=4.0),
+        )
+
+    def test_parse_crop_box_arg_rejects_invalid_input(self):
+        with self.assertRaises(argparse.ArgumentTypeError):
+            parse_crop_box_arg("1,2,3")
+
+    def test_load_single_image_sample_supports_absolute_path_without_crop(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "page.png"
+            Image.new("RGB", (40, 30), "white").save(image_path)
+
+            dataset = load_single_image_sample(image_path.resolve(), crop_box=None)
+
+            self.assertEqual(dataset.mode, "single_image")
+            self.assertEqual(len(dataset.samples), 1)
+            self.assertEqual(dataset.samples[0].sample_id, "page")
+            self.assertEqual(dataset.samples[0].crop_box, CropBox(x=0.0, y=0.0, width=40.0, height=30.0))
+
+    def test_load_single_image_sample_supports_absolute_path_with_crop(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "page.png"
+            Image.new("RGB", (40, 30), "white").save(image_path)
+
+            dataset = load_single_image_sample(
+                image_path.resolve(),
+                crop_box=CropBox(x=5.0, y=6.0, width=7.0, height=8.0),
+            )
+
+            self.assertEqual(dataset.samples[0].crop_box, CropBox(x=5.0, y=6.0, width=7.0, height=8.0))
+            self.assertEqual(dataset.samples[0].mode, "single_image_crop")
+
+    def test_load_samples_from_args_prefers_single_image_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "panel.jpg"
+            Image.new("RGB", (20, 10), "white").save(image_path)
+
+            args = argparse.Namespace(
+                image=image_path.resolve(),
+                crop=CropBox(x=1.0, y=2.0, width=3.0, height=4.0),
+                crop_manifest=None,
+                test_images=None,
+                keep_detector_json=False,
+                detector_json_output=None,
+            )
+
+            dataset = load_samples_from_args(args)
+
+            self.assertEqual(dataset.mode, "single_image")
+            self.assertEqual(dataset.samples[0].sample_id, "panel")
+            self.assertEqual(dataset.samples[0].crop_box, CropBox(x=1.0, y=2.0, width=3.0, height=4.0))
 
     def test_summarize_records_counts_failures(self):
         records = [
@@ -289,6 +357,121 @@ class VerifyHelpersTests(unittest.TestCase):
         self.assertEqual(summary["fail_count"], 1)
         self.assertEqual(summary["empty_output_count"], 1)
         self.assertEqual(summary["quantized_loop_count"], 1)
+
+    def test_filter_samples_by_ids_keeps_requested_samples(self):
+        samples = [
+            Sample(sample_id="a", image_path=Path("/tmp/a.png"), mode="crop"),
+            Sample(sample_id="b", image_path=Path("/tmp/b.png"), mode="crop"),
+        ]
+        dataset = LoadedDataset(mode="crop_manifest", samples=samples, metadata={"page_count": 2})
+
+        filtered = filter_samples_by_ids(dataset, ["b"])
+
+        self.assertEqual([sample.sample_id for sample in filtered.samples], ["b"])
+        self.assertEqual(filtered.mode, dataset.mode)
+        self.assertEqual(filtered.metadata, dataset.metadata)
+
+    def test_filter_samples_by_ids_raises_for_missing_id(self):
+        dataset = LoadedDataset(
+            mode="crop_manifest",
+            samples=[Sample(sample_id="a", image_path=Path("/tmp/a.png"), mode="crop")],
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing requested sample ids"):
+            filter_samples_by_ids(dataset, ["missing"])
+
+    def test_summarize_tensor_reports_shape_and_statistics(self):
+        summary = summarize_tensor([[1.0, -1.0], [3.0, 5.0]])
+
+        self.assertEqual(summary.dtype, "float32")
+        self.assertEqual(summary.shape, [2, 2])
+        self.assertEqual(summary.prefix[:4], [1.0, -1.0, 3.0, 5.0])
+        self.assertAlmostEqual(summary.mean, 2.0)
+        self.assertAlmostEqual(summary.min, -1.0)
+        self.assertAlmostEqual(summary.max, 5.0)
+        self.assertAlmostEqual(summary.l2, (36.0) ** 0.5)
+        self.assertGreater(summary.std, 0.0)
+
+    def test_write_prefill_stage_report_json_preserves_layer_outputs(self):
+        args = argparse.Namespace(
+            quantized_model=Path("/tmp/model"),
+            max_pixels=1024,
+            prompt="OCR",
+            max_tokens=16,
+            temperature=0.0,
+            crop_padding=0.0,
+            sample_id=["sample-1"],
+        )
+        summary = TensorSummary(
+            dtype="bfloat16",
+            shape=[1, 2],
+            mean=1.0,
+            std=0.5,
+            min=0.0,
+            max=2.0,
+            l2=2.2360679,
+            prefix=[0.0, 2.0],
+            token_row_prefixes=[[0.0, 2.0]],
+        )
+        record = PrefillStageRecord(
+            sample_id="sample-1",
+            prepared_image_path="/tmp/prepared.png",
+            source_image_path="/tmp/source.png",
+            crop_box=[1.0, 2.0, 3.0, 4.0],
+            crop_padding=0.18,
+            input_ids_count=3,
+            input_ids_prefix=[11, 12, 13],
+            target_width=392,
+            target_height=392,
+            generated_text="……",
+            generated_tokens=[2703, 2],
+            termination_token=2,
+            first_step_top_tokens=[TopToken(token_id=2703, logit=21.25)],
+            pixel_values=summary,
+            vision_patch_embeddings=summary,
+            vision_position_embeddings=summary,
+            vision_input_embeddings=summary,
+            vision_first_layer_output=summary,
+            vision_layer_outputs=[summary, summary],
+            vision_target_layer_substeps=[
+                PrefillVisionLayerSubstepRecord(
+                    layer_index=6,
+                    input_hidden_states=summary,
+                    post_layer_norm1=summary,
+                    pre_rotary_queries=summary,
+                    pre_rotary_keys=summary,
+                    post_rotary_queries=summary,
+                    post_rotary_keys=summary,
+                    values=summary,
+                    attention_output=summary,
+                    post_attention_residual=summary,
+                    post_layer_norm2=summary,
+                    fc1_output=summary,
+                    gelu_output=summary,
+                    mlp_output=summary,
+                    output_hidden_states=summary,
+                )
+            ],
+            encoded_vision_features=summary,
+            projected_image_features=summary,
+            merged_embeddings=summary,
+            first_step_logits=summary,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "prefill.json"
+            write_prefill_stage_report_json(
+                output_path=output_path,
+                args=args,
+                dataset_metadata={"page_count": 1},
+                records=[record],
+            )
+            payload = json.loads(output_path.read_text())
+
+        self.assertEqual(payload["records"][0]["vision_layer_outputs"][0]["dtype"], "bfloat16")
+        self.assertEqual(payload["records"][0]["vision_layer_outputs"][0]["token_row_prefixes"], [[0.0, 2.0]])
+        self.assertEqual(len(payload["records"][0]["vision_layer_outputs"]), 2)
+        self.assertEqual(payload["records"][0]["vision_target_layer_substeps"][0]["layer_index"], 6)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 SCRIPT_DIR = Path(__file__).parent.resolve()
 os.environ.setdefault("HF_HOME", str(SCRIPT_DIR / ".hf_cache"))
 
@@ -27,6 +29,7 @@ MODEL_ID = "jzhang533/PaddleOCR-VL-For-Manga"
 DEFAULT_MAX_CER_DELTA = 0.05
 DEFAULT_PROMPT = "Perform OCR on this manga image. Output only the text, no explanation."
 DEFAULT_MAX_TOKENS = 1024
+DEFAULT_DEBUG_VISION_LAYERS = (6, 18, 25, 27)
 REPO_ROOT = SCRIPT_DIR.parent.parent
 DETECTOR_CLI_BUILD_DIR = REPO_ROOT / ".xcodebuild-env" / "swift-build-cli"
 DETECTOR_CLI_EXECUTABLE = DETECTOR_CLI_BUILD_DIR / "debug" / "DetectorExportCLI"
@@ -92,6 +95,89 @@ class EvaluationRecord:
     quantized_loop_detected: bool
     empty_output: bool
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TensorSummary:
+    dtype: str
+    shape: list[int]
+    mean: float
+    std: float
+    min: float
+    max: float
+    l2: float
+    prefix: list[float]
+    token_row_prefixes: list[list[float]]
+
+
+@dataclass(frozen=True)
+class TopToken:
+    token_id: int
+    logit: float
+
+
+@dataclass(frozen=True)
+class PrefillVisionLayerSubstepRecord:
+    layer_index: int
+    input_hidden_states: TensorSummary
+    post_layer_norm1: TensorSummary
+    pre_rotary_queries: TensorSummary
+    pre_rotary_keys: TensorSummary
+    post_rotary_queries: TensorSummary
+    post_rotary_keys: TensorSummary
+    values: TensorSummary
+    attention_output: TensorSummary
+    post_attention_residual: TensorSummary
+    post_layer_norm2: TensorSummary
+    fc1_output: TensorSummary
+    gelu_output: TensorSummary
+    mlp_output: TensorSummary
+    output_hidden_states: TensorSummary
+
+
+@dataclass(frozen=True)
+class PrefillStageRecord:
+    sample_id: str
+    prepared_image_path: str
+    source_image_path: str
+    crop_box: list[float] | None
+    crop_padding: float
+    input_ids_count: int
+    input_ids_prefix: list[int]
+    target_width: int
+    target_height: int
+    generated_text: str
+    generated_tokens: list[int]
+    termination_token: int | None
+    first_step_top_tokens: list[TopToken]
+    pixel_values: TensorSummary
+    vision_patch_embeddings: TensorSummary
+    vision_position_embeddings: TensorSummary
+    vision_input_embeddings: TensorSummary
+    vision_first_layer_output: TensorSummary
+    vision_layer_outputs: list[TensorSummary]
+    vision_target_layer_substeps: list[PrefillVisionLayerSubstepRecord]
+    encoded_vision_features: TensorSummary
+    projected_image_features: TensorSummary
+    merged_embeddings: TensorSummary
+    first_step_logits: TensorSummary
+
+
+def parse_crop_box_arg(raw_value: str) -> CropBox:
+    """Parse a CLI crop argument in x,y,width,height form."""
+    parts = [part.strip() for part in raw_value.split(",")]
+    if len(parts) != 4:
+        raise argparse.ArgumentTypeError("crop must be formatted as x,y,width,height")
+
+    try:
+        x, y, width, height = (float(part) for part in parts)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("crop values must be numeric") from error
+
+    if width <= 0 or height <= 0:
+        raise argparse.ArgumentTypeError("crop width and height must be greater than zero")
+
+    return CropBox(x=x, y=y, width=width, height=height)
 
 
 def normalize_text(text: str) -> str:
@@ -248,6 +334,107 @@ def summarize_records(records: list[EvaluationRecord], fail_threshold: float) ->
         "empty_output_count": sum(1 for record in records if record.empty_output),
         "quantized_loop_count": sum(1 for record in records if record.quantized_loop_detected),
     }
+
+
+def filter_samples_by_ids(dataset: LoadedDataset, sample_ids: list[str]) -> LoadedDataset:
+    """Keep only the requested samples and fail if any requested IDs are missing."""
+    if not sample_ids:
+        return dataset
+
+    requested = set(sample_ids)
+    sample_map = {sample.sample_id: sample for sample in dataset.samples}
+    missing = sorted(requested - set(sample_map.keys()))
+    if missing:
+        raise ValueError(f"missing requested sample ids: {', '.join(missing)}")
+
+    filtered = [sample_map[sample_id] for sample_id in sample_ids]
+    return LoadedDataset(mode=dataset.mode, samples=filtered, metadata=dataset.metadata)
+
+
+def summarize_tensor(values: Any, prefix_count: int = 16) -> TensorSummary:
+    """Create a compact numeric summary for tensor parity diagnostics."""
+    if type(values).__module__.startswith("mlx"):
+        import mlx.core as mx
+
+        flat = values.astype(mx.float32).reshape(-1)
+        if flat.size == 0:
+            return TensorSummary(
+                dtype=str(values.dtype),
+                shape=list(values.shape),
+                mean=0.0,
+                std=0.0,
+                min=0.0,
+                max=0.0,
+                l2=0.0,
+                prefix=[],
+                token_row_prefixes=[],
+            )
+
+        mean = flat.mean()
+        std = flat.std()
+        min_value = flat.min()
+        max_value = flat.max()
+        l2 = mx.sqrt(mx.sum(flat * flat))
+        prefix = flat[:prefix_count]
+        token_row_prefixes: list[list[float]] = []
+        if values.ndim in (2, 3):
+            row_count = int(values.shape[-2])
+            row_width = int(values.shape[-1])
+            row_view = values.astype(mx.float32).reshape(-1, row_width)
+            sample_indices = sorted({0, max(0, row_count // 2), max(0, row_count - 1)})
+            sampled_rows = row_view[sample_indices, :prefix_count]
+            mx.eval(sampled_rows)
+            token_row_prefixes = [
+                [float(item) for item in row]
+                for row in sampled_rows.tolist()
+            ]
+        mx.eval(mean, std, min_value, max_value, l2, prefix)
+        return TensorSummary(
+            dtype=str(values.dtype),
+            shape=list(values.shape),
+            mean=float(mean.item()),
+            std=float(std.item()),
+            min=float(min_value.item()),
+            max=float(max_value.item()),
+            l2=float(l2.item()),
+            prefix=[float(item) for item in prefix.tolist()],
+            token_row_prefixes=token_row_prefixes,
+        )
+
+    array = np.asarray(values, dtype=np.float32)
+    flat = array.reshape(-1)
+    if flat.size == 0:
+        return TensorSummary(
+            dtype=str(array.dtype),
+            shape=list(array.shape),
+            mean=0.0,
+            std=0.0,
+            min=0.0,
+            max=0.0,
+            l2=0.0,
+            prefix=[],
+            token_row_prefixes=[],
+        )
+
+    token_row_prefixes: list[list[float]] = []
+    if array.ndim in (2, 3):
+        sample_indices = sorted({0, max(0, array.shape[-2] // 2), max(0, array.shape[-2] - 1)})
+        token_row_prefixes = [
+            row[:prefix_count].astype(np.float32).tolist()
+            for row in array.reshape(-1, array.shape[-1])[sample_indices]
+        ]
+
+    return TensorSummary(
+        dtype=str(array.dtype),
+        shape=list(array.shape),
+        mean=float(array.mean()),
+        std=float(array.std()),
+        min=float(array.min()),
+        max=float(array.max()),
+        l2=float(np.linalg.norm(flat)),
+        prefix=flat[:prefix_count].astype(np.float32).tolist(),
+        token_row_prefixes=token_row_prefixes,
+    )
 
 
 def list_page_images(test_dir: Path) -> list[Path]:
@@ -492,6 +679,47 @@ def load_test_image_samples(
     return dataset
 
 
+def load_single_image_sample(image_path: Path, crop_box: CropBox | None) -> LoadedDataset:
+    """Load a single image sample, optionally constrained to a crop box."""
+    resolved_image_path = image_path.resolve()
+    if not resolved_image_path.is_file():
+        raise FileNotFoundError(f"image not found: {resolved_image_path}")
+
+    from PIL import Image
+
+    with Image.open(resolved_image_path) as image:
+        width, height = image.size
+
+    effective_crop_box = crop_box or CropBox(x=0.0, y=0.0, width=float(width), height=float(height))
+    effective_crop_box = clamp_crop_box(effective_crop_box, width, height)
+    if effective_crop_box.width <= 0 or effective_crop_box.height <= 0:
+        raise ValueError(f"crop produced an empty region for image: {resolved_image_path}")
+
+    page_id = resolved_image_path.stem
+    sample = Sample(
+        sample_id=page_id,
+        image_path=resolved_image_path,
+        mode="single_image_crop" if crop_box is not None else "single_image",
+        crop_box=effective_crop_box,
+        metadata={"page_id": page_id},
+    )
+    return LoadedDataset(
+        mode="single_image",
+        samples=[sample],
+        metadata={
+            "page_count": 1,
+            "page_summaries": [
+                {
+                    "page_id": page_id,
+                    "image_path": str(resolved_image_path),
+                    "region_count": 1,
+                }
+            ],
+            "zero_region_pages": [],
+        },
+    )
+
+
 def prepare_samples(samples: list[Sample], crop_padding: float) -> list[PreparedSample]:
     """Prepare page images or cropped region images for inference."""
     if crop_padding < 0:
@@ -580,6 +808,228 @@ def run_batch(
     return results
 
 
+def summarize_prefill_stages(
+    model_path: Path,
+    prepared_samples: list[PreparedSample],
+    max_pixels: int,
+    prompt_text: str,
+    max_tokens: int,
+    temperature: float,
+) -> list[PrefillStageRecord]:
+    """Export quantized-model prefill summaries for direct parity comparison."""
+    import mlx.core as mx
+    from mlx_vlm import load
+    from mlx_vlm.generate import generate_step
+    from mlx_vlm.models.paddleocr_vl.vision import apply_rotary_pos_emb_vision
+    from mlx_vlm.prompt_utils import apply_chat_template
+    from mlx_vlm.utils import load_config
+    from PIL import Image
+
+    model, processor = load(str(model_path), trust_remote_code=True)
+    config = load_config(str(model_path), trust_remote_code=True)
+    processor.image_processor.max_pixels = max_pixels
+    prompt = apply_chat_template(processor, config, prompt_text, num_images=1)
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+    tokenizer.stopping_criteria.reset(model.config.eos_token_id)
+    debug_layer_indices = set(DEFAULT_DEBUG_VISION_LAYERS)
+
+    records: list[PrefillStageRecord] = []
+    for prepared_sample in prepared_samples:
+        with Image.open(prepared_sample.prepared_image_path) as image:
+            inputs = processor(images=image.convert("RGB"), text=prompt, return_tensors="np")
+
+        input_ids = mx.array(inputs["input_ids"])
+        pixel_values = mx.array(inputs["pixel_values"])
+        attention_mask = mx.array(inputs["attention_mask"]).astype(mx.int32)
+        image_grid_thw = mx.array(inputs["image_grid_thw"])
+
+        vision_embeddings = model.visual.embeddings(pixel_values, image_grid_thw)
+        patch_embeddings = model.visual.embeddings.patch_embedding(
+            pixel_values.reshape(-1, pixel_values.shape[2], pixel_values.shape[3], pixel_values.shape[4]).transpose(0, 2, 3, 1)
+        ).astype(model.visual.embeddings.patch_embedding.weight.dtype)
+        patch_embeddings = patch_embeddings.transpose(0, 3, 1, 2).flatten(-2).squeeze(-1)
+        patch_embeddings = patch_embeddings.reshape(-1, patch_embeddings.shape[-1])
+        position_embeddings = vision_embeddings - patch_embeddings
+        rotary_pos_emb = model.visual.rot_pos_emb(image_grid_thw)
+        cu_seqlens = []
+        for index in range(image_grid_thw.shape[0]):
+            seq_len = image_grid_thw[index, 1] * image_grid_thw[index, 2]
+            cu_seqlens.append(mx.repeat(seq_len, image_grid_thw[index, 0]))
+        cu_seqlens = mx.concatenate(cu_seqlens)
+        cu_seqlens = mx.cumsum(cu_seqlens.astype(mx.int32), axis=0)
+        cu_seqlens = mx.pad(cu_seqlens, (1, 0), mode="constant", constant_values=0)
+
+        encoded_vision_features = vision_embeddings
+        first_layer_output = None
+        layer_outputs: list[TensorSummary] = []
+        layer_substeps: list[PrefillVisionLayerSubstepRecord] = []
+        for layer_index, layer in enumerate(model.visual.layers):
+            layer_number = layer_index + 1
+            input_hidden_states = encoded_vision_features
+            post_layer_norm1 = layer.layer_norm1(input_hidden_states)
+            qkv = layer.self_attn.qkv(post_layer_norm1).reshape(
+                post_layer_norm1.shape[0], 3, layer.self_attn.num_heads, -1
+            ).transpose(1, 0, 2, 3)
+            pre_rotary_queries, pre_rotary_keys, values = mx.split(qkv, 3)
+            post_rotary_queries = apply_rotary_pos_emb_vision(
+                mx.expand_dims(pre_rotary_queries, 0), rotary_pos_emb
+            )[0]
+            post_rotary_keys = apply_rotary_pos_emb_vision(
+                mx.expand_dims(pre_rotary_keys, 0), rotary_pos_emb
+            )[0]
+            q = post_rotary_queries.transpose(0, 2, 1, 3)
+            k = post_rotary_keys.transpose(0, 2, 1, 3)
+            v = values.transpose(0, 2, 1, 3)
+            vision_attention_mask = mx.ones(
+                (1, post_layer_norm1.shape[0], post_layer_norm1.shape[0]),
+                dtype=post_layer_norm1.dtype,
+            )
+            for i in range(1, len(cu_seqlens)):
+                start = int(cu_seqlens[i - 1])
+                end = int(cu_seqlens[i])
+                vision_attention_mask[start:end, start:end] = 0
+            attention_output = mx.fast.scaled_dot_product_attention(
+                q, k, v, scale=layer.self_attn.scale, mask=vision_attention_mask
+            ).transpose(0, 2, 1, 3).reshape(post_layer_norm1.shape[0], -1)
+            attention_output = layer.self_attn.out_proj(attention_output)
+            post_attention_residual = input_hidden_states + attention_output
+            post_layer_norm2 = layer.layer_norm2(post_attention_residual)
+            fc1_output = layer.mlp.fc1(post_layer_norm2)
+            gelu_output = layer.mlp.activation_fn(fc1_output)
+            mlp_output = layer.mlp.fc2(gelu_output)
+            encoded_vision_features = post_attention_residual + mlp_output
+            if layer_index == 0:
+                first_layer_output = encoded_vision_features
+            layer_outputs.append(summarize_tensor(encoded_vision_features))
+            if layer_number in debug_layer_indices:
+                layer_substeps.append(
+                    PrefillVisionLayerSubstepRecord(
+                        layer_index=layer_number,
+                        input_hidden_states=summarize_tensor(input_hidden_states),
+                        post_layer_norm1=summarize_tensor(post_layer_norm1),
+                        pre_rotary_queries=summarize_tensor(pre_rotary_queries),
+                        pre_rotary_keys=summarize_tensor(pre_rotary_keys),
+                        post_rotary_queries=summarize_tensor(post_rotary_queries),
+                        post_rotary_keys=summarize_tensor(post_rotary_keys),
+                        values=summarize_tensor(values),
+                        attention_output=summarize_tensor(attention_output),
+                        post_attention_residual=summarize_tensor(post_attention_residual),
+                        post_layer_norm2=summarize_tensor(post_layer_norm2),
+                        fc1_output=summarize_tensor(fc1_output),
+                        gelu_output=summarize_tensor(gelu_output),
+                        mlp_output=summarize_tensor(mlp_output),
+                        output_hidden_states=summarize_tensor(encoded_vision_features),
+                    )
+                )
+        encoded_vision_features = model.visual.post_layernorm(encoded_vision_features)
+        projected_image_features = model.visual.projector(encoded_vision_features, image_grid_thw)
+
+        text_embeddings = model.language_model.model.embed_tokens(input_ids)
+        merged_embeddings = model.merge_input_ids_with_image_features(
+            model.config.image_token_id,
+            projected_image_features,
+            text_embeddings,
+            input_ids,
+        )
+        position_ids, _ = model.language_model.get_rope_index(
+            input_ids,
+            image_grid_thw,
+            None,
+            attention_mask,
+        )
+        first_step_logits = model.language_model(
+            input_ids,
+            inputs_embeds=merged_embeddings,
+            mask=attention_mask,
+            pixel_values=pixel_values,
+            image_grid_thw=image_grid_thw,
+            position_ids=position_ids,
+        ).logits[:, -1, :]
+
+        top_indices = mx.argpartition(first_step_logits[0], kth=-5)[-5:]
+        top_pairs = sorted(
+            [
+                TopToken(token_id=int(token_id), logit=float(first_step_logits[0][token_id].item()))
+                for token_id in top_indices.tolist()
+            ],
+            key=lambda token: token.logit,
+            reverse=True,
+        )
+
+        generated_tokens: list[int] = []
+        termination_token: int | None = None
+        generator = generate_step(
+            input_ids,
+            model,
+            pixel_values,
+            attention_mask,
+            image_grid_thw=image_grid_thw,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        for token, _ in generator:
+            generated_tokens.append(int(token))
+            if tokenizer.stopping_criteria(token):
+                termination_token = int(token)
+                break
+
+        generated_text = processor.decode(generated_tokens, skip_special_tokens=False).strip()
+
+        target_height = int(image_grid_thw[0, 1].item()) * processor.image_processor.patch_size
+        target_width = int(image_grid_thw[0, 2].item()) * processor.image_processor.patch_size
+
+        mx.eval(
+            pixel_values,
+            encoded_vision_features,
+            projected_image_features,
+            merged_embeddings,
+            first_step_logits,
+        )
+
+        crop_box = None
+        if prepared_sample.sample.crop_box is not None:
+            crop_box = [
+                prepared_sample.sample.crop_box.x,
+                prepared_sample.sample.crop_box.y,
+                prepared_sample.sample.crop_box.width,
+                prepared_sample.sample.crop_box.height,
+            ]
+
+        records.append(
+            PrefillStageRecord(
+                sample_id=prepared_sample.sample.sample_id,
+                prepared_image_path=str(prepared_sample.prepared_image_path),
+                source_image_path=str(prepared_sample.sample.image_path),
+                crop_box=crop_box,
+                crop_padding=float(prepared_sample.sample.metadata.get("crop_padding", 0.0)),
+                input_ids_count=int(input_ids.shape[1]),
+                input_ids_prefix=[int(token) for token in input_ids[0, :16].tolist()],
+                target_width=target_width,
+                target_height=target_height,
+                generated_text=generated_text,
+                generated_tokens=generated_tokens,
+                termination_token=termination_token,
+                first_step_top_tokens=top_pairs,
+                pixel_values=summarize_tensor(pixel_values),
+                vision_patch_embeddings=summarize_tensor(patch_embeddings),
+                vision_position_embeddings=summarize_tensor(position_embeddings),
+                vision_input_embeddings=summarize_tensor(vision_embeddings),
+                vision_first_layer_output=summarize_tensor(first_layer_output),
+                vision_layer_outputs=layer_outputs,
+                vision_target_layer_substeps=layer_substeps,
+                encoded_vision_features=summarize_tensor(encoded_vision_features),
+                projected_image_features=summarize_tensor(projected_image_features),
+                merged_embeddings=summarize_tensor(merged_embeddings),
+                first_step_logits=summarize_tensor(first_step_logits),
+            )
+        )
+
+    del model, processor
+    gc.collect()
+    mx.clear_cache()
+    return records
+
+
 def evaluate_model_pair(
     samples: list[Sample],
     quantized_model_path: Path,
@@ -642,6 +1092,30 @@ def write_report_json(
         "summary": summary,
         "records": [asdict(record) for record in records],
         "page_summaries": summarize_pages(records, dataset_metadata),
+    }
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def write_prefill_stage_report_json(
+    output_path: Path,
+    args: argparse.Namespace,
+    dataset_metadata: dict[str, Any],
+    records: list[PrefillStageRecord],
+) -> None:
+    """Write prefill-stage diagnostics in a Swift-aligned JSON structure."""
+    payload = {
+        "config": {
+            "dataset_mode": "prefill_stage_diagnostics",
+            "quantized_model": str(args.quantized_model),
+            "max_pixels": args.max_pixels,
+            "prompt": args.prompt,
+            "max_tokens": args.max_tokens,
+            "temperature": args.temperature,
+            "crop_padding": args.crop_padding,
+            "sample_ids": args.sample_id,
+        },
+        "dataset": dataset_metadata,
+        "records": [asdict(record) for record in records],
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -749,6 +1223,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify quantized PaddleOCR-VL quality")
     dataset_group = parser.add_mutually_exclusive_group()
     dataset_group.add_argument(
+        "--image",
+        type=lambda p: Path(p).expanduser().resolve(),
+        help="Single image file to verify directly. Supports absolute paths.",
+    )
+    dataset_group.add_argument(
         "--test-images",
         type=lambda p: Path(p).resolve(),
         default=SCRIPT_DIR.parent.parent / "examples",
@@ -758,6 +1237,11 @@ def parse_args() -> argparse.Namespace:
         "--crop-manifest",
         type=lambda p: Path(p).resolve(),
         help="JSON manifest describing crop-level samples",
+    )
+    parser.add_argument(
+        "--crop",
+        type=parse_crop_box_arg,
+        help="Optional crop for --image in x,y,width,height form",
     )
     parser.add_argument(
         "--quantized-model",
@@ -811,6 +1295,17 @@ def parse_args() -> argparse.Namespace:
         help="Optional path for a CSV report",
     )
     parser.add_argument(
+        "--prefill-stage-report-json",
+        type=lambda p: Path(p).resolve(),
+        help="Optional path for a quantized-model prefill-stage JSON report",
+    )
+    parser.add_argument(
+        "--sample-id",
+        action="append",
+        default=[],
+        help="Optional sample ID filter. Repeat to keep multiple samples.",
+    )
+    parser.add_argument(
         "--keep-detector-json",
         action="store_true",
         help="Keep the generated detector JSON when using --test-images",
@@ -825,6 +1320,9 @@ def parse_args() -> argparse.Namespace:
 
 def load_samples_from_args(args: argparse.Namespace) -> LoadedDataset:
     """Resolve dataset mode and load the corresponding samples."""
+    if args.image is not None:
+        return load_single_image_sample(args.image, crop_box=args.crop)
+
     if args.crop_manifest is not None:
         if not args.crop_manifest.is_file():
             raise FileNotFoundError(f"crop manifest not found: {args.crop_manifest}")
@@ -865,13 +1363,20 @@ def main() -> None:
         print(f"Error: {error}")
         sys.exit(1)
 
+    try:
+        dataset = filter_samples_by_ids(dataset, args.sample_id)
+    except ValueError as error:
+        print(f"Error: {error}")
+        sys.exit(1)
+
     if not dataset.samples:
         print("Error: no samples found for verification")
         sys.exit(1)
 
     print(f"==> Dataset mode: {dataset.mode}")
-    print(f"==> Test data: {args.test_images if args.crop_manifest is None else args.crop_manifest}")
-    if args.crop_manifest is None:
+    test_data = args.image if args.image is not None else (args.test_images if args.crop_manifest is None else args.crop_manifest)
+    print(f"==> Test data: {test_data}")
+    if args.image is None and args.crop_manifest is None:
         print(f"==> Detector pages: {dataset.metadata.get('page_count', 0)}")
         print(f"==> Zero-region pages: {len(dataset.metadata.get('zero_region_pages', []))}")
         if args.keep_detector_json or args.detector_json_output is not None:
@@ -897,6 +1402,24 @@ def main() -> None:
     if args.report_csv is not None:
         write_report_csv(args.report_csv, records)
         print(f"==> CSV report written to: {args.report_csv}")
+
+    if args.prefill_stage_report_json is not None:
+        prepared_samples = prepare_samples(dataset.samples, args.crop_padding)
+        prefill_records = summarize_prefill_stages(
+            model_path=args.quantized_model,
+            prepared_samples=prepared_samples,
+            max_pixels=args.max_pixels,
+            prompt_text=args.prompt,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+        )
+        write_prefill_stage_report_json(
+            args.prefill_stage_report_json,
+            args,
+            dataset.metadata,
+            prefill_records,
+        )
+        print(f"==> Prefill-stage JSON report written to: {args.prefill_stage_report_json}")
 
     if summary["fail_count"] > 0:
         print(f"\nFAILED: {summary['fail_count']} samples exceeded CER delta threshold {args.fail_threshold:.4f}")

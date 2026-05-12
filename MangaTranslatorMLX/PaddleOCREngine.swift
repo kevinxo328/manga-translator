@@ -1,4 +1,5 @@
 import Foundation
+import Accelerate
 import AppKit
 import CoreImage
 import os
@@ -27,6 +28,57 @@ struct PaddleOCRDebugTrace {
 struct PaddleOCRDebugToken {
     let tokenId: Int
     let logit: Float
+}
+
+struct PaddleOCRTensorSummary {
+    let dtype: String
+    let shape: [Int]
+    let min: Float
+    let max: Float
+    let mean: Float
+    let std: Float
+    let l2: Float
+    let prefix: [Float]
+    let tokenRowPrefixes: [[Float]]
+}
+
+struct PaddleOCRVisionLayerSubstepSummary {
+    let layerIndex: Int
+    let inputHiddenStates: PaddleOCRTensorSummary
+    let postLayerNorm1: PaddleOCRTensorSummary
+    let preRotaryQueries: PaddleOCRTensorSummary
+    let preRotaryKeys: PaddleOCRTensorSummary
+    let postRotaryQueries: PaddleOCRTensorSummary
+    let postRotaryKeys: PaddleOCRTensorSummary
+    let values: PaddleOCRTensorSummary
+    let attentionOutput: PaddleOCRTensorSummary
+    let postAttentionResidual: PaddleOCRTensorSummary
+    let postLayerNorm2: PaddleOCRTensorSummary
+    let fc1Output: PaddleOCRTensorSummary
+    let geluOutput: PaddleOCRTensorSummary
+    let mlpOutput: PaddleOCRTensorSummary
+    let outputHiddenStates: PaddleOCRTensorSummary
+}
+
+struct PaddleOCRPrefillStageSummaries {
+    let route: PaddleOCRDebugRoute
+    let inputIds: [Int]
+    let targetWidth: Int
+    let targetHeight: Int
+    let generatedTokens: [Int]
+    let terminationToken: Int?
+    let firstStepTopTokens: [PaddleOCRDebugToken]
+    let pixelValues: PaddleOCRTensorSummary
+    let visionPatchEmbeddings: PaddleOCRTensorSummary
+    let visionPositionEmbeddings: PaddleOCRTensorSummary
+    let visionInputEmbeddings: PaddleOCRTensorSummary
+    let visionFirstLayerOutput: PaddleOCRTensorSummary
+    let visionLayerOutputs: [PaddleOCRTensorSummary]
+    let visionTargetLayerSubsteps: [PaddleOCRVisionLayerSubstepSummary]
+    let encodedVisionFeatures: PaddleOCRTensorSummary
+    let projectedImageFeatures: PaddleOCRTensorSummary
+    let mergedEmbeddings: PaddleOCRTensorSummary
+    let firstStepLogits: PaddleOCRTensorSummary
 }
 
 enum PaddleOCRDebugRoute: Equatable {
@@ -86,6 +138,8 @@ private func applyRotaryPosEmbVision(_ tensor: MLXArray, freqs: MLXArray) -> MLX
     return ((t * cosF) + (rotateHalfVision(t) * sinF)).asType(origDtype)
 }
 
+private let debugVisionLayerIndices: Set<Int> = [6, 18, 25, 27]
+
 // MARK: - Manga Vision Encoder (jzhang533/PaddleOCR-VL-For-Manga architecture)
 
 private class MangaVisionAttention: Module {
@@ -106,12 +160,25 @@ private class MangaVisionAttention: Module {
     }
 
     func callAsFunction(_ x: MLXArray, rotaryPosEmb: MLXArray) -> MLXArray {
+        debug(x, rotaryPosEmb: rotaryPosEmb).output
+    }
+
+    func debug(_ x: MLXArray, rotaryPosEmb: MLXArray) -> (
+        output: MLXArray,
+        preRotaryQueries: MLXArray,
+        preRotaryKeys: MLXArray,
+        postRotaryQueries: MLXArray,
+        postRotaryKeys: MLXArray,
+        values: MLXArray
+    ) {
         let N = x.dim(0)  // seq_length, no batch dim
         // (N, 3*dim) → (N, 3, heads, head_dim) → (3, N, heads, head_dim)
         let qkvOut = qkv(x).reshaped(N, 3, numHeads, headDim).transposed(1, 0, 2, 3)
         let parts = split(qkvOut, parts: 3, axis: 0)  // 3 × (1, N, heads, head_dim)
-        var q = parts[0]
-        var k = parts[1]
+        let preRotaryQueries = parts[0]
+        let preRotaryKeys = parts[1]
+        var q = preRotaryQueries
+        var k = preRotaryKeys
         let v = parts[2]
 
         // Apply 2D rotary PE: expand to (1, 1, N, heads, head_dim), apply, index back
@@ -122,12 +189,13 @@ private class MangaVisionAttention: Module {
         let qT = q.transposed(0, 2, 1, 3)
         let kT = k.transposed(0, 2, 1, 3)
         let vT = v.transposed(0, 2, 1, 3)
+        let attentionMask = MLXArray.zeros([1, N, N], type: Float.self).asType(x.dtype)
 
         var out = MLXFast.scaledDotProductAttention(
-            queries: qT, keys: kT, values: vT, scale: scale, mask: .none
+            queries: qT, keys: kT, values: vT, scale: scale, mask: .array(attentionMask)
         )
         out = out.transposed(0, 2, 1, 3).reshaped(N, -1)
-        return outProj(out)
+        return (outProj(out), preRotaryQueries, preRotaryKeys, q, k, v)
     }
 }
 
@@ -143,6 +211,17 @@ private class MangaVisionMLP: Module {
 
     func callAsFunction(_ x: MLXArray) -> MLXArray {
         fc2(geluApproximate(fc1(x)))
+    }
+
+    func debug(_ x: MLXArray) -> (
+        fc1Output: MLXArray,
+        geluOutput: MLXArray,
+        fc2Output: MLXArray
+    ) {
+        let fc1Output = fc1(x)
+        let geluOutput = geluApproximate(fc1Output)
+        let fc2Output = fc2(geluOutput)
+        return (fc1Output, geluOutput, fc2Output)
     }
 }
 
@@ -163,6 +242,48 @@ private class MangaVisionEncoderLayer: Module {
     func callAsFunction(_ x: MLXArray, rotaryPosEmb: MLXArray) -> MLXArray {
         let h = x + selfAttn(layerNorm1(x), rotaryPosEmb: rotaryPosEmb)
         return h + mlp(layerNorm2(h))
+    }
+
+    func debug(_ x: MLXArray, rotaryPosEmb: MLXArray) -> (
+        inputHiddenStates: MLXArray,
+        postLayerNorm1: MLXArray,
+        preRotaryQueries: MLXArray,
+        preRotaryKeys: MLXArray,
+        postRotaryQueries: MLXArray,
+        postRotaryKeys: MLXArray,
+        values: MLXArray,
+        attentionOutput: MLXArray,
+        postAttentionResidual: MLXArray,
+        postLayerNorm2: MLXArray,
+        fc1Output: MLXArray,
+        geluOutput: MLXArray,
+        mlpOutput: MLXArray,
+        outputHiddenStates: MLXArray
+    ) {
+        let postLayerNorm1 = layerNorm1(x)
+        let attentionDebug = selfAttn.debug(postLayerNorm1, rotaryPosEmb: rotaryPosEmb)
+        let attentionOutput = attentionDebug.output
+        let postAttentionResidual = x + attentionOutput
+        let postLayerNorm2 = layerNorm2(postAttentionResidual)
+        let mlpDebug = mlp.debug(postLayerNorm2)
+        let mlpOutput = mlpDebug.fc2Output
+        let outputHiddenStates = postAttentionResidual + mlpOutput
+        return (
+            x,
+            postLayerNorm1,
+            attentionDebug.preRotaryQueries,
+            attentionDebug.preRotaryKeys,
+            attentionDebug.postRotaryQueries,
+            attentionDebug.postRotaryKeys,
+            attentionDebug.values,
+            attentionOutput,
+            postAttentionResidual,
+            postLayerNorm2,
+            mlpDebug.fc1Output,
+            mlpDebug.geluOutput,
+            mlpOutput,
+            outputHiddenStates
+        )
     }
 }
 
@@ -198,10 +319,12 @@ private class MangaVisionEmbeddings: Module {
         let rowF = (MLXArray(Array(0..<targetH).map { Float($0) }) + 0.5) * (Float(Hin) / Float(targetH)) - 0.5
         let colF = (MLXArray(Array(0..<targetW).map { Float($0) }) + 0.5) * (Float(Win) / Float(targetW)) - 0.5
 
-        let rFloor = MLX.clip(MLX.floor(rowF).asType(.int32), min: Int32(0), max: Int32(Hin - 1))
-        let cFloor = MLX.clip(MLX.floor(colF).asType(.int32), min: Int32(0), max: Int32(Win - 1))
-        let rCeil  = MLX.clip(rFloor + 1, min: Int32(0), max: Int32(Hin - 1))
-        let cCeil  = MLX.clip(cFloor + 1, min: Int32(0), max: Int32(Win - 1))
+        let rawRFloor = MLX.floor(rowF).asType(.int32)
+        let rawCFloor = MLX.floor(colF).asType(.int32)
+        let rFloor = MLX.clip(rawRFloor, min: Int32(0), max: Int32(Hin - 1))
+        let cFloor = MLX.clip(rawCFloor, min: Int32(0), max: Int32(Win - 1))
+        let rCeil  = MLX.clip(rawRFloor + 1, min: Int32(0), max: Int32(Hin - 1))
+        let cCeil  = MLX.clip(rawCFloor + 1, min: Int32(0), max: Int32(Win - 1))
 
         let rw = (rowF - rFloor.asType(.float32)).reshaped(targetH, 1, 1)
         let cw = (colF - cFloor.asType(.float32)).reshaped(1, targetW, 1)
@@ -228,11 +351,19 @@ private class MangaVisionEmbeddings: Module {
         return bilinearInterp(grid, targetH: h, targetW: w).asType(base.dtype)
     }
 
+    func debugEmbeddings(_ pixelValues: MLXArray, h: Int, w: Int) -> (
+        patchEmbeddings: MLXArray,
+        positionEmbeddings: MLXArray,
+        summedEmbeddings: MLXArray
+    ) {
+        let targetDtype = patchEmbedding.weight.dtype
+        let patchEmbeddings = patchEmbedding(pixelValues).asType(targetDtype).reshaped(h * w, hiddenSize)
+        let positionEmbeddings = interpolatePosEncoding(h: h, w: w)
+        return (patchEmbeddings, positionEmbeddings, (patchEmbeddings + positionEmbeddings).asType(targetDtype))
+    }
+
     func callAsFunction(_ pixelValues: MLXArray, h: Int, w: Int) -> MLXArray {
-        // pixelValues: (1, H, W, 3) NHWC
-        let patches = patchEmbedding(pixelValues).reshaped(h * w, hiddenSize)  // (N, dim)
-        let posEmb = interpolatePosEncoding(h: h, w: w)  // (N, dim)
-        return patches + posEmb
+        debugEmbeddings(pixelValues, h: h, w: w).summedEmbeddings
     }
 }
 
@@ -291,6 +422,87 @@ private class MangaVisionEncoder: Module {
         x = postLayerNorm(x)
         return x.expandedDimensions(axis: 0)  // (1, N, hidden) to match projector input
     }
+
+    func debugEncode(_ pixelValues: MLXArray, t: Int, h: Int, w: Int) -> (
+        patchEmbeddings: MLXArray,
+        positionEmbeddings: MLXArray,
+        inputEmbeddings: MLXArray,
+        firstLayerOutput: MLXArray,
+        layerOutputs: [MLXArray],
+        targetLayerSubsteps: [(layerIndex: Int, debug: (
+            inputHiddenStates: MLXArray,
+            postLayerNorm1: MLXArray,
+            preRotaryQueries: MLXArray,
+            preRotaryKeys: MLXArray,
+            postRotaryQueries: MLXArray,
+            postRotaryKeys: MLXArray,
+            values: MLXArray,
+            attentionOutput: MLXArray,
+            postAttentionResidual: MLXArray,
+            postLayerNorm2: MLXArray,
+            fc1Output: MLXArray,
+            geluOutput: MLXArray,
+            mlpOutput: MLXArray,
+            outputHiddenStates: MLXArray
+        ))],
+        encodedOutput: MLXArray
+    ) {
+        let embeddingDebug = embeddings.debugEmbeddings(pixelValues, h: h, w: w)
+        let rotaryPosEmb = computeRotaryFreqs(t: t, h: h, w: w)
+
+        var x = embeddingDebug.summedEmbeddings
+        var layerOutputs: [MLXArray] = []
+        var targetLayerSubsteps: [(layerIndex: Int, debug: (
+            inputHiddenStates: MLXArray,
+            postLayerNorm1: MLXArray,
+            preRotaryQueries: MLXArray,
+            preRotaryKeys: MLXArray,
+            postRotaryQueries: MLXArray,
+            postRotaryKeys: MLXArray,
+            values: MLXArray,
+            attentionOutput: MLXArray,
+            postAttentionResidual: MLXArray,
+            postLayerNorm2: MLXArray,
+            fc1Output: MLXArray,
+            geluOutput: MLXArray,
+            mlpOutput: MLXArray,
+            outputHiddenStates: MLXArray
+        ))] = []
+        let firstLayerOutput: MLXArray
+        if let firstLayer = layers.first {
+            let firstLayerDebug = firstLayer.debug(x, rotaryPosEmb: rotaryPosEmb)
+            x = firstLayerDebug.outputHiddenStates
+            firstLayerOutput = x
+            layerOutputs.append(x)
+            if debugVisionLayerIndices.contains(1) {
+                targetLayerSubsteps.append((1, firstLayerDebug))
+            }
+            if layers.count > 1 {
+                for (index, layer) in layers.dropFirst().enumerated() {
+                    let layerNumber = index + 2
+                    let layerDebug = layer.debug(x, rotaryPosEmb: rotaryPosEmb)
+                    x = layerDebug.outputHiddenStates
+                    layerOutputs.append(x)
+                    if debugVisionLayerIndices.contains(layerNumber) {
+                        targetLayerSubsteps.append((layerNumber, layerDebug))
+                    }
+                }
+            }
+        } else {
+            firstLayerOutput = x
+        }
+
+        let encoded = postLayerNorm(x).expandedDimensions(axis: 0)
+        return (
+            embeddingDebug.patchEmbeddings,
+            embeddingDebug.positionEmbeddings,
+            embeddingDebug.summedEmbeddings,
+            firstLayerOutput,
+            layerOutputs,
+            targetLayerSubsteps,
+            encoded
+        )
+    }
 }
 
 // MARK: - Custom Projector (Patch Merging)
@@ -305,7 +517,7 @@ private class MangaMultiModalProjector: Module {
     public init(config: PaddleOCRVLConfig) {
         self.inputDim = config.visionConfig.hiddenSize
         let mergedDim = self.inputDim * 4
-        self._preNorm.wrappedValue = LayerNorm(dimensions: inputDim, eps: 1e-5)
+        self._preNorm.wrappedValue = LayerNorm(dimensions: inputDim, eps: 1e-6)
         self._linear1.wrappedValue = Linear(mergedDim, mergedDim, bias: true)
         self._linear2.wrappedValue = Linear(mergedDim, config.textConfig.hiddenSize, bias: true)
         super.init()
@@ -341,54 +553,97 @@ private struct ImagePreprocessor {
     let context: CIContext
 
     func preprocessFullImage(_ ciImage: CIImage, targetWidth: Int, targetHeight: Int) -> MLXArray {
-        let extent = ciImage.extent
-        let scaleX = CGFloat(targetWidth) / extent.width
-        let scaleY = CGFloat(targetHeight) / extent.height
-        let scaled = ciImage
-            .transformed(by: CGAffineTransform(translationX: -extent.origin.x, y: -extent.origin.y))
-            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-
-        var data = Data(count: targetWidth * targetHeight * 4)
-        data.withUnsafeMutableBytes { ptr in
-            context.render(
-                scaled,
-                toBitmap: ptr.baseAddress!,
-                rowBytes: targetWidth * 4,
-                bounds: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight),
-                format: .RGBA8,
-                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
-            )
-        }
-        let uint8Array = MLXArray(data, [targetHeight, targetWidth, 4], type: UInt8.self)
-        var px = uint8Array.asType(.float32) / 255.0
-        px = px[0..., 0..., ..<3]
-        px = (px - 0.5) / 0.5
-        return px.reshaped(1, targetHeight, targetWidth, 3).asType(.bfloat16)
+        normalizedPixelArray(
+            resizedRGBA8(
+                rasterizedSourceRGBA8(ciImage),
+                width: targetWidth,
+                height: targetHeight
+            ),
+            width: targetWidth,
+            height: targetHeight
+        )
     }
 
     func preprocessTile(_ ciImage: CIImage, rect: CGRect, targetSize: Int) -> MLXArray {
         let tileImage = ciImage
             .cropped(to: rect)
             .transformed(by: CGAffineTransform(translationX: -rect.origin.x, y: -rect.origin.y))
-            .transformed(by: CGAffineTransform(scaleX: CGFloat(targetSize) / rect.width, y: CGFloat(targetSize) / rect.height))
-            .cropped(to: CGRect(origin: .zero, size: CGSize(width: targetSize, height: targetSize)))
+        return normalizedPixelArray(
+            resizedRGBA8(
+                rasterizedSourceRGBA8(tileImage),
+                width: targetSize,
+                height: targetSize
+            ),
+            width: targetSize,
+            height: targetSize
+        )
+    }
 
-        var data = Data(count: targetSize * targetSize * 4)
+    private func rasterizedSourceRGBA8(_ ciImage: CIImage) -> (data: Data, width: Int, height: Int) {
+        let translated = ciImage.transformed(
+            by: CGAffineTransform(translationX: -ciImage.extent.origin.x, y: -ciImage.extent.origin.y)
+        )
+        let width = max(1, Int(translated.extent.width.rounded(.toNearestOrAwayFromZero)))
+        let height = max(1, Int(translated.extent.height.rounded(.toNearestOrAwayFromZero)))
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var data = Data(count: width * height * 4)
         data.withUnsafeMutableBytes { ptr in
             context.render(
-                tileImage,
+                translated,
                 toBitmap: ptr.baseAddress!,
-                rowBytes: targetSize * 4,
-                bounds: tileImage.extent,
+                rowBytes: width * 4,
+                bounds: CGRect(x: 0, y: 0, width: width, height: height),
                 format: .RGBA8,
-                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!
+                colorSpace: colorSpace
             )
+            context.clearCaches()
         }
-        let uint8Array = MLXArray(data, [targetSize, targetSize, 4], type: UInt8.self)
+        return (data, width, height)
+    }
+
+    private func resizedRGBA8(
+        _ source: (data: Data, width: Int, height: Int),
+        width targetWidth: Int,
+        height targetHeight: Int
+    ) -> Data {
+        guard source.width != targetWidth || source.height != targetHeight else {
+            return source.data
+        }
+
+        var sourceData = source.data
+        var destinationData = Data(count: targetWidth * targetHeight * 4)
+        sourceData.withUnsafeMutableBytes { sourceBytes in
+            destinationData.withUnsafeMutableBytes { destinationBytes in
+                var sourceBuffer = vImage_Buffer(
+                    data: sourceBytes.baseAddress!,
+                    height: vImagePixelCount(source.height),
+                    width: vImagePixelCount(source.width),
+                    rowBytes: source.width * 4
+                )
+                var destinationBuffer = vImage_Buffer(
+                    data: destinationBytes.baseAddress!,
+                    height: vImagePixelCount(targetHeight),
+                    width: vImagePixelCount(targetWidth),
+                    rowBytes: targetWidth * 4
+                )
+                let error = vImageScale_ARGB8888(
+                    &sourceBuffer,
+                    &destinationBuffer,
+                    nil,
+                    vImage_Flags(kvImageHighQualityResampling)
+                )
+                precondition(error == kvImageNoError, "vImageScale_ARGB8888 failed: \(error)")
+            }
+        }
+        return destinationData
+    }
+
+    private func normalizedPixelArray(_ rgba8Data: Data, width: Int, height: Int) -> MLXArray {
+        let uint8Array = MLXArray(rgba8Data, [height, width, 4], type: UInt8.self)
         var px = uint8Array.asType(.float32) / 255.0
         px = px[0..., 0..., ..<3]
         px = (px - 0.5) / 0.5
-        return px.reshaped(1, targetSize, targetSize, 3).asType(.bfloat16)
+        return px.reshaped(1, height, width, 3)
     }
 }
 
@@ -712,6 +967,48 @@ private struct PaddleOCRVLRuntime {
         }
     }
 
+    func prefillStageSummaries(
+        ciImage: CIImage,
+        promptOverride: String? = nil,
+        routeOverride: PaddleOCRDebugRoute = .automatic
+    ) -> PaddleOCRPrefillStageSummaries {
+        let patchSize = config.visionConfig.patchSize
+        let hiddenSize = config.visionConfig.hiddenSize
+        let srcW = Int(ciImage.extent.width)
+        let srcH = Int(ciImage.extent.height)
+        let selectedRoute: PaddleOCRDebugRoute
+        switch routeOverride {
+        case .automatic:
+            let availableMemory = availableGPUMemoryBytes()
+            let usesSmartResize = shouldUseSmartResize(
+                srcW: srcW,
+                srcH: srcH,
+                patchSize: patchSize,
+                hiddenSize: hiddenSize,
+                numLayers: numVisionLayers,
+                availableMemoryBytes: availableMemory
+            )
+            selectedRoute = usesSmartResize ? .smartResize : .tiled
+        case .smartResize, .tiled:
+            selectedRoute = routeOverride
+        }
+
+        switch selectedRoute {
+        case .automatic:
+            fatalError("automatic route should resolve before stage summary generation")
+        case .smartResize:
+            let (targetW, targetH) = smartResizeClampedDimensions(srcW: srcW, srcH: srcH, patchSize: patchSize)
+            return prefillStageSummariesSmartResize(
+                ciImage: ciImage,
+                targetW: targetW,
+                targetH: targetH,
+                promptOverride: promptOverride
+            )
+        case .tiled:
+            return prefillStageSummariesTiled(ciImage: ciImage, promptOverride: promptOverride)
+        }
+    }
+
 
     private func recognizeSmartResize(ciImage: CIImage, targetW: Int, targetH: Int) -> String {
         recognizeSmartResizeDebug(ciImage: ciImage, targetW: targetW, targetH: targetH, promptOverride: nil).trimmedText
@@ -725,7 +1022,8 @@ private struct PaddleOCRVLRuntime {
         let hMerged = hPatches / spatialMergeSize
         let wMerged = wPatches / spatialMergeSize
         let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
-        let visionFeatures = visionEncoder(pixelValues, t: 1, h: hPatches, w: wPatches)
+        let visionDebug = visionEncoder.debugEncode(pixelValues, t: 1, h: hPatches, w: wPatches)
+        let visionFeatures = visionDebug.encodedOutput
         let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
 
         let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1), textPrompt: promptOverride)
@@ -745,6 +1043,85 @@ private struct PaddleOCRVLRuntime {
             generatedTokens: generatedTokens,
             terminationToken: generationTrace.terminationToken,
             firstStepTopTokens: generationTrace.firstStepTopTokens
+        )
+    }
+
+    private func prefillStageSummariesSmartResize(
+        ciImage: CIImage,
+        targetW: Int,
+        targetH: Int,
+        promptOverride: String?
+    ) -> PaddleOCRPrefillStageSummaries {
+        let patchSize = config.visionConfig.patchSize
+        let hPatches = targetH / patchSize
+        let wPatches = targetW / patchSize
+        let spatialMergeSize = 2
+        let hMerged = hPatches / spatialMergeSize
+        let wMerged = wPatches / spatialMergeSize
+        let pixelValues = imagePreprocessor.preprocessFullImage(ciImage, targetWidth: targetW, targetHeight: targetH)
+        let visionDebug = visionEncoder.debugEncode(pixelValues, t: 1, h: hPatches, w: wPatches)
+        let visionFeatures = visionDebug.encodedOutput
+        let projected = projector(visionFeatures, height: targetH, width: targetW, patchSize: patchSize)
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: projected.dim(1), textPrompt: promptOverride)
+        let generationTrace = generator.generateTrace(
+            imageFeatures: projected, inputIds: inputIds, maxNewTokens: 1024,
+            hMerged: hMerged, wMerged: wMerged
+        )
+        let mergedEmbeddings = model.mergeInputIdsWithImageFeatures(
+            inputIds: MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1),
+            imageFeatures: projected
+        )
+        let firstStepLogits = firstStepLogitsForPrefill(
+            mergedEmbeddings: mergedEmbeddings,
+            inputIds: inputIds,
+            hMerged: hMerged,
+            wMerged: wMerged
+        )
+
+        return PaddleOCRPrefillStageSummaries(
+            route: .smartResize,
+            inputIds: inputIds,
+            targetWidth: targetW,
+            targetHeight: targetH,
+            generatedTokens: generationTrace.generatedTokens,
+            terminationToken: generationTrace.terminationToken,
+            firstStepTopTokens: generationTrace.firstStepTopTokens,
+            pixelValues: summarizeTensor(
+                patchifiedPixelValues(
+                    pixelValues,
+                    targetHeight: targetH,
+                    targetWidth: targetW,
+                    patchSize: patchSize
+                )
+            ),
+            visionPatchEmbeddings: summarizeTensor(visionDebug.patchEmbeddings),
+            visionPositionEmbeddings: summarizeTensor(visionDebug.positionEmbeddings),
+            visionInputEmbeddings: summarizeTensor(visionDebug.inputEmbeddings),
+            visionFirstLayerOutput: summarizeTensor(visionDebug.firstLayerOutput),
+            visionLayerOutputs: visionDebug.layerOutputs.map { summarizeTensor($0) },
+            visionTargetLayerSubsteps: visionDebug.targetLayerSubsteps.map { entry in
+                PaddleOCRVisionLayerSubstepSummary(
+                    layerIndex: entry.layerIndex,
+                    inputHiddenStates: summarizeTensor(entry.debug.inputHiddenStates),
+                    postLayerNorm1: summarizeTensor(entry.debug.postLayerNorm1),
+                    preRotaryQueries: summarizeTensor(entry.debug.preRotaryQueries),
+                    preRotaryKeys: summarizeTensor(entry.debug.preRotaryKeys),
+                    postRotaryQueries: summarizeTensor(entry.debug.postRotaryQueries),
+                    postRotaryKeys: summarizeTensor(entry.debug.postRotaryKeys),
+                    values: summarizeTensor(entry.debug.values),
+                    attentionOutput: summarizeTensor(entry.debug.attentionOutput),
+                    postAttentionResidual: summarizeTensor(entry.debug.postAttentionResidual),
+                    postLayerNorm2: summarizeTensor(entry.debug.postLayerNorm2),
+                    fc1Output: summarizeTensor(entry.debug.fc1Output),
+                    geluOutput: summarizeTensor(entry.debug.geluOutput),
+                    mlpOutput: summarizeTensor(entry.debug.mlpOutput),
+                    outputHiddenStates: summarizeTensor(entry.debug.outputHiddenStates)
+                )
+            },
+            encodedVisionFeatures: summarizeTensor(visionFeatures),
+            projectedImageFeatures: summarizeTensor(projected),
+            mergedEmbeddings: summarizeTensor(mergedEmbeddings),
+            firstStepLogits: summarizeTensor(firstStepLogits)
         )
     }
 
@@ -802,6 +1179,136 @@ private struct PaddleOCRVLRuntime {
         )
     }
 
+    private func prefillStageSummariesTiled(
+        ciImage: CIImage,
+        promptOverride: String?
+    ) -> PaddleOCRPrefillStageSummaries {
+        let patchSize = config.visionConfig.patchSize
+        let tileSize = 392
+        let srcW = Int(ciImage.extent.width)
+        let srcH = Int(ciImage.extent.height)
+
+        let maxTilesX = 3
+        let maxTilesY = 4
+        let tilesX = max(1, min(maxTilesX, Int(round(Double(srcW) / Double(tileSize)))))
+        let tilesY = max(1, min(maxTilesY, Int(round(Double(srcH) / Double(tileSize)))))
+        let tileW = CGFloat(srcW) / CGFloat(tilesX)
+        let tileH = CGFloat(srcH) / CGFloat(tilesY)
+
+        let hPatches = tileSize / patchSize
+        let wPatches = tileSize / patchSize
+
+        var firstPixelValues: MLXArray?
+        var firstVisionPatchEmbeddings: MLXArray?
+        var firstVisionPositionEmbeddings: MLXArray?
+        var firstVisionInputEmbeddings: MLXArray?
+        var firstVisionFirstLayerOutput: MLXArray?
+        var firstVisionLayerOutputs: [MLXArray]?
+        var firstVisionTargetLayerSubsteps: [(layerIndex: Int, debug: (
+            inputHiddenStates: MLXArray,
+            postLayerNorm1: MLXArray,
+            preRotaryQueries: MLXArray,
+            preRotaryKeys: MLXArray,
+            postRotaryQueries: MLXArray,
+            postRotaryKeys: MLXArray,
+            values: MLXArray,
+            attentionOutput: MLXArray,
+            postAttentionResidual: MLXArray,
+            postLayerNorm2: MLXArray,
+            fc1Output: MLXArray,
+            geluOutput: MLXArray,
+            mlpOutput: MLXArray,
+            outputHiddenStates: MLXArray
+        ))]?
+        var firstVisionFeatures: MLXArray?
+        var allProjectedFeatures: [MLXArray] = []
+        for row in 0..<tilesY {
+            for col in 0..<tilesX {
+                let cropRect = CGRect(
+                    x: CGFloat(col) * tileW, y: CGFloat(row) * tileH,
+                    width: tileW, height: tileH
+                )
+                let pixelValues = imagePreprocessor.preprocessTile(ciImage, rect: cropRect, targetSize: tileSize)
+                let visionDebug = visionEncoder.debugEncode(pixelValues, t: 1, h: hPatches, w: wPatches)
+                let visionFeatures = visionDebug.encodedOutput
+                let projected = projector(visionFeatures, height: tileSize, width: tileSize, patchSize: patchSize)
+                if firstPixelValues == nil {
+                    firstPixelValues = pixelValues
+                    firstVisionPatchEmbeddings = visionDebug.patchEmbeddings
+                    firstVisionPositionEmbeddings = visionDebug.positionEmbeddings
+                    firstVisionInputEmbeddings = visionDebug.inputEmbeddings
+                    firstVisionFirstLayerOutput = visionDebug.firstLayerOutput
+                    firstVisionLayerOutputs = visionDebug.layerOutputs
+                    firstVisionTargetLayerSubsteps = visionDebug.targetLayerSubsteps
+                    firstVisionFeatures = visionFeatures
+                }
+                allProjectedFeatures.append(projected)
+            }
+        }
+        let mergedFeatures = allProjectedFeatures.count == 1
+            ? allProjectedFeatures[0]
+            : concatenated(allProjectedFeatures, axis: 1)
+
+        let inputIds = tokenizerAdapter.buildInputIds(numMergedTokens: mergedFeatures.dim(1), textPrompt: promptOverride)
+        let generationTrace = generator.generateTrace(imageFeatures: mergedFeatures, inputIds: inputIds, maxNewTokens: 1024)
+        let mergedEmbeddings = model.mergeInputIdsWithImageFeatures(
+            inputIds: MLXArray(inputIds.map { Int32($0) }).reshaped(1, -1),
+            imageFeatures: mergedFeatures
+        )
+        let firstStepLogits = firstStepLogitsForPrefill(
+            mergedEmbeddings: mergedEmbeddings,
+            inputIds: inputIds,
+            hMerged: 0,
+            wMerged: 0
+        )
+
+        return PaddleOCRPrefillStageSummaries(
+            route: .tiled,
+            inputIds: inputIds,
+            targetWidth: tileSize,
+            targetHeight: tileSize,
+            generatedTokens: generationTrace.generatedTokens,
+            terminationToken: generationTrace.terminationToken,
+            firstStepTopTokens: generationTrace.firstStepTopTokens,
+            pixelValues: summarizeTensor(
+                patchifiedPixelValues(
+                    firstPixelValues!,
+                    targetHeight: tileSize,
+                    targetWidth: tileSize,
+                    patchSize: patchSize
+                )
+            ),
+            visionPatchEmbeddings: summarizeTensor(firstVisionPatchEmbeddings!),
+            visionPositionEmbeddings: summarizeTensor(firstVisionPositionEmbeddings!),
+            visionInputEmbeddings: summarizeTensor(firstVisionInputEmbeddings!),
+            visionFirstLayerOutput: summarizeTensor(firstVisionFirstLayerOutput!),
+            visionLayerOutputs: firstVisionLayerOutputs!.map { summarizeTensor($0) },
+            visionTargetLayerSubsteps: firstVisionTargetLayerSubsteps!.map { entry in
+                PaddleOCRVisionLayerSubstepSummary(
+                    layerIndex: entry.layerIndex,
+                    inputHiddenStates: summarizeTensor(entry.debug.inputHiddenStates),
+                    postLayerNorm1: summarizeTensor(entry.debug.postLayerNorm1),
+                    preRotaryQueries: summarizeTensor(entry.debug.preRotaryQueries),
+                    preRotaryKeys: summarizeTensor(entry.debug.preRotaryKeys),
+                    postRotaryQueries: summarizeTensor(entry.debug.postRotaryQueries),
+                    postRotaryKeys: summarizeTensor(entry.debug.postRotaryKeys),
+                    values: summarizeTensor(entry.debug.values),
+                    attentionOutput: summarizeTensor(entry.debug.attentionOutput),
+                    postAttentionResidual: summarizeTensor(entry.debug.postAttentionResidual),
+                    postLayerNorm2: summarizeTensor(entry.debug.postLayerNorm2),
+                    fc1Output: summarizeTensor(entry.debug.fc1Output),
+                    geluOutput: summarizeTensor(entry.debug.geluOutput),
+                    mlpOutput: summarizeTensor(entry.debug.mlpOutput),
+                    outputHiddenStates: summarizeTensor(entry.debug.outputHiddenStates)
+                )
+            },
+            encodedVisionFeatures: summarizeTensor(firstVisionFeatures!),
+            projectedImageFeatures: summarizeTensor(mergedFeatures),
+            mergedEmbeddings: summarizeTensor(mergedEmbeddings),
+            firstStepLogits: summarizeTensor(firstStepLogits)
+        )
+    }
+
     private func shouldRetryTiledAfterSuspiciousSmartResizeResult(
         trimmedText: String,
         srcW: Int,
@@ -810,6 +1317,100 @@ private struct PaddleOCRVLRuntime {
         return false
     }
 
+    private func firstStepLogitsForPrefill(
+        mergedEmbeddings: MLXArray,
+        inputIds: [Int],
+        hMerged: Int,
+        wMerged: Int
+    ) -> MLXArray {
+        let cache = model.newCache()
+        let positionIds: MLXArray?
+        if generator.mropeSection != nil && hMerged > 0 && wMerged > 0 {
+            let (prefillPositionIds, _) = computeMultimodalPositionIds(
+                inputIds: inputIds,
+                hMerged: hMerged,
+                wMerged: wMerged,
+                imageTokenId: config.visionTokenId
+            )
+            positionIds = prefillPositionIds
+        } else {
+            positionIds = nil
+        }
+        let hiddenStates = model.languageModel.forward(
+            mergedEmbeddings,
+            positionIds: positionIds,
+            cache: cache
+        )
+        return model.lmHead(hiddenStates)[0, -1]
+    }
+
+    private func summarizeTensor(_ array: MLXArray, prefixCount: Int = 16) -> PaddleOCRTensorSummary {
+        let floatArray = array.asType(.float32)
+        let values = floatArray.asArray(Float.self)
+        guard !values.isEmpty else {
+            return PaddleOCRTensorSummary(
+                dtype: String(describing: array.dtype),
+                shape: array.shape,
+                min: 0,
+                max: 0,
+                mean: 0,
+                std: 0,
+                l2: 0,
+                prefix: [],
+                tokenRowPrefixes: []
+            )
+        }
+
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 0
+        let meanValue = values.reduce(0, +) / Float(values.count)
+        let variance = values.reduce(0) { partial, value in
+            let delta = value - meanValue
+            return partial + delta * delta
+        } / Float(values.count)
+        let stdValue = sqrt(variance)
+        let l2Value = sqrt(values.reduce(0) { $0 + $1 * $1 })
+        let tokenRowPrefixes: [[Float]]
+        if (array.ndim == 2 || array.ndim == 3),
+           let rowCount = array.shape.dropLast().last,
+           let rowWidth = array.shape.last,
+           rowWidth > 0 {
+            let reshapedRows = floatArray.reshaped(-1, rowWidth).asArray(Float.self)
+            let sampleIndices = Array(Set([0, max(0, rowCount / 2), max(0, rowCount - 1)])).sorted()
+            tokenRowPrefixes = sampleIndices.map { index in
+                let start = index * rowWidth
+                let end = min(start + prefixCount, start + rowWidth)
+                return Array(reshapedRows[start..<end])
+            }
+        } else {
+            tokenRowPrefixes = []
+        }
+        return PaddleOCRTensorSummary(
+            dtype: String(describing: array.dtype),
+            shape: array.shape,
+            min: minValue,
+            max: maxValue,
+            mean: meanValue,
+            std: stdValue,
+            l2: l2Value,
+            prefix: Array(values.prefix(prefixCount)),
+            tokenRowPrefixes: tokenRowPrefixes
+        )
+    }
+
+    private func patchifiedPixelValues(
+        _ pixelValues: MLXArray,
+        targetHeight: Int,
+        targetWidth: Int,
+        patchSize: Int
+    ) -> MLXArray {
+        let hPatches = targetHeight / patchSize
+        let wPatches = targetWidth / patchSize
+        let nchw = pixelValues.transposed(0, 3, 1, 2)
+        let reshaped = nchw.reshaped(1, 3, hPatches, patchSize, wPatches, patchSize)
+        let transposed = reshaped.transposed(0, 2, 4, 1, 3, 5)
+        return transposed.reshaped(1, hPatches * wPatches, 3, patchSize, patchSize)
+    }
 }
 
 // MARK: - Smart-resize routing helpers (internal for testability)
@@ -896,6 +1497,23 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         let rt = try loadRuntimeIfNeeded()
         let ciImage = CIImage(cgImage: image)
         return rt.recognizeDebug(ciImage: ciImage, promptOverride: promptOverride, routeOverride: routeOverride)
+    }
+
+    func inferPrefillStageSummaries(
+        image: CGImage,
+        promptOverride: String? = nil,
+        routeOverride: PaddleOCRDebugRoute = .automatic
+    ) throws -> PaddleOCRPrefillStageSummaries {
+        guard image.width > 0 && image.height > 0 else {
+            throw PaddleOCREngineError.invalidInputImage
+        }
+        let rt = try loadRuntimeIfNeeded()
+        let ciImage = CIImage(cgImage: image)
+        return rt.prefillStageSummaries(
+            ciImage: ciImage,
+            promptOverride: promptOverride,
+            routeOverride: routeOverride
+        )
     }
 
 
@@ -1123,8 +1741,8 @@ public final class DefaultPaddleOCREngine: PaddleOCRInferencing {
         }
 
         try model.update(parameters: ModuleParameters.unflattened(modelWeights), verify: .none)
-        try projector.update(parameters: ModuleParameters.unflattened(projectorWeights), verify: .none)
-        try visionEncoder.update(parameters: ModuleParameters.unflattened(visionWeights), verify: .none)
+        try projector.update(parameters: ModuleParameters.unflattened(projectorWeights), verify: .all)
+        try visionEncoder.update(parameters: ModuleParameters.unflattened(visionWeights), verify: .all)
     }
 
     private static func runBlocking<T>(_ op: @escaping () async throws -> T) throws -> T {
