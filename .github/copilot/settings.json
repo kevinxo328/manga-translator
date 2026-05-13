@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "./.agents/hooks/post-edit-copilot.sh",
+        "cwd": ".",
+        "timeoutSec": 120
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "./.agents/hooks/agent-stop-copilot.sh",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

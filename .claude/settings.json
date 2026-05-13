@@ -9,5 +9,20 @@
         "repo": "AvdLee/SwiftUI-Agent-Skill"
       }
     }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/post-edit.sh",
+            "timeout": 120,
+            "statusMessage": "Running tests..."
+          }
+        ]
+      }
+    ]
   }
 }

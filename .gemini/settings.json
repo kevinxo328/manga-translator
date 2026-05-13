@@ -1,0 +1,21 @@
+{
+  "context": {
+    "fileName": [
+      "GEMINI.md",
+      "AGENTS.md"
+    ]
+  },
+  "hooks": {
+    "AfterTool": [
+      {
+        "matcher": "replace|write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".agents/hooks/post-edit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
