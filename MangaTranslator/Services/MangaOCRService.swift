@@ -1,11 +1,9 @@
 import Foundation
 import AppKit
-import os
 
 actor MangaOCRService {
     private let detector: ComicTextDetecting
     var recognizer: (any OCRRecognizing)?
-    private let logger = Logger(subsystem: "MangaTranslator", category: "MangaOCR")
 
     init(detector: ComicTextDetecting = ComicTextDetectorService()) {
         self.detector = detector
@@ -40,9 +38,9 @@ actor MangaOCRService {
             throw MangaOCRError.inferenceError("failed to initialize recognizer")
         }
 
-        logger.info("Detecting text regions...")
+        DebugLogger.shared.log("Detecting text regions...", level: .info, category: .ocrManga)
         let regions = try detector.detectTextRegions(in: cgImage)
-        logger.info("Found \(regions.count) text regions")
+        DebugLogger.shared.log("Found \(regions.count) text regions", level: .info, category: .ocrManga)
 
         if regions.isEmpty { return [] }
 
@@ -72,12 +70,12 @@ actor MangaOCRService {
             } catch let error as PaddleOCRError {
                 throw error
             } catch {
-                logger.warning("OCR failed for region \(index): \(error.localizedDescription)")
+                DebugLogger.shared.log("OCR failed for region \(index): \(error.localizedDescription)", level: .warning, category: .ocrManga)
                 continue
             }
         }
 
-        logger.info("Recognized \(bubbles.count) text bubbles")
+        DebugLogger.shared.log("Recognized \(bubbles.count) text bubbles", level: .info, category: .ocrManga)
         return bubbles
     }
 }

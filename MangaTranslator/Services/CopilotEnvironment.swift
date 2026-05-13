@@ -48,9 +48,6 @@ struct CopilotEnvironment {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
-        if let raw = String(data: data, encoding: .utf8) {
-            print("[CopilotEnv] raw models response:\n\(raw)")
-        }
         return try parseModels(data)
     }
 

@@ -24,7 +24,7 @@ final class CacheService {
 
         let dbPath = containerURL.appendingPathComponent("cache.sqlite").path
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
-            print("Failed to open database at \(dbPath)")
+            DebugLogger.shared.log("Failed to open cache database at \(dbPath)", level: .error, category: .cache)
         }
     }
 

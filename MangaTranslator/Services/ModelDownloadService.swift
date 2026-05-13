@@ -114,7 +114,6 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     }
 
     private let config: ModelDownloadConfiguration
-    private let logger = Logger(subsystem: "MangaTranslator", category: "ModelDownload")
     private var currentTask: Task<Void, Never>?
     private let lifecycleActor = ModelLifecycleActor()
 
@@ -257,7 +256,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
             guard !expectedChecksum.isEmpty else {
                 throw PaddleOCRError.downloadFailed("Empty or invalid checksum file")
             }
-            logger.info("Expected checksum prefix: \(expectedChecksum.prefix(16), privacy: .public)…")
+            DebugLogger.shared.log("Expected checksum prefix: \(expectedChecksum.prefix(16))…", level: .info, category: .modelDownload)
 
             // Download archive
             let tempFile = try await config.downloader.download(from: config.modelURL) { [weak self] progress in
@@ -268,9 +267,9 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
 
             // Verify checksum
             let actualChecksum = sha256(of: tempFile) ?? ""
-            logger.info("Actual checksum prefix:   \(actualChecksum.prefix(16), privacy: .public)…")
+            DebugLogger.shared.log("Actual checksum prefix:   \(actualChecksum.prefix(16))…", level: .info, category: .modelDownload)
             guard !actualChecksum.isEmpty, actualChecksum == expectedChecksum else {
-                logger.error("Checksum mismatch — expected: \(expectedChecksum.prefix(16), privacy: .public) actual: \(actualChecksum.prefix(16), privacy: .public)")
+                DebugLogger.shared.log("Checksum mismatch — expected: \(expectedChecksum.prefix(16)) actual: \(actualChecksum.prefix(16))", level: .error, category: .modelDownload)
                 try? fm.removeItem(at: tempFile)
                 throw PaddleOCRError.verifyFailed
             }
