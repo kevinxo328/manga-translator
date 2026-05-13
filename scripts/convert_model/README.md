@@ -40,6 +40,11 @@ python verify.py --test-images ../../examples/book1 --max-tokens 100
 
 # 5. Sweep quantization group sizes and export reports
 python sweep.py --group-sizes 32,64,128 --report-json ./sweep_results.json
+
+# 6. Upload to HuggingFace (set HF_TOKEN and HF_REPO_ID in .env first)
+python upload.py                  # upload model zip + model card (default)
+python upload.py --model-only     # upload model zip only
+python upload.py --card-only      # upload MODEL_CARD.md only (no re-packing)
 ```
 
 ## Output
