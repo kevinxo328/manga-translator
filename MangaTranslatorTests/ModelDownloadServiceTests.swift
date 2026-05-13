@@ -762,3 +762,36 @@ struct ModelDownloadServiceTests {
     }
 
 }
+
+@Suite("ModelDownloadService.productionModelSearchRoots")
+struct ProductionModelSearchRootsTests {
+    private let fakeHome = "/fake/home"
+
+    @Test("Returns two search roots")
+    func returnsTwoRoots() {
+        let roots = ModelDownloadService.productionModelSearchRoots(homeDirectory: fakeHome)
+        #expect(roots.count == 2)
+    }
+
+    @Test("First root matches defaultModelDirectory")
+    func firstRootIsDefaultModelDirectory() {
+        let roots = ModelDownloadService.productionModelSearchRoots(homeDirectory: fakeHome)
+        #expect(roots[0] == ModelDownloadService.defaultModelDirectory())
+    }
+
+    @Test("Container fallback path structure is Library/Containers/<bundleID>/Data/...")
+    func containerFallbackPathStructure() {
+        let roots = ModelDownloadService.productionModelSearchRoots(homeDirectory: fakeHome)
+        let expected = "/fake/home/Library/Containers/com.chunweiliu.MangaTranslator/Data/Library/Application Support/MangaTranslator/Models/PaddleOCR-VL"
+        #expect(roots[1].path == expected)
+    }
+
+    @Test("Default homeDirectory is real user home, not sandbox-remapped container path")
+    func defaultHomeDirectoryIsRealHome() {
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+        let roots = ModelDownloadService.productionModelSearchRoots()
+        // The container fallback must be rooted at the real home so it resolves correctly
+        // whether called from the sandboxed app or a non-sandboxed helper process.
+        #expect(roots[1].path.hasPrefix(realHome + "/Library/Containers/"))
+    }
+}

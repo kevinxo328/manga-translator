@@ -16,7 +16,7 @@ The system SHALL persist user preferences (default source language, default targ
 - **THEN** the app launches with the custom base URL pre-filled
 
 ### Requirement: Store API keys in Keychain
-The system SHALL store translation service API keys (DeepL, Google, OpenAI) in the macOS Keychain using the Security framework. Keys SHALL be stored per-service with the app's bundle ID as the service identifier.
+The system SHALL store translation service API keys (DeepL, Google, OpenAI) in the macOS Keychain using the Security framework. Keys SHALL be stored per-service using a stable, fixed service name constant ("com.chunweiliu.MangaTranslator") that does not change across build variants, TestFlight builds, or re-signing, ensuring credential continuity across app updates.
 
 #### Scenario: Save API key
 - **WHEN** user enters their DeepL API key in settings

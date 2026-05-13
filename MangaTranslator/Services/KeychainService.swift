@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 struct KeychainService {
-    private let serviceName = "com.chunweiliu.MangaTranslator"
+    private static let serviceName = "com.chunweiliu.MangaTranslator"
 
     // In-memory cache shared across all instances within a session.
     // Reduces Keychain access after the initial authorization prompt.
@@ -22,7 +22,7 @@ struct KeychainService {
 
         let searchQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account
         ]
         let updateFn = secItemUpdate ?? Security.SecItemUpdate
@@ -37,7 +37,7 @@ struct KeychainService {
 
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account,
             kSecValueData as String: data
         ]
@@ -56,7 +56,7 @@ struct KeychainService {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
@@ -77,7 +77,7 @@ struct KeychainService {
         let account = engine.rawValue
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account
         ]
         let deleteFn = secItemDelete ?? Security.SecItemDelete
@@ -100,12 +100,11 @@ struct KeychainService {
     /// Writes directly to Keychain without touching the in-memory cache.
     /// Used in tests to simulate a cache miss on first retrieve.
     static func writeToKeychainOnly(_ apiKey: String, for engine: TranslationEngine) {
-        let serviceName = "com.chunweiliu.MangaTranslator"
         let account = engine.rawValue
 
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account
         ]
         SecItemDelete(deleteQuery as CFDictionary)
@@ -113,7 +112,7 @@ struct KeychainService {
         guard let data = apiKey.data(using: .utf8) else { return }
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: account,
             kSecValueData as String: data
         ]
@@ -125,7 +124,7 @@ struct KeychainService {
     static func evictFromKeychainOnly(for engine: TranslationEngine) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.chunweiliu.MangaTranslator",
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: engine.rawValue
         ]
         SecItemDelete(query as CFDictionary)
@@ -136,7 +135,7 @@ struct KeychainService {
     static func readFromKeychainOnly(for engine: TranslationEngine) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.chunweiliu.MangaTranslator",
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: engine.rawValue,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne

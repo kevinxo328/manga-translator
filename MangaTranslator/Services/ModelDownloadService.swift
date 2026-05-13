@@ -382,11 +382,21 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
             .appendingPathComponent("PaddleOCR-VL")
     }
 
-    nonisolated static func productionModelSearchRoots(homeDirectory: String = NSHomeDirectory()) -> [URL] {
+    // Stable main app bundle ID used to locate its sandbox container from any process.
+    // Must not use Bundle.main.bundleIdentifier here — helpers, XPC, and CLI callers
+    // would resolve to their own container instead of the main app's.
+    private static let mainAppBundleID = "com.chunweiliu.MangaTranslator"
+
+    // NSHomeDirectory() is sandbox-remapped in the main app and returns the container path,
+    // causing containerRoot below to double-nest. homeDirectoryForCurrentUser always returns
+    // the real user home regardless of sandbox context.
+    nonisolated static func productionModelSearchRoots(
+        homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> [URL] {
         let containerRoot = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent("Library")
             .appendingPathComponent("Containers")
-            .appendingPathComponent("com.chunweiliu.MangaTranslator")
+            .appendingPathComponent(mainAppBundleID)
             .appendingPathComponent("Data")
             .appendingPathComponent("Library")
             .appendingPathComponent("Application Support")
@@ -402,7 +412,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
 
     nonisolated static func resolvedProductionModelDirectory(
         fileManager: FileManager = .default,
-        homeDirectory: String = NSHomeDirectory()
+        homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> URL? {
         for root in productionModelSearchRoots(homeDirectory: homeDirectory) {
             if let resolved = resolvedModelDirectory(in: root, fileManager: fileManager) {
