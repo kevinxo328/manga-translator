@@ -1,13 +1,13 @@
 import Testing
+import Security
 @testable import MangaTranslator
 
-// Tests run serially to avoid static cache interference between cases.
-@Suite("KeychainService Cache", .serialized)
-struct KeychainServiceCacheTests {
+// Tests run serially to prevent static cache interference across cases and suites.
+@Suite("KeychainService", .serialized)
+struct KeychainServiceTests {
 
     init() {
         KeychainService.clearCache()
-        // Clean up any Keychain residue from previous runs.
         let service = KeychainService()
         service.delete(for: .openAI)
         service.delete(for: .deepL)
@@ -18,17 +18,15 @@ struct KeychainServiceCacheTests {
 
     @Test("Repeated retrieve returns cached value without re-reading Keychain")
     func cacheHitOnRepeatedRetrieve() {
-        let service = KeychainService()
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecSuccess }
         service.store("key-openai", for: .openAI)
 
-        // First retrieve populates cache (value already there via store).
         let first = service.retrieve(for: .openAI)
         #expect(first == "key-openai")
 
-        // Evict from Keychain directly so only the cache holds the value.
-        KeychainService.evictFromKeychainOnly(for: .openAI)
-
-        // Second retrieve must still return the value — proving cache is used.
+        // Simulate Keychain miss; cache must still serve the value.
+        service.secItemCopyMatching = { _, _ in errSecItemNotFound }
         let second = service.retrieve(for: .openAI)
         #expect(second == "key-openai")
     }
@@ -38,13 +36,11 @@ struct KeychainServiceCacheTests {
     @Test("Cache miss: first retrieve reads Keychain and populates cache")
     func cacheMissPopulatesCache() {
         let service = KeychainService()
-        // Write directly to Keychain, bypassing the service (and cache).
         KeychainService.writeToKeychainOnly("direct-key", for: .deepL)
 
         let value = service.retrieve(for: .deepL)
         #expect(value == "direct-key")
 
-        // Now evict Keychain entry; cache should still serve the value.
         KeychainService.evictFromKeychainOnly(for: .deepL)
         #expect(service.retrieve(for: .deepL) == "direct-key")
     }
@@ -61,7 +57,9 @@ struct KeychainServiceCacheTests {
 
     @Test("Retrieve after store returns updated value")
     func retrieveAfterStoreReturnsNewValue() {
-        let service = KeychainService()
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecSuccess }
+
         service.store("first", for: .openAI)
         #expect(service.retrieve(for: .openAI) == "first")
 
@@ -73,11 +71,101 @@ struct KeychainServiceCacheTests {
 
     @Test("Retrieve after delete returns nil")
     func retrieveAfterDeleteReturnsNil() {
-        let service = KeychainService()
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecSuccess }
+
         service.store("to-delete", for: .deepL)
         #expect(service.retrieve(for: .deepL) == "to-delete")
 
         service.delete(for: .deepL)
         #expect(service.retrieve(for: .deepL) == nil)
+    }
+
+    // MARK: - Status handling
+
+    @Test("Cache is not updated when SecItemAdd fails")
+    func cacheNotUpdatedOnSecItemAddFailure() {
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecNotAvailable }
+
+        service.store("should-not-cache", for: .openAI)
+
+        #expect(service.retrieve(for: .openAI) == nil,
+                "Cache must not be populated when SecItemAdd fails")
+    }
+
+    @Test("Cache is updated when SecItemAdd succeeds")
+    func cacheUpdatedOnSecItemAddSuccess() {
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecSuccess }
+
+        service.store("valid-key", for: .openAI)
+
+        #expect(service.retrieve(for: .openAI) == "valid-key",
+                "Cache must be populated after a successful SecItemAdd")
+    }
+
+    @Test("retrieve returns nil on errSecItemNotFound without writing to cache")
+    func retrieveReturnsNilOnItemNotFound() {
+        var service = KeychainService()
+        service.secItemCopyMatching = { _, _ in errSecItemNotFound }
+
+        #expect(service.retrieve(for: .deepL) == nil)
+    }
+
+    @Test("retrieve returns nil on unexpected Keychain error without polluting cache")
+    func retrieveReturnsNilOnUnexpectedError() {
+        var service = KeychainService()
+        service.secItemCopyMatching = { _, _ in errSecInteractionNotAllowed }
+
+        #expect(service.retrieve(for: .deepL) == nil,
+                "Unexpected Keychain error must return nil without writing to cache")
+
+        service.secItemCopyMatching = nil
+        #expect(service.retrieve(for: .deepL) == nil)
+    }
+
+    // MARK: - Update + Add pattern
+
+    @Test("Existing Keychain value is not lost when store update fails")
+    func existingKeyPreservedOnStoreFailure() {
+        KeychainService.writeToKeychainOnly("original-key", for: .openAI)
+
+        var service = KeychainService()
+        service.secItemUpdate = { _, _ in errSecNotAvailable }
+        service.secItemAdd = { _, _ in errSecNotAvailable }
+        service.store("new-key", for: .openAI)
+
+        let keychain = KeychainService.readFromKeychainOnly(for: .openAI)
+        #expect(keychain == "original-key",
+                "Original Keychain value must survive a failed store attempt")
+    }
+
+    @Test("store uses SecItemUpdate for existing key, not delete-then-add")
+    func storeUpdatesExistingKeyWithoutDelete() {
+        KeychainService.writeToKeychainOnly("original-key", for: .openAI)
+
+        var updateCalled = false
+        var service = KeychainService()
+        service.secItemUpdate = { _, _ in updateCalled = true; return errSecSuccess }
+        service.store("new-key", for: .openAI)
+
+        #expect(updateCalled, "store must call SecItemUpdate when item already exists")
+        #expect(service.retrieve(for: .openAI) == "new-key")
+    }
+
+    // MARK: - delete status handling
+
+    @Test("Cache is not cleared when Keychain delete fails")
+    func cachePreservedOnDeleteFailure() {
+        var service = KeychainService()
+        service.secItemAdd = { _, _ in errSecSuccess }
+        service.store("key-to-keep", for: .openAI)
+
+        service.secItemDelete = { _ in errSecInteractionNotAllowed }
+        service.delete(for: .openAI)
+
+        #expect(service.retrieve(for: .openAI) == "key-to-keep",
+                "Cache must be preserved when Keychain delete fails to maintain consistency")
     }
 }

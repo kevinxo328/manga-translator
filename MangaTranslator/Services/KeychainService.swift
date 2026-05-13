@@ -8,36 +8,52 @@ struct KeychainService {
     // Reduces Keychain access after the initial authorization prompt.
     private static var cache: [String: String] = [:]
 
+    // Injectable for testing; nil means use the real Security API.
+    var secItemAdd: ((CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus)? = nil
+    var secItemUpdate: ((CFDictionary, CFDictionary) -> OSStatus)? = nil
+    var secItemDelete: ((CFDictionary) -> OSStatus)? = nil
+    var secItemCopyMatching: ((CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus)? = nil
+
     // MARK: - Public API
 
     func store(_ apiKey: String, for engine: TranslationEngine) {
-        // Write to cache first so retrieve() reflects the change immediately.
-        Self.cache[engine.rawValue] = apiKey
-
-        let account = engine.rawValue
-        delete(keychainOnly: true, account: account)
-
         guard let data = apiKey.data(using: .utf8) else { return }
+        let account = engine.rawValue
 
-        let query: [String: Any] = [
+        let searchQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: account
+        ]
+        let updateFn = secItemUpdate ?? Security.SecItemUpdate
+        let updateStatus = updateFn(searchQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+
+        if updateStatus == errSecSuccess {
+            Self.cache[account] = apiKey
+            return
+        }
+
+        guard updateStatus == errSecItemNotFound else { return }
+
+        let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
             kSecValueData as String: data
         ]
-
-        SecItemAdd(query as CFDictionary, nil)
+        let addFn = secItemAdd ?? Security.SecItemAdd
+        if addFn(addQuery as CFDictionary, nil) == errSecSuccess {
+            Self.cache[account] = apiKey
+        }
     }
 
     func retrieve(for engine: TranslationEngine) -> String? {
         let account = engine.rawValue
 
-        // Return cached value if available.
         if let cached = Self.cache[account] {
             return cached
         }
 
-        // Cache miss: read from Keychain and populate cache.
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -47,7 +63,8 @@ struct KeychainService {
         ]
 
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let copyFn = secItemCopyMatching ?? Security.SecItemCopyMatching
+        let status = copyFn(query as CFDictionary, &result)
 
         guard status == errSecSuccess, let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else { return nil }
@@ -57,23 +74,21 @@ struct KeychainService {
     }
 
     func delete(for engine: TranslationEngine) {
-        Self.cache.removeValue(forKey: engine.rawValue)
-        delete(keychainOnly: true, account: engine.rawValue)
-    }
-
-    func hasKey(for engine: TranslationEngine) -> Bool {
-        retrieve(for: engine) != nil
-    }
-
-    // MARK: - Private helpers
-
-    private func delete(keychainOnly: Bool, account: String) {
+        let account = engine.rawValue
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        let deleteFn = secItemDelete ?? Security.SecItemDelete
+        let status = deleteFn(query as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound {
+            Self.cache.removeValue(forKey: account)
+        }
+    }
+
+    func hasKey(for engine: TranslationEngine) -> Bool {
+        retrieve(for: engine) != nil
     }
 
     // MARK: - Test support
@@ -114,5 +129,21 @@ struct KeychainService {
             kSecAttrAccount as String: engine.rawValue
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    /// Reads directly from Keychain without touching the in-memory cache.
+    /// Used in tests to verify Keychain state independently of cache.
+    static func readFromKeychainOnly(for engine: TranslationEngine) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.chunweiliu.MangaTranslator",
+            kSecAttrAccount as String: engine.rawValue,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }

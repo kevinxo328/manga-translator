@@ -20,15 +20,23 @@ In-memory caching layer for API key retrieval from the system Keychain, reducing
 - **THEN** `nil` is returned and nothing is written to cache
 
 ### Requirement: Cache consistency on store
-When `store(_:for:)` is called, the cache SHALL be updated with the new value before the Keychain write completes, so subsequent `retrieve()` calls return the updated value immediately.
+When `store(_:for:)` is called, the implementation SHALL attempt `SecItemUpdate` first (for existing items), falling back to `SecItemAdd` only when the item does not yet exist (`errSecItemNotFound`). The cache SHALL only be updated after the Keychain write succeeds. If the Keychain write fails, both cache and Keychain SHALL remain unchanged, preserving the previous state.
 
 #### Scenario: Retrieve after store returns new value
-- **WHEN** `store(key, for: engine)` is called followed by `retrieve(for: engine)`
-- **THEN** the new key value is returned
+- **WHEN** `store(key, for: engine)` is called and the Keychain write succeeds (via `SecItemUpdate` or `SecItemAdd`)
+- **THEN** the new key value is returned by `retrieve(for: engine)`
+
+#### Scenario: Cache not updated when Keychain write fails
+- **WHEN** `store(key, for: engine)` is called and the Keychain write fails
+- **THEN** the cache is not updated; any pre-existing Keychain value is preserved
 
 ### Requirement: Cache consistency on delete
-When `delete(for:)` is called, the cache entry for that engine SHALL be removed so subsequent `retrieve()` calls return `nil` without hitting the Keychain.
+When `delete(for:)` is called, the implementation SHALL invoke `SecItemDelete` and inspect the result. The cache entry SHALL only be removed if `SecItemDelete` returns `errSecSuccess` or `errSecItemNotFound`. On any other error, both cache and Keychain are left unchanged to preserve consistency.
 
-#### Scenario: Retrieve after delete returns nil
-- **WHEN** `delete(for: engine)` is called followed by `retrieve(for: engine)` with no Keychain entry present
-- **THEN** `nil` is returned
+#### Scenario: Retrieve after successful delete returns nil
+- **WHEN** `delete(for: engine)` is called and `SecItemDelete` succeeds
+- **THEN** `retrieve(for: engine)` returns `nil`
+
+#### Scenario: Cache preserved when Keychain delete fails
+- **WHEN** `delete(for: engine)` is called and `SecItemDelete` returns an error other than `errSecItemNotFound`
+- **THEN** the cache entry is not removed, so cache and Keychain remain consistent
