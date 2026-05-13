@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.3 (2026-05-13)
+
+### New Features
+
+- **Debug Logs** — The app now keeps a persistent log file so you can easily share diagnostic information when something isn't working as expected.
+
+### Bug Fixes
+
+- Fixed a security issue where a maliciously crafted API server address could potentially expose your API credentials.
+
 ## v1.4.2 (2026-05-13)
 
 ### Bug Fixes
