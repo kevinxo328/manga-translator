@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.2 (2026-05-13)
+
+### Bug Fixes
+
+- Fixed an issue where text recognition might skip or misread small text in complex layouts.
+
+### Improvements
+
+- Improved processing speed so that pages load and translate faster.
+
 ## v1.4.1 (2026-05-09)
 
 ### Improvements
