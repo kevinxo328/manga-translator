@@ -83,8 +83,6 @@
 		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
 		T1000001000000000000000C /* ProjectStructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000C /* ProjectStructureTests.swift */; };
 		M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* MangaTranslatorMLX.swift */; };
-		M10000010000000000000002 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
-		M10000010000000000000003 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
 		PV1000000200000000000001 /* PaddleOCRVL in Frameworks */ = {isa = PBXBuildFile; productRef = PV0000010000000000000002 /* PaddleOCRVL */; };
 		PH1000000200000000000001 /* PaddleOCRVLRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */; };
 		PH1000000200000000000007 /* PaddleOCREngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000003 /* PaddleOCREngine.swift */; };
@@ -94,10 +92,6 @@
 		PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
 		PD10000010000000000000001 /* PaddleOCRProductionParityDiagnosticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */; };
 		PD10000010000000000000002 /* MangaTranslatorMLX.framework in Frameworks (Parity Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
-		SN0000010000000000000003 /* Numerics in Frameworks */ = {isa = PBXBuildFile; productRef = SN0000010000000000000002 /* Numerics */; };
-		A10000010000000000000051 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
-		A10000010000000000000052 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
-		A10000010000000000000053 /* PaddleOCRVL in Frameworks */ = {isa = PBXBuildFile; productRef = PV0000010000000000000002 /* PaddleOCRVL */; };
 		DL10000010000000000000001 /* DebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000001 /* DebugLogger.swift */; };
 		DL10000010000000000000002 /* DebugLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000002 /* DebugLogStore.swift */; };
 		DL10000010000000000000003 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000003 /* DebugLogView.swift */; };
@@ -265,10 +259,6 @@
 				C10000010000000000000003 /* onnxruntime in Frameworks */,
 				E10000010000000000000001 /* Sparkle in Frameworks */,
 				PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */,
-				SN0000010000000000000003 /* Numerics in Frameworks */,
-				A10000010000000000000051 /* MLX in Frameworks */,
-				A10000010000000000000052 /* MLXNN in Frameworks */,
-				A10000010000000000000053 /* PaddleOCRVL in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -276,8 +266,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				M10000010000000000000002 /* MLX in Frameworks */,
-				M10000010000000000000003 /* MLXNN in Frameworks */,
 				PV1000000200000000000001 /* PaddleOCRVL in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -504,10 +492,6 @@
 			packageProductDependencies = (
 				C10000010000000000000001 /* onnxruntime */,
 				E10000010000000000000002 /* Sparkle */,
-				SN0000010000000000000002 /* Numerics */,
-				ML0000010000000000000002 /* MLX */,
-				ML0000010000000000000003 /* MLXNN */,
-				PV0000010000000000000002 /* PaddleOCRVL */,
 			);
 			productName = MangaTranslator;
 			productReference = A20000010000000000000010 /* MangaTranslator.app */;
@@ -528,6 +512,9 @@
 			packageProductDependencies = (
 				ML0000010000000000000002 /* MLX */,
 				ML0000010000000000000003 /* MLXNN */,
+				ML0000010000000000000004 /* MLXFast */,
+				ML0000010000000000000005 /* MLXRandom */,
+				SN0000010000000000000002 /* Numerics */,
 				PV0000010000000000000002 /* PaddleOCRVL */,
 			);
 			productName = MangaTranslatorMLX;
@@ -932,7 +919,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MangaTranslator/MangaTranslator.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -959,7 +945,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MangaTranslator/MangaTranslator.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -1223,10 +1208,10 @@
 		};
 		ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			repositoryURL = "https://github.com/kevinxo328/mlx-swift";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.29.1;
+				kind = revision;
+				revision = b28f98c22a31e9a344d39b670bdd3997eccec7b4;
 			};
 		};
 		SN0000010000000000000001 /* XCRemoteSwiftPackageReference "swift-numerics" */ = {
@@ -1259,6 +1244,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */;
 			productName = MLXNN;
+		};
+		ML0000010000000000000004 /* MLXFast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFast;
+		};
+		ML0000010000000000000005 /* MLXRandom */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ML0000010000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXRandom;
 		};
 		PV0000010000000000000002 /* PaddleOCRVL */ = {
 			isa = XCSwiftPackageProductDependency;

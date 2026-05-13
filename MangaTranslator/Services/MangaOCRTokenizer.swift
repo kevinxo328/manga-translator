@@ -1,6 +1,6 @@
 import Foundation
 
-final class MangaOCRTokenizer {
+final class MangaOCRTokenizer: Sendable {
     private let vocab: [String]   // id -> token
     private let idMap: [String: Int] // token -> id
 

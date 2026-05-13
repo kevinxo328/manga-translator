@@ -384,7 +384,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     // Stable main app bundle ID used to locate its sandbox container from any process.
     // Must not use Bundle.main.bundleIdentifier here — helpers, XPC, and CLI callers
     // would resolve to their own container instead of the main app's.
-    private static let mainAppBundleID = "com.chunweiliu.MangaTranslator"
+    nonisolated private static let mainAppBundleID = "com.chunweiliu.MangaTranslator"
 
     // NSHomeDirectory() is sandbox-remapped in the main app and returns the container path,
     // causing containerRoot below to double-nest. homeDirectoryForCurrentUser always returns

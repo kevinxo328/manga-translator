@@ -12,7 +12,7 @@ actor DebugLogStore {
     private var db: OpaquePointer?
     private(set) var isAvailable = false
     private var insertsSinceRotation = 0
-    private var initialRotationTask: Task<Void, Never>?
+    private var didRunInitialRotation = false
 
     static let retentionDays = 14
     static let retentionMaxCount = 10_000
@@ -39,7 +39,7 @@ actor DebugLogStore {
             return
         }
 
-        initialRotationTask = Task { await runRotation() }
+        didRunInitialRotation = false
     }
 
     deinit {
@@ -53,7 +53,9 @@ actor DebugLogStore {
 
     /// Awaits the initial launch rotation. Fast no-op once rotation has completed.
     func awaitInitialRotation() async {
-        await initialRotationTask?.value
+        guard !didRunInitialRotation else { return }
+        didRunInitialRotation = true
+        runRotation()
     }
 
     // MARK: - Insert
@@ -94,7 +96,7 @@ actor DebugLogStore {
         insertsSinceRotation += 1
         if insertsSinceRotation >= Self.rotationInsertInterval {
             insertsSinceRotation = 0
-            await runRotation()
+            runRotation()
         }
     }
 
@@ -187,7 +189,7 @@ actor DebugLogStore {
 
     // MARK: - Rotation
 
-    func runRotation() async {
+    func runRotation() {
         guard isAvailable else { return }
         deleteByAge()
         deleteByCount()

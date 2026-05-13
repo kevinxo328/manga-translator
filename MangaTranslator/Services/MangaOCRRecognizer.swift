@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import OnnxRuntimeBindings
 
-final class MangaOCRRecognizer {
+final class MangaOCRRecognizer: @unchecked Sendable {
     private static let imageSize = 224
     private static let imageMean: [Float] = [0.5, 0.5, 0.5]
     private static let imageStd: [Float] = [0.5, 0.5, 0.5]
@@ -11,8 +11,8 @@ final class MangaOCRRecognizer {
     private static let eosTokenId: Int64 = 3            // [SEP]
     private static let padTokenId: Int64 = 0            // [PAD]
 
-    private var encoderSession: ORTSession?
-    private var decoderSession: ORTSession?
+    private let sessionLock = NSLock()
+    private var sessions: (encoder: ORTSession, decoder: ORTSession)?
     private let tokenizer: MangaOCRTokenizer
 
     init(tokenizer: MangaOCRTokenizer) {
@@ -114,8 +114,11 @@ final class MangaOCRRecognizer {
     // MARK: - Private
 
     private func getSessions() throws -> (ORTSession, ORTSession) {
-        if let encoder = encoderSession, let decoder = decoderSession {
-            return (encoder, decoder)
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+
+        if let sessions {
+            return (sessions.encoder, sessions.decoder)
         }
 
         guard let encoderPath = Bundle.main.path(forResource: "encoder_model", ofType: "onnx") else {
@@ -132,8 +135,7 @@ final class MangaOCRRecognizer {
         let encoder = try ORTSession(env: env, modelPath: encoderPath, sessionOptions: opts)
         let decoder = try ORTSession(env: env, modelPath: decoderPath, sessionOptions: opts)
 
-        self.encoderSession = encoder
-        self.decoderSession = decoder
+        self.sessions = (encoder, decoder)
 
         return (encoder, decoder)
     }
