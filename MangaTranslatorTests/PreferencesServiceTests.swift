@@ -75,4 +75,28 @@ struct PreferencesServiceTests {
         #expect(reloaded.openAIBaseURL == "https://example.invalid/v1")
         #expect(reloaded.translationEngine == .google)
     }
+
+    @Test("Invalid Base URL is not written to UserDefaults")
+    func invalidBaseURLNotPersistedToDefaults() {
+        let preferences = PreferencesService(defaults: defaults)
+        let validURL = preferences.openAIBaseURL
+
+        preferences.openAIBaseURL = "http://evil.example.com/steal?key=1"
+
+        let reloaded = PreferencesService(defaults: defaults)
+        #expect(reloaded.openAIBaseURL == validURL,
+                "UserDefaults must not be updated when the base URL is invalid")
+    }
+
+    @Test("Base URL with query string is not written to UserDefaults")
+    func queryStringBaseURLNotPersistedToDefaults() {
+        let preferences = PreferencesService(defaults: defaults)
+        preferences.openAIBaseURL = "https://api.openai.com/v1"
+
+        preferences.openAIBaseURL = "https://api.openai.com/v1?leak=key"
+
+        let reloaded = PreferencesService(defaults: defaults)
+        #expect(reloaded.openAIBaseURL == "https://api.openai.com/v1",
+                "UserDefaults must retain last valid URL when a URL with a query string is set")
+    }
 }

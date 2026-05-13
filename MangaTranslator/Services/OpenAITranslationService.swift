@@ -19,6 +19,9 @@ struct OpenAITranslationService: TranslationService {
         to target: Language,
         context: TranslationContext
     ) async throws -> TranslationOutput {
+        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        try BaseURLValidator.validate(sanitizedBaseURL)
+
         guard let apiKey = keychainService.retrieve(for: .openAI) else {
             throw TranslationError.missingAPIKey(.openAI)
         }
@@ -50,7 +53,7 @@ struct OpenAITranslationService: TranslationService {
     private func callAPI(systemPrompt: String, userPrompt: String, apiKey: String) async throws -> String {
         let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
         let sanitizedModel = String(model.drop(while: { $0 == "/" }))
-        let url = URL(string: "\(sanitizedBaseURL)/chat/completions")!
+        let url = try BaseURLValidator.validate(sanitizedBaseURL).appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")

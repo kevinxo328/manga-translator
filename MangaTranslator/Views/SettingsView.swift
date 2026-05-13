@@ -60,6 +60,15 @@ struct SettingsView: View {
         }
     }
 
+    private var baseURLValidationError: String? {
+        do {
+            try BaseURLValidator.validate(preferences.openAIBaseURL)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     private var apiKeysTab: some View {
         Form {
             Section {
@@ -89,14 +98,22 @@ struct SettingsView: View {
                         saveKey(newValue, for: .openAI)
                     }
 
-                HStack {
-                    TextField("Base URL", text: $preferences.openAIBaseURL)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Reset") {
-                        preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField("Base URL", text: $preferences.openAIBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Reset") {
+                            preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(preferences.openAIBaseURL == PreferencesService.defaultOpenAIBaseURL)
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(preferences.openAIBaseURL == PreferencesService.defaultOpenAIBaseURL)
+
+                    if let error = baseURLValidationError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 HStack {

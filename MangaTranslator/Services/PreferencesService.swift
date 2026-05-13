@@ -24,7 +24,10 @@ final class PreferencesService: ObservableObject {
     }
 
     @Published var openAIBaseURL: String {
-        didSet { defaults.set(openAIBaseURL, forKey: "openAIBaseURL") }
+        didSet {
+            guard (try? BaseURLValidator.validate(openAIBaseURL)) != nil else { return }
+            defaults.set(openAIBaseURL, forKey: "openAIBaseURL")
+        }
     }
 
     @Published var copilotModel: String {
