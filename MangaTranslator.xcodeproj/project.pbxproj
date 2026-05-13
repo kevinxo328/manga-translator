@@ -98,6 +98,12 @@
 		A10000010000000000000051 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
 		A10000010000000000000052 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
 		A10000010000000000000053 /* PaddleOCRVL in Frameworks */ = {isa = PBXBuildFile; productRef = PV0000010000000000000002 /* PaddleOCRVL */; };
+		DL10000010000000000000001 /* DebugLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000001 /* DebugLogger.swift */; };
+		DL10000010000000000000002 /* DebugLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000002 /* DebugLogStore.swift */; };
+		DL10000010000000000000003 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000003 /* DebugLogView.swift */; };
+		DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000004 /* DebugLogStoreTests.swift */; };
+		DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000005 /* DebugLogGuardTests.swift */; };
+		DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000006 /* DebugLogViewTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -187,6 +193,12 @@
 		A20000010000000000000065 /* BaseURLValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseURLValidator.swift; sourceTree = "<group>"; };
 		T2000001000000000000000D /* BaseURLValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseURLValidatorTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000E /* OpenAITranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITranslationServiceTests.swift; sourceTree = "<group>"; };
+		DL20000010000000000000001 /* DebugLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogger.swift; sourceTree = "<group>"; };
+		DL20000010000000000000002 /* DebugLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStore.swift; sourceTree = "<group>"; };
+		DL20000010000000000000003 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
+		DL20000010000000000000004 /* DebugLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStoreTests.swift; sourceTree = "<group>"; };
+		DL20000010000000000000005 /* DebugLogGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogGuardTests.swift; sourceTree = "<group>"; };
+		DL20000010000000000000006 /* DebugLogViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogViewTests.swift; sourceTree = "<group>"; };
 		BK20000010000000000000001 /* OCRBenchmarkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OCRBenchmarkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BK20000010000000000000002 /* IoUCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoUCalculator.swift; sourceTree = "<group>"; };
 		BK20000010000000000000003 /* ImageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageScanner.swift; sourceTree = "<group>"; };
@@ -325,6 +337,7 @@
 				A20000010000000000000060 /* ImageViewer.swift */,
 				A20000010000000000000061 /* TranslationSidebar.swift */,
 				A20000010000000000000063 /* GlossaryView.swift */,
+				DL20000010000000000000003 /* DebugLogView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -377,6 +390,8 @@
 				F20000010000000000000001 /* UpdateChecker.swift */,
 				G20000010000000000000001 /* CopilotEnvironment.swift */,
 				G20000010000000000000002 /* CopilotTranslationService.swift */,
+				DL20000010000000000000001 /* DebugLogger.swift */,
+				DL20000010000000000000002 /* DebugLogStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -461,6 +476,9 @@
 				T2000001000000000000000C /* ProjectStructureTests.swift */,
 				T2000001000000000000000D /* BaseURLValidatorTests.swift */,
 				T2000001000000000000000E /* OpenAITranslationServiceTests.swift */,
+				DL20000010000000000000004 /* DebugLogStoreTests.swift */,
+				DL20000010000000000000005 /* DebugLogGuardTests.swift */,
+			DL20000010000000000000006 /* DebugLogViewTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -692,6 +710,9 @@
 				PH1000000100000000000007 /* PaddleOCRSettingsSection.swift in Sources */,
 				F10000010000000000000001 /* UpdateChecker.swift in Sources */,
 				PH1000000200000000000001 /* PaddleOCRVLRecognizer.swift in Sources */,
+				DL10000010000000000000001 /* DebugLogger.swift in Sources */,
+				DL10000010000000000000002 /* DebugLogStore.swift in Sources */,
+				DL10000010000000000000003 /* DebugLogView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -738,6 +759,9 @@
 				T1000001000000000000000C /* ProjectStructureTests.swift in Sources */,
 				T1000001000000000000000D /* BaseURLValidatorTests.swift in Sources */,
 				T1000001000000000000000E /* OpenAITranslationServiceTests.swift in Sources */,
+				DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */,
+				DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */,
+			DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

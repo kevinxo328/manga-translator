@@ -3,7 +3,7 @@ import Sparkle
 
 enum ViewLayout {
     enum Settings {
-        static let width: CGFloat = 450
+        static let width: CGFloat = 500
         static let height: CGFloat = 630
     }
     enum MainWindow {
@@ -37,6 +37,14 @@ struct MangaTranslatorApp: App {
         let prefs = PreferencesService()
         _preferences = StateObject(wrappedValue: prefs)
         _viewModel = StateObject(wrappedValue: TranslationViewModel(preferences: prefs))
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            DebugLogger.shared.flushSync()
+        }
     }
 
     var body: some Scene {

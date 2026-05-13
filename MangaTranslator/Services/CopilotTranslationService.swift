@@ -17,8 +17,14 @@ struct CopilotTranslationService: TranslationService {
         context: TranslationContext
     ) async throws -> TranslationOutput {
         guard case .available(let token) = CopilotEnvironment.check() else {
+            DebugLogger.shared.log("Translation failed: Copilot token unavailable", level: .error, category: .translationCopilot)
             throw TranslationError.missingAPIKey(.githubCopilot)
         }
+
+        DebugLogger.shared.logAPIDiagnostic(
+            "Translation started: bubbles=\(bubbles.count) \(source.rawValue)→\(target.rawValue)",
+            category: .translationCopilot, model: model, endpoint: baseURL
+        )
 
         let systemPrompt = LLMPrompt.systemPrompt(from: source, to: target, context: context)
         let userPrompt = LLMPrompt.userPrompt(bubbles: bubbles)
@@ -31,10 +37,15 @@ struct CopilotTranslationService: TranslationService {
             )
 
             if let (parsed, detected) = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
+                DebugLogger.shared.logAPIDiagnostic(
+                    "Translation completed: bubbles=\(parsed.count)",
+                    category: .translationCopilot, statusCode: 200, model: model
+                )
                 return TranslationOutput(bubbles: parsed, detectedTerms: detected)
             }
 
             if attempt == maxRetries {
+                DebugLogger.shared.log("Translation response parse failed after \(maxRetries + 1) attempts, using fallback", level: .warning, category: .translationCopilot)
                 let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
                 return TranslationOutput(bubbles: fallback, detectedTerms: [])
             }
@@ -64,6 +75,11 @@ struct CopilotTranslationService: TranslationService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            DebugLogger.shared.logAPIDiagnostic(
+                "API call failed: statusCode=\(statusCode)",
+                category: .translationCopilot, statusCode: statusCode, model: model
+            )
             let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw TranslationError.apiError(errorText)
         }

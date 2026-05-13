@@ -15,8 +15,14 @@ struct GoogleTranslationService: TranslationService {
         context: TranslationContext
     ) async throws -> TranslationOutput {
         guard let apiKey = keychainService.retrieve(for: .google) else {
+            DebugLogger.shared.log("Translation failed: missing API key", level: .error, category: .translationGoogle)
             throw TranslationError.missingAPIKey(.google)
         }
+
+        DebugLogger.shared.logAPIDiagnostic(
+            "Translation started: bubbles=\(bubbles.count) \(source.rawValue)→\(target.rawValue)",
+            category: .translationGoogle
+        )
 
         let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
@@ -32,6 +38,10 @@ struct GoogleTranslationService: TranslationService {
                 index: index
             ))
         }
+        DebugLogger.shared.logAPIDiagnostic(
+            "Translation completed: bubbles=\(results.count)",
+            category: .translationGoogle, statusCode: 200
+        )
         return TranslationOutput(bubbles: results, detectedTerms: [])
     }
 
@@ -58,6 +68,11 @@ struct GoogleTranslationService: TranslationService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            DebugLogger.shared.logAPIDiagnostic(
+                "API call failed: statusCode=\(statusCode)",
+                category: .translationGoogle, statusCode: statusCode
+            )
             let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw TranslationError.apiError(errorText)
         }

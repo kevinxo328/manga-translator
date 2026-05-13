@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import os
 
 #if arch(arm64)
 import MangaTranslatorMLX
@@ -13,7 +12,6 @@ final class OCRRouter {
     private let capabilityChecker: any DeviceCapabilityChecking
     private let downloadManager: any ModelDownloadManaging
     private let paddleOCRFactory: () throws -> any OCRRecognizing
-    private let logger = Logger(subsystem: "MangaTranslator", category: "OCRRouter")
 
     private var usingPaddleOCR = false
     private var cachedPaddleOCR: (any OCRRecognizing)?
@@ -39,12 +37,14 @@ final class OCRRouter {
     ) -> OCRRouter {
         let resolvedModelDirectory = ModelDownloadService.resolvedProductionModelDirectory()
         if let resolvedModelDirectory {
-            Logger(subsystem: "MangaTranslator", category: "OCRRouter").info(
-                "Configured production PaddleOCR model directory: \(resolvedModelDirectory.path, privacy: .public)"
+            DebugLogger.shared.log(
+                "Configured production PaddleOCR model directory: \(resolvedModelDirectory.path)",
+                level: .info, category: .ocrRouter
             )
         } else {
-            Logger(subsystem: "MangaTranslator", category: "OCRRouter").warning(
-                "Configured production PaddleOCR model directory is unavailable"
+            DebugLogger.shared.log(
+                "Configured production PaddleOCR model directory is unavailable",
+                level: .warning, category: .ocrRouter
             )
         }
 
@@ -94,33 +94,29 @@ final class OCRRouter {
     func processWithPaddleOCR(image: NSImage) async throws -> [BubbleCluster] {
         usingPaddleOCR = true
         do {
-            logger.info("Starting OCR with PaddleOCR")
             if cachedPaddleOCR == nil {
                 cachedPaddleOCR = try paddleOCRFactory()
             }
             await mangaOCRService.setRecognizer(cachedPaddleOCR)
             let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
-            logger.info("Completed OCR with PaddleOCR, bubbles=\(bubbles.count, privacy: .public)")
+            DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(bubbles.count)", level: .info, category: .ocrPaddle)
             return readingOrderSorter.sort(bubbles)
         } catch let error as PaddleOCRError {
-            logger.error("PaddleOCR failed: \(error.localizedDescription, privacy: .public)")
+            DebugLogger.shared.log("PaddleOCR failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
             throw error
         } catch {
-            logger.error("PaddleOCR failed with unexpected error: \(error.localizedDescription, privacy: .public)")
+            DebugLogger.shared.log("PaddleOCR failed with unexpected error: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
             throw PaddleOCRError.inferenceFailed(error.localizedDescription)
         }
     }
 
-    func processWithMangaOCR(
-        image: NSImage
-    ) async throws -> [BubbleCluster] {
+    func processWithMangaOCR(image: NSImage) async throws -> [BubbleCluster] {
         if usingPaddleOCR {
             await mangaOCRService.resetRecognizer()
             usingPaddleOCR = false
         }
-        logger.info("Starting OCR with MangaOCR")
         let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
-        logger.info("Completed OCR with MangaOCR, bubbles=\(bubbles.count, privacy: .public)")
+        DebugLogger.shared.log("Completed OCR with MangaOCR, bubbles=\(bubbles.count)", level: .info, category: .ocrManga)
         return readingOrderSorter.sort(bubbles)
     }
 
@@ -131,14 +127,9 @@ final class OCRRouter {
         downloadEnabled: Bool,
         selectedEngine: String
     ) {
-        logger.info(
-            """
-            OCR route selected: \(selectedEngine, privacy: .public) \
-            sourceLanguage=\(sourceLanguage.rawValue, privacy: .public) \
-            capability=\(capability.logDescription, privacy: .public) \
-            downloadState=\(downloadState.logDescription, privacy: .public) \
-            downloadEnabled=\(downloadEnabled, privacy: .public)
-            """
+        DebugLogger.shared.log(
+            "OCR route selected: \(selectedEngine) sourceLanguage=\(sourceLanguage.rawValue) capability=\(capability.logDescription) downloadState=\(downloadState.logDescription) downloadEnabled=\(downloadEnabled)",
+            level: .info, category: .ocrRouter
         )
     }
 }

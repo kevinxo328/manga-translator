@@ -23,8 +23,14 @@ struct OpenAITranslationService: TranslationService {
         try BaseURLValidator.validate(sanitizedBaseURL)
 
         guard let apiKey = keychainService.retrieve(for: .openAI) else {
+            DebugLogger.shared.log("Translation failed: missing API key", level: .error, category: .translationOpenAI)
             throw TranslationError.missingAPIKey(.openAI)
         }
+
+        DebugLogger.shared.logAPIDiagnostic(
+            "Translation started: bubbles=\(bubbles.count) \(source.rawValue)→\(target.rawValue)",
+            category: .translationOpenAI, model: model, endpoint: sanitizedBaseURL
+        )
 
         let systemPrompt = LLMPrompt.systemPrompt(from: source, to: target, context: context)
         let userPrompt = LLMPrompt.userPrompt(bubbles: bubbles)
@@ -37,10 +43,15 @@ struct OpenAITranslationService: TranslationService {
             )
 
             if let (parsed, detected) = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
+                DebugLogger.shared.logAPIDiagnostic(
+                    "Translation completed: bubbles=\(parsed.count)",
+                    category: .translationOpenAI, statusCode: 200, model: model
+                )
                 return TranslationOutput(bubbles: parsed, detectedTerms: detected)
             }
 
             if attempt == maxRetries {
+                DebugLogger.shared.log("Translation response parse failed after \(maxRetries + 1) attempts, using fallback", level: .warning, category: .translationOpenAI)
                 let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
                 return TranslationOutput(bubbles: fallback, detectedTerms: [])
             }
@@ -72,6 +83,11 @@ struct OpenAITranslationService: TranslationService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            DebugLogger.shared.logAPIDiagnostic(
+                "API call failed: statusCode=\(statusCode)",
+                category: .translationOpenAI, statusCode: statusCode, model: sanitizedModel
+            )
             let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw TranslationError.apiError(errorText)
         }

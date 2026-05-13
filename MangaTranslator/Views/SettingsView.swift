@@ -42,6 +42,9 @@ struct SettingsView: View {
             preferencesTab
                 .tabItem { Label("Preferences", systemImage: "gearshape") }
 
+            debugTab
+                .tabItem { Label("Debug", systemImage: "ant") }
+
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
@@ -238,6 +241,10 @@ struct SettingsView: View {
         } message: {
             Text("This will delete all cached translation results. This action cannot be undone.")
         }
+    }
+
+    private var debugTab: some View {
+        DebugLogView()
     }
 
     private var aboutTab: some View {
