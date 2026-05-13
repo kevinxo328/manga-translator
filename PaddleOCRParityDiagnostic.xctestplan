@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "A1D00000-0000-0000-0000-000000000001",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "defaultTestExecutionTimeAllowance" : 1800,
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:MangaTranslator.xcodeproj",
+        "identifier" : "PD50000010000000000000001",
+        "name" : "PaddleOCRParityDiagnosticTests"
+      }
+    }
+  ],
+  "version" : 1
+}

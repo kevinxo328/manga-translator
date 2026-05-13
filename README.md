@@ -103,7 +103,15 @@ git push origin v1.0.0
 
 ## Testing
 
+There are three distinct test suites in this repository, each serving a different purpose:
+
+1. **MangaTranslator** — the main unit and integration suite for app logic, view models, services, UI correctness, and general OCR behavior regressions. Run this for normal development and before merging changes.
+2. **OCRBenchmark** — a standalone production benchmark that compares PaddleOCR and MangaOCR on real manga pages, emphasizing output quality, pairing behavior, and latency rather than fast regression feedback.
+3. **PaddleOCRParityDiagnostic** — a standalone diagnostic suite for deep PaddleOCR investigation. It compares Swift production output against exported parity artifacts and helps trace specific blockers when debugging model parity issues.
+
 ### Unit & Integration Tests
+
+Use this suite to verify that the application still behaves correctly after code changes. It is the default regression suite and should stay fast enough for regular development.
 
 ```bash
 xcodebuild test -project MangaTranslator.xcodeproj \
@@ -115,7 +123,9 @@ Or press `⌘U` in Xcode with the **MangaTranslator** scheme selected.
 
 ### OCR Benchmark
 
-A separate benchmark tool compares PaddleOCR and MangaOCR side-by-side on real manga pages. Each engine runs as an independent production pipeline; results are anchored on PaddleOCR and paired by greedy IoU matching (threshold ≥ 0.5) against MangaOCR. The report shows paired regions with texts and IoU score, unmatched sections, per-engine latency, and image failure counts.
+Use this suite when you want to evaluate OCR quality on representative manga pages, compare PaddleOCR and MangaOCR side-by-side, or inspect latency and pairing behavior under production-like conditions.
+
+Each engine runs as an independent production pipeline; results are anchored on PaddleOCR and paired by greedy IoU matching (threshold ≥ 0.5) against MangaOCR. The report shows paired regions with texts and IoU score, unmatched sections, per-engine latency, and image failure counts.
 
 **Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
 
@@ -129,6 +139,23 @@ xcodebuild test -project MangaTranslator.xcodeproj \
 Or switch to the **OCRBenchmark** scheme in Xcode and press `⌘U`.
 
 The report prints to the Xcode console immediately after the run. It is also saved as an attachment in the test result — open **Report Navigator** (`⌘9`), select the test run, and click `testFullBenchmark` to retrieve past reports.
+
+### PaddleOCR Parity Diagnostics
+
+Use this suite only when investigating PaddleOCR-specific parity problems. `PaddleOCRProductionParityDiagnosticTests` is intentionally excluded from the main **MangaTranslator** test scheme because it is diagnostic, artifact-driven, and much heavier than normal regression tests.
+
+It compares Swift production OCR output against exported parity artifacts and helps trace known PaddleOCR blockers in detail.
+
+**Setup**: Provide parity artifacts via `ENABLE_PADDLEOCR_DIAGNOSTIC_TESTS=1`, `PADDLEOCR_DETECTOR_JSON_PATH` / `PADDLEOCR_VERIFY_JSON_PATH`, or place the supported files under `.artifacts/paddleocr/`.
+
+**Run**:
+```bash
+xcodebuild test -project MangaTranslator.xcodeproj \
+    -scheme PaddleOCRParityDiagnostic \
+    -destination 'platform=macOS'
+```
+
+Or switch to the **PaddleOCRParityDiagnostic** scheme in Xcode and press `⌘U`.
 
 ## Development Notes
 

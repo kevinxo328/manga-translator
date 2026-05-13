@@ -75,9 +75,10 @@
 		T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000006 /* CopilotEnvironmentTests.swift */; };
 		T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000007 /* CopilotTranslationServiceTests.swift */; };
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
-		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
+		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };
+		G10000010000000000000001 /* CopilotEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* CopilotEnvironment.swift */; };
 		G10000010000000000000002 /* CopilotTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000002 /* CopilotTranslationService.swift */; };
-		T1000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */; };
+		T1000001000000000000000C /* ProjectStructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000C /* ProjectStructureTests.swift */; };
 		M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* MangaTranslatorMLX.swift */; };
 		M10000010000000000000002 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
 		M10000010000000000000003 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
@@ -88,6 +89,8 @@
 		PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		PH1000000200000000000004 /* MangaTranslatorMLX.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
+		PD10000010000000000000001 /* PaddleOCRProductionParityDiagnosticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */; };
+		PD10000010000000000000002 /* MangaTranslatorMLX.framework in Frameworks (Parity Tests) */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; };
 		SN0000010000000000000003 /* Numerics in Frameworks */ = {isa = PBXBuildFile; productRef = SN0000010000000000000002 /* Numerics */; };
 		A10000010000000000000051 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000002 /* MLX */; };
 		A10000010000000000000052 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = ML0000010000000000000003 /* MLXNN */; };
@@ -109,6 +112,13 @@
 			remoteGlobalIDString = A50000010000000000000001;
 			remoteInfo = MangaTranslator;
 		};
+		PDC0000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000010000000000000001;
+			remoteInfo = MangaTranslator;
+		};
 		PH4000000200000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
@@ -117,6 +127,13 @@
 			remoteInfo = MangaTranslatorMLX;
 		};
 		PH4000000200000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = M50000010000000000000001;
+			remoteInfo = MangaTranslatorMLX;
+		};
+		PDC0000010000000000000002 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A90000010000000000000001 /* Project object */;
 			proxyType = 1;
@@ -210,7 +227,9 @@
 		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000009 /* MangaOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRProductionParityDiagnosticTests.swift; sourceTree = "<group>"; };
+		T2000001000000000000000C /* ProjectStructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStructureTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		PD20000010000000000000001 /* PaddleOCRParityDiagnosticTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PaddleOCRParityDiagnosticTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		M20000010000000000000001 /* MangaTranslatorMLX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorMLX.swift; sourceTree = "<group>"; };
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
 		PH2000000200000000000003 /* PaddleOCREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCREngine.swift; sourceTree = "<group>"; };
@@ -250,6 +269,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				PH1000000200000000000005 /* MangaTranslatorMLX.framework in Frameworks (Tests) */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		PD6000000200000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				PD10000010000000000000002 /* MangaTranslatorMLX.framework in Frameworks (Parity Tests) */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -354,6 +381,7 @@
 				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
 				M20000010000000000000010 /* MangaTranslatorMLX.framework */,
 				BK20000010000000000000001 /* OCRBenchmarkTests.xctest */,
+				PD20000010000000000000001 /* PaddleOCRParityDiagnosticTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -423,6 +451,7 @@
 				TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */,
 				PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */,
 				T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */,
+				T2000001000000000000000C /* ProjectStructureTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -512,6 +541,24 @@
 			productReference = T20000010000000000000010 /* MangaTranslatorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		PD50000010000000000000001 /* PaddleOCRParityDiagnosticTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = PDA0000010000000000000001 /* Build configuration list for PBXNativeTarget "PaddleOCRParityDiagnosticTests" */;
+			buildPhases = (
+				PD60000010000000000000001 /* Sources */,
+				PD6000000200000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				PDD0000010000000000000001 /* PBXTargetDependency */,
+				PDD0000010000000000000002 /* PBXTargetDependency */,
+			);
+			name = PaddleOCRParityDiagnosticTests;
+			productName = PaddleOCRParityDiagnosticTests;
+			productReference = PD20000010000000000000001 /* PaddleOCRParityDiagnosticTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -533,6 +580,10 @@
 						TestTargetID = A50000010000000000000001;
 					};
 					T50000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A50000010000000000000001;
+					};
+					PD50000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = A50000010000000000000001;
 					};
@@ -562,6 +613,7 @@
 				M50000010000000000000001 /* MangaTranslatorMLX */,
 				T50000010000000000000001 /* MangaTranslatorTests */,
 				BK50000010000000000000001 /* OCRBenchmarkTests */,
+				PD50000010000000000000001 /* PaddleOCRParityDiagnosticTests */,
 			);
 		};
 /* End PBXProject section */
@@ -673,7 +725,15 @@
 				TH1000000100000000000002 /* OCRRouterTests.swift in Sources */,
 				TH1000000100000000000003 /* PaddleOCRSettingsSectionTests.swift in Sources */,
 				PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */,
-				T1000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift in Sources */,
+				T1000001000000000000000C /* ProjectStructureTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		PD60000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				PD10000010000000000000001 /* PaddleOCRProductionParityDiagnosticTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -699,6 +759,16 @@
 			isa = PBXTargetDependency;
 			target = M50000010000000000000001 /* MangaTranslatorMLX */;
 			targetProxy = PH4000000200000000000002 /* PBXContainerItemProxy */;
+		};
+		PDD0000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* MangaTranslator */;
+			targetProxy = PDC0000010000000000000001 /* PBXContainerItemProxy */;
+		};
+		PDD0000010000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = M50000010000000000000001 /* MangaTranslatorMLX */;
+			targetProxy = PDC0000010000000000000002 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -998,6 +1068,40 @@
 			};
 			name = Release;
 		};
+		PDB0000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.PaddleOCRParityDiagnosticTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Debug;
+		};
+		PDB0000010000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7QRQ8AK4AU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.PaddleOCRParityDiagnosticTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MangaTranslator.app/Contents/MacOS/MangaTranslator";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1042,6 +1146,15 @@
 			buildConfigurations = (
 				TB0000010000000000000001 /* Debug */,
 				TB0000010000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		PDA0000010000000000000001 /* Build configuration list for PBXNativeTarget "PaddleOCRParityDiagnosticTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				PDB0000010000000000000001 /* Debug */,
+				PDB0000010000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

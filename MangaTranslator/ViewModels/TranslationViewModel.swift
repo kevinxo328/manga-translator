@@ -216,9 +216,10 @@ final class TranslationViewModel: ObservableObject {
         pages[index].state = .processing
 
         let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+        let selectedTranslationService = translationService
 
         do {
-            if needsTranslation && preferences.translationEngine != .githubCopilot {
+            if needsTranslation && translationServiceOverride == nil && selectedTranslationService.engine != .githubCopilot {
                 guard keychainService.hasKey(for: preferences.translationEngine) else {
                     showMissingKeyAlert = true
                     pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
@@ -280,7 +281,7 @@ final class TranslationViewModel: ObservableObject {
                 let punctuationOnly = ordered.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
 
                 let context = buildTranslationContext()
-                let output = try await translationService.translate(
+                let output = try await selectedTranslationService.translate(
                     bubbles: toTranslate,
                     from: preferences.sourceLanguage,
                     to: preferences.targetLanguage,

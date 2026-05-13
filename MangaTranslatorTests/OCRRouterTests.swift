@@ -320,6 +320,41 @@ final class OCRRouterTests: XCTestCase {
             XCTFail("Page 1 should be translated after OCR finishes, but was \(finalState1)")
         }
     }
+
+    func testInjectedTranslationServiceDoesNotRequireAPIKey() async {
+        let recognizer = MockOCRRecognizer(name: "paddle-active")
+        let service = MangaOCRService(detector: MockComicTextDetector())
+        let image = makeTestImage(width: 100, height: 100)
+
+        await service.setRecognizer(recognizer)
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: { recognizer }
+        )
+
+        let prefs = PreferencesService()
+        let viewModel = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: MockTranslationService()
+        )
+
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/injected-translation.jpg"))
+        page.image = image
+        viewModel.pages = [page]
+
+        await viewModel.translatePage(at: 0, bypassCache: true)
+
+        if case .translated = viewModel.pages[0].state {
+            // expected
+        } else {
+            XCTFail("Injected translation service should bypass API key requirements, but page state was \(viewModel.pages[0].state)")
+        }
+
+        XCTAssertFalse(viewModel.showMissingKeyAlert)
+    }
     func testAsyncOCRPathEmptyRegion() async throws {
         // Task 1.4: boundary test for async OCR path with empty region
         let recognizer = MockOCRRecognizer(name: "paddle-active")
