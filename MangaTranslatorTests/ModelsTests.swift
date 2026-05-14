@@ -17,4 +17,11 @@ struct ModelsTests {
         #expect(Language.en.rawValue == "en")
         #expect(Language.zhHant.rawValue == "zh-Hant")
     }
+
+    @Test("Language.sourceLanguages contains only Japanese and English in order")
+    func sourceLanguagesContents() {
+        #expect(Language.sourceLanguages.count == 2)
+        #expect(Language.sourceLanguages[0] == .ja)
+        #expect(Language.sourceLanguages[1] == .en)
+    }
 }

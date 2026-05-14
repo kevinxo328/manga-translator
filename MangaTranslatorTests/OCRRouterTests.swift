@@ -95,7 +95,7 @@ final class OCRRouterTests: XCTestCase {
             paddleOCRFactory: { factoryCalled = true; return MockOCRRecognizer(name: "paddle") }
         )
 
-        _ = try? await router.processPage(image: NSImage(), sourceLanguage: .zhHant)
+        _ = try? await router.processPage(image: NSImage(), sourceLanguage: .en)
         XCTAssertFalse(factoryCalled, "Non-Japanese route must not call PaddleOCR factory when model is unavailable")
     }
 
