@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "bash .agents/hooks/post-edit.sh",
-            "timeout": 120,
+            "timeout": 180,
             "statusMessage": "Running tests..."
           }
         ]

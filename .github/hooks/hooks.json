@@ -6,7 +6,7 @@
         "type": "command",
         "bash": "./.agents/hooks/post-edit-copilot.sh",
         "cwd": ".",
-        "timeoutSec": 120
+        "timeoutSec": 180
       }
     ],
     "agentStop": [
