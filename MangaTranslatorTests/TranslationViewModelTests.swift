@@ -66,7 +66,7 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(meta["reason"], "same_language")
         XCTAssertEqual(meta["source_language"], "ja")
         XCTAssertEqual(meta["target_language"], "ja")
-        XCTAssertEqual(meta["page_index"], "0")
+        XCTAssertEqual(meta["page_index"], "1")
     }
 
     func testMeaninglessFilterEmitsFilteredCountMetadata() async {
@@ -92,7 +92,7 @@ final class TranslationViewModelTests: XCTestCase {
         let meta = decodeMeta(filterEntry.metadataJSON)
         XCTAssertEqual(meta["filtered_count"], "1")
         XCTAssertEqual(meta["total_count"], "1")
-        XCTAssertEqual(meta["page_index"], "0")
+        XCTAssertEqual(meta["page_index"], "1")
 
         let skipEntry = entries.first { $0.metadataJSON.contains("all_bubbles_meaningless") }
         guard let skipEntry else {

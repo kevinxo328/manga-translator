@@ -217,11 +217,11 @@ final class TranslationViewModel: ObservableObject {
 
         guard preferences.sourceLanguage != preferences.targetLanguage else {
             DebugLogger.shared.log(
-                "Page \(index): skipped OCR and translation — source == target",
+                "Page \(index + 1): skipped OCR and translation — source == target",
                 level: .info,
                 category: .pipeline,
                 metadata: [
-                    "page_index": "\(index)",
+                    "page_index": "\(index + 1)",
                     "source_language": preferences.sourceLanguage.rawValue,
                     "target_language": preferences.targetLanguage.rawValue,
                     "reason": "same_language"
@@ -290,11 +290,11 @@ final class TranslationViewModel: ObservableObject {
             let skippedCount = ordered.count - meaningful.count
             if skippedCount > 0 {
                 DebugLogger.shared.log(
-                    "Page \(index): filtered \(skippedCount) of \(ordered.count) meaningless bubble(s)",
+                    "Page \(index + 1): filtered \(skippedCount) of \(ordered.count) meaningless bubble(s)",
                     level: .info,
                     category: .pipeline,
                     metadata: [
-                        "page_index": "\(index)",
+                        "page_index": "\(index + 1)",
                         "filtered_count": "\(skippedCount)",
                         "total_count": "\(ordered.count)"
                     ]
@@ -303,10 +303,10 @@ final class TranslationViewModel: ObservableObject {
             let translated: [TranslatedBubble]
             if meaningful.isEmpty {
                 DebugLogger.shared.log(
-                    "Page \(index): no meaningful bubbles after OCR — skipping translation",
+                    "Page \(index + 1): no meaningful bubbles after OCR — skipping translation",
                     level: .info,
                     category: .pipeline,
-                    metadata: ["page_index": "\(index)", "reason": "all_bubbles_meaningless"]
+                    metadata: ["page_index": "\(index + 1)", "reason": "all_bubbles_meaningless"]
                 )
                 translated = []
             } else {
