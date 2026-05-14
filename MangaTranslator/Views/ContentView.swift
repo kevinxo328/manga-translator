@@ -302,7 +302,7 @@ struct ContentView: View {
             HStack(spacing: 4) {
                 Menu {
                     Picker("Source", selection: $viewModel.preferences.sourceLanguage) {
-                        ForEach(Language.allCases) { lang in
+                        ForEach(Language.sourceLanguages) { lang in
                             Text(lang.displayName).tag(lang)
                         }
                     }

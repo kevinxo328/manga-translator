@@ -173,7 +173,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Picker("Source Language", selection: $preferences.sourceLanguage) {
-                    ForEach(Language.allCases) { lang in
+                    ForEach(Language.sourceLanguages) { lang in
                         Text(lang.displayName).tag(lang)
                     }
                 }

@@ -17,6 +17,8 @@ enum Language: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    static var sourceLanguages: [Language] { [.ja, .en] }
+
 }
 
 enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
