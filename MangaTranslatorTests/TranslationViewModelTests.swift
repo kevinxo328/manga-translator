@@ -1,0 +1,218 @@
+import XCTest
+import CoreGraphics
+import AppKit
+@testable import MangaTranslator
+
+@MainActor
+final class TranslationViewModelTests: XCTestCase {
+
+    // MARK: - 2. TDD — Same-language OCR skip
+
+    func testSameLanguageSkipsOCRAndTranslation() async {
+        // If OCR is reached, the throwing recognizer makes the page error out.
+        let recognizer = ThrowingOCRRecognizer()
+        let service = MangaOCRService(detector: MockComicTextDetectorSingle())
+        await service.setRecognizer(recognizer)
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.unsupported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+            paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+        )
+        var translationCalled = false
+        let translationService = TrackingTranslationService(onTranslate: { translationCalled = true })
+
+        let prefs = PreferencesService(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        prefs.targetLanguage = .ja  // same as default source (.ja)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService)
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/same-lang.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        // OCR skipped → state is .translated, not .error
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected .translated([]), got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(bubbles.isEmpty, "Same-language page must produce no translated bubbles")
+        XCTAssertFalse(translationCalled, "Translation must not be called for same-language page")
+        // Guard fires before image-hash computation → imageHash stays nil
+        XCTAssertNil(vm.pages[0].imageHash, "imageHash must not be set when same-language guard fires first")
+    }
+
+    // MARK: - 3. TDD — Meaningless bubble filter
+
+    func testPunctuationOnlyBubblesNotInSidebar() async {
+        let router = await makeRouter(recognizerText: "。")
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/punct.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+        await vm.translatePage(at: 0, bypassCache: true)
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(bubbles.isEmpty, "Punct-only bubbles must not appear in sidebar")
+    }
+
+    func testAllMeaninglessBubblesProducesEmptySidebarAndSkipsTranslation() async {
+        var translationCalled = false
+        let router = await makeRouter(recognizerText: "—")
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true })
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/all-meaningless.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+        await vm.translatePage(at: 0, bypassCache: true)
+        // Current code passthroughs punct bubbles into .translated → this assert goes red first
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(bubbles.isEmpty, "All-meaningless page must produce no sidebar entries")
+        XCTAssertFalse(translationCalled, "Translation must not be called when all bubbles are meaningless")
+    }
+
+    func testMixedBubblesOnlyMeaningfulInSidebar() async {
+        // Region 0 → "こんにちは" (meaningful), Region 1 → "。" (punct-only)
+        let router = await makeRouterSequential(texts: ["こんにちは", "。"])
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/mixed.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+        await vm.translatePage(at: 0, bypassCache: true)
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(bubbles.count, 1)
+        XCTAssertEqual(bubbles[0].bubble.text, "こんにちは")
+    }
+}
+
+// MARK: - Helpers
+
+private func makeTestImage() -> NSImage {
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: 100,
+        pixelsHigh: 100,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .calibratedRGB,
+        bytesPerRow: 100 * 4,
+        bitsPerPixel: 32
+    )!
+    let image = NSImage(size: NSSize(width: 100, height: 100))
+    image.addRepresentation(rep)
+    return image
+}
+
+@MainActor
+private func makeRouter(recognizerText: String) async -> OCRRouter {
+    let recognizer = FixedTextOCRRecognizer(text: recognizerText)
+    let service = MangaOCRService(detector: MockComicTextDetectorSingle())
+    await service.setRecognizer(recognizer)
+    return OCRRouter(
+        mangaOCRService: service,
+        capabilityChecker: MockCapabilityChecker(.unsupported),
+        downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+        paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+    )
+}
+
+@MainActor
+private func makeRouterSequential(texts: [String]) async -> OCRRouter {
+    let recognizer = SequentialOCRRecognizer(texts: texts)
+    let service = MangaOCRService(detector: MockComicTextDetectorDouble())
+    await service.setRecognizer(recognizer)
+    return OCRRouter(
+        mangaOCRService: service,
+        capabilityChecker: MockCapabilityChecker(.unsupported),
+        downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+        paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+    )
+}
+
+private func makePrefs(source: Language, target: Language) -> PreferencesService {
+    let prefs = PreferencesService(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    prefs.sourceLanguage = source
+    prefs.targetLanguage = target
+    return prefs
+}
+
+// MARK: - Mock Types
+
+private final class ThrowingOCRRecognizer: OCRRecognizing {
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        throw PaddleOCRError.inferenceFailed("forced")
+    }
+}
+
+private final class FixedTextOCRRecognizer: OCRRecognizing {
+    private let text: String
+    init(text: String) { self.text = text }
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        return (text, 1.0)
+    }
+}
+
+private final class SequentialOCRRecognizer: @unchecked Sendable, OCRRecognizing {
+    private let texts: [String]
+    private var callCount = 0
+    init(texts: [String]) { self.texts = texts }
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        let text = texts[callCount % texts.count]
+        callCount += 1
+        return (text, 1.0)
+    }
+}
+
+private struct MockComicTextDetectorSingle: ComicTextDetecting {
+    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
+        return [DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0)]
+    }
+}
+
+private struct MockComicTextDetectorDouble: ComicTextDetecting {
+    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
+        return [
+            DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0),
+            DetectedTextRegion(boundingBox: CGRect(x: 20, y: 20, width: 10, height: 10), confidence: 1.0, classIndex: 0)
+        ]
+    }
+}
+
+private final class TrackingTranslationService: TranslationService {
+    var engine: TranslationEngine { .githubCopilot }
+    private let onTranslate: (() -> Void)?
+    init(onTranslate: (() -> Void)? = nil) { self.onTranslate = onTranslate }
+    func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
+        onTranslate?()
+        let translated = bubbles.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+}
+
+private final class MockCapabilityChecker: DeviceCapabilityChecking {
+    private let capability: PaddleOCRCapability
+    init(_ capability: PaddleOCRCapability) { self.capability = capability }
+    func checkPaddleOCRCapability() -> PaddleOCRCapability { capability }
+}
+
+private final class MockDownloadManager: ModelDownloadManaging {
+    let state: ModelDownloadState
+    private let enabled: Bool
+    init(state: ModelDownloadState, enabled: Bool = false) {
+        self.state = state
+        self.enabled = enabled
+    }
+    var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
+}

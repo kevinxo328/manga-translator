@@ -215,11 +215,26 @@ final class TranslationViewModel: ObservableObject {
 
         pages[index].state = .processing
 
-        let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage
+        guard preferences.sourceLanguage != preferences.targetLanguage else {
+            DebugLogger.shared.log(
+                "Page \(index): skipped OCR and translation — source == target",
+                level: .info,
+                category: .pipeline,
+                metadata: [
+                    "page_index": "\(index)",
+                    "source_language": preferences.sourceLanguage.rawValue,
+                    "target_language": preferences.targetLanguage.rawValue,
+                    "reason": "same_language"
+                ]
+            )
+            pages[index].state = .translated([])
+            return
+        }
+
         let selectedTranslationService = translationService
 
         do {
-            if needsTranslation && translationServiceOverride == nil && selectedTranslationService.engine != .githubCopilot {
+            if translationServiceOverride == nil && selectedTranslationService.engine != .githubCopilot {
                 guard keychainService.hasKey(for: preferences.translationEngine) else {
                     showMissingKeyAlert = true
                     pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
@@ -271,30 +286,42 @@ final class TranslationViewModel: ObservableObject {
             // OCR
             let ordered = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
 
-            // Skip translation if source == target or all bubbles are punctuation-only
+            let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+            let skippedCount = ordered.count - meaningful.count
+            if skippedCount > 0 {
+                DebugLogger.shared.log(
+                    "Page \(index): filtered \(skippedCount) of \(ordered.count) meaningless bubble(s)",
+                    level: .info,
+                    category: .pipeline,
+                    metadata: [
+                        "page_index": "\(index)",
+                        "filtered_count": "\(skippedCount)",
+                        "total_count": "\(ordered.count)"
+                    ]
+                )
+            }
             let translated: [TranslatedBubble]
-            if preferences.sourceLanguage == preferences.targetLanguage || ordered.allSatisfy({ $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }) {
-                translated = ordered.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
+            if meaningful.isEmpty {
+                DebugLogger.shared.log(
+                    "Page \(index): no meaningful bubbles after OCR — skipping translation",
+                    level: .info,
+                    category: .pipeline,
+                    metadata: ["page_index": "\(index)", "reason": "all_bubbles_meaningless"]
+                )
+                translated = []
             } else {
-                // Filter out punctuation-only bubbles from translation
-                let toTranslate = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
-                let punctuationOnly = ordered.filter { $0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
-
                 let context = buildTranslationContext()
                 let output = try await selectedTranslationService.translate(
-                    bubbles: toTranslate,
+                    bubbles: meaningful,
                     from: preferences.sourceLanguage,
                     to: preferences.targetLanguage,
                     context: context
                 )
-
                 if let glossaryID = activeGlossaryID, !output.detectedTerms.isEmpty {
                     glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
                     glossaries = glossaryService.listGlossaries()
                 }
-
-                let passthrough = punctuationOnly.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
-                translated = (output.bubbles + passthrough).sorted { $0.index < $1.index }
+                translated = output.bubbles.sorted { $0.index < $1.index }
             }
 
             appendToRecentContext(translated)

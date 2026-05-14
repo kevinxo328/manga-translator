@@ -98,6 +98,7 @@
 		DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000004 /* DebugLogStoreTests.swift */; };
 		DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000005 /* DebugLogGuardTests.swift */; };
 		DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000006 /* DebugLogViewTests.swift */; };
+		TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV20000010000000000000001 /* TranslationViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -246,6 +247,7 @@
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
 		PH2000000200000000000003 /* PaddleOCREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCREngine.swift; sourceTree = "<group>"; };
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
+		TV20000010000000000000001 /* TranslationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModelTests.swift; sourceTree = "<group>"; };
 
 		M20000010000000000000010 /* MangaTranslatorMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MangaTranslatorMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CL20000010000000000000002 /* OCRError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRError.swift; sourceTree = "<group>"; };
@@ -467,6 +469,7 @@
 				DL20000010000000000000004 /* DebugLogStoreTests.swift */,
 				DL20000010000000000000005 /* DebugLogGuardTests.swift */,
 			DL20000010000000000000006 /* DebugLogViewTests.swift */,
+			TV20000010000000000000001 /* TranslationViewModelTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -749,6 +752,7 @@
 				DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */,
 				DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */,
 			DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */,
+			TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

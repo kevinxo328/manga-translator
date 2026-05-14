@@ -31,6 +31,7 @@ enum DebugLogCategory: String, CaseIterable, Codable {
     case keychain
     case export
     case debugLog = "debug.log"
+    case pipeline
 
     var displayName: String { rawValue }
 }
