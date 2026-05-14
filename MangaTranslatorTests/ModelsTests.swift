@@ -18,10 +18,13 @@ struct ModelsTests {
         #expect(Language.zhHant.rawValue == "zh-Hant")
     }
 
-    @Test("Language.sourceLanguages contains only Japanese and English in order")
+    @Test("Language.sourceLanguages exposes only OCR-supported source languages: Japanese first, then English")
     func sourceLanguagesContents() {
+        // zhHant is a target-only language; exposing it here would break
+        // the source language pickers in SettingsView and ContentView.
         #expect(Language.sourceLanguages.count == 2)
         #expect(Language.sourceLanguages[0] == .ja)
         #expect(Language.sourceLanguages[1] == .en)
+        #expect(!Language.sourceLanguages.contains(.zhHant))
     }
 }
