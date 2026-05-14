@@ -188,6 +188,64 @@ final class OCRRouterTests: XCTestCase {
         }
     }
 
+    // MARK: - PaddleOCR GPU cache cleanup
+
+    func testPaddleOCRSuccessPathInvokesCacheCleanupOnce() async throws {
+        let cleanup = MockPaddleOCRGPUCacheCleanup()
+        let recognizer = MockOCRRecognizer(name: "paddle")
+        let service = MangaOCRService(detector: MockComicTextDetector())
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: { recognizer },
+            paddleOCRCacheCleanup: cleanup
+        )
+
+        _ = try await router.processPage(image: makeTestImage(width: 100, height: 100), sourceLanguage: .ja)
+        XCTAssertEqual(cleanup.clearCount, 1, "Cleanup must run exactly once after a successful PaddleOCR page")
+    }
+
+    func testPaddleOCRFailurePathInvokesCacheCleanupOnce() async {
+        let cleanup = MockPaddleOCRGPUCacheCleanup()
+        let throwingRecognizer = ThrowingOCRRecognizer()
+        let service = MangaOCRService(detector: MockComicTextDetector())
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: { throwingRecognizer },
+            paddleOCRCacheCleanup: cleanup
+        )
+
+        do {
+            _ = try await router.processPage(image: makeTestImage(width: 100, height: 100), sourceLanguage: .ja)
+            XCTFail("Expected PaddleOCRError to be thrown")
+        } catch is PaddleOCRError {
+            // expected
+        } catch {
+            XCTFail("Expected PaddleOCRError, got \(error)")
+        }
+        XCTAssertEqual(cleanup.clearCount, 1, "Cleanup must run exactly once after a failed PaddleOCR page")
+    }
+
+    func testMangaOCRPathDoesNotInvokeCacheCleanup() async throws {
+        let cleanup = MockPaddleOCRGPUCacheCleanup()
+        let recognizer = MockOCRRecognizer(name: "manga")
+        let service = MangaOCRService(detector: MockComicTextDetector())
+        await service.setRecognizer(recognizer)
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+            paddleOCRFactory: { recognizer },
+            paddleOCRCacheCleanup: cleanup
+        )
+
+        _ = try await router.processPage(image: makeTestImage(width: 100, height: 100), sourceLanguage: .ja)
+        XCTAssertEqual(cleanup.clearCount, 0, "MangaOCR path must not invoke PaddleOCR GPU cache cleanup")
+    }
+
     // MARK: - Task 6.3: Reset tests
 
     func testResetPaddleOCRRecognizerClearsRecognizer() async {
@@ -469,6 +527,11 @@ private final class ThrowingOCRRecognizer: OCRRecognizing {
     func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
         throw PaddleOCRError.inferenceFailed("forced failure")
     }
+}
+
+private final class MockPaddleOCRGPUCacheCleanup: PaddleOCRGPUCacheCleaning, @unchecked Sendable {
+    var clearCount = 0
+    func clearGPUCache() { clearCount += 1 }
 }
 
 private final class MockTranslationService: TranslationService {

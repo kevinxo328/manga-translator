@@ -47,6 +47,7 @@
 		D10000010000000000000004 /* MangaOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000004 /* MangaOCRService.swift */; };
 		D10000010000000000000005 /* OCRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000005 /* OCRRouter.swift */; };
 		PH1000000100000000000001 /* OCRRecognizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000001 /* OCRRecognizing.swift */; };
+		PG1000000100000000000001 /* PaddleOCRGPUCacheCleaning.swift in Sources */ = {isa = PBXBuildFile; fileRef = PG2000000100000000000001 /* PaddleOCRGPUCacheCleaning.swift */; };
 		PH1000000100000000000002 /* PaddleOCRError.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000002 /* PaddleOCRError.swift */; };
 		PH1000000100000000000003 /* DeviceCapabilityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000003 /* DeviceCapabilityService.swift */; };
 		PH1000000100000000000004 /* ModelDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000100000000000004 /* ModelDownloadService.swift */; };
@@ -86,6 +87,7 @@
 		PV1000000200000000000001 /* PaddleOCRVL in Frameworks */ = {isa = PBXBuildFile; productRef = PV0000010000000000000002 /* PaddleOCRVL */; };
 		PH1000000200000000000001 /* PaddleOCRVLRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */; };
 		PH1000000200000000000007 /* PaddleOCREngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000003 /* PaddleOCREngine.swift */; };
+		PG1000000200000000000001 /* MLXGPUCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = PG2000000200000000000001 /* MLXGPUCache.swift */; };
 		PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */; };
 		PH1000000200000000000003 /* MangaTranslatorMLX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		PH1000000200000000000004 /* MangaTranslatorMLX.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = M20000010000000000000010 /* MangaTranslatorMLX.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -208,6 +210,7 @@
 		D20000010000000000000004 /* MangaOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRService.swift; sourceTree = "<group>"; };
 		D20000010000000000000005 /* OCRRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouter.swift; sourceTree = "<group>"; };
 		PH2000000100000000000001 /* OCRRecognizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRecognizing.swift; sourceTree = "<group>"; };
+		PG2000000100000000000001 /* PaddleOCRGPUCacheCleaning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRGPUCacheCleaning.swift; sourceTree = "<group>"; };
 		PH2000000100000000000002 /* PaddleOCRError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRError.swift; sourceTree = "<group>"; };
 		PH2000000100000000000003 /* DeviceCapabilityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilityService.swift; sourceTree = "<group>"; };
 		PH2000000100000000000004 /* ModelDownloadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadService.swift; sourceTree = "<group>"; };
@@ -246,6 +249,7 @@
 		M20000010000000000000001 /* MangaTranslatorMLX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorMLX.swift; sourceTree = "<group>"; };
 		PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizer.swift; sourceTree = "<group>"; };
 		PH2000000200000000000003 /* PaddleOCREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCREngine.swift; sourceTree = "<group>"; };
+		PG2000000200000000000001 /* MLXGPUCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXGPUCache.swift; sourceTree = "<group>"; };
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
 		TV20000010000000000000001 /* TranslationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModelTests.swift; sourceTree = "<group>"; };
 
@@ -373,6 +377,7 @@
 				D20000010000000000000004 /* MangaOCRService.swift */,
 				D20000010000000000000005 /* OCRRouter.swift */,
 				PH2000000100000000000001 /* OCRRecognizing.swift */,
+				PG2000000100000000000001 /* PaddleOCRGPUCacheCleaning.swift */,
 				PH2000000100000000000002 /* PaddleOCRError.swift */,
 				PH2000000100000000000003 /* DeviceCapabilityService.swift */,
 				PH2000000100000000000004 /* ModelDownloadService.swift */,
@@ -441,6 +446,7 @@
 			children = (
 				M20000010000000000000001 /* MangaTranslatorMLX.swift */,
 				PH2000000200000000000003 /* PaddleOCREngine.swift */,
+				PG2000000200000000000001 /* MLXGPUCache.swift */,
 				PH2000000200000000000001 /* PaddleOCRVLRecognizer.swift */,
 			);
 			path = MangaTranslatorMLX;
@@ -692,6 +698,7 @@
 				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
 				D10000010000000000000005 /* OCRRouter.swift in Sources */,
 				PH1000000100000000000001 /* OCRRecognizing.swift in Sources */,
+				PG1000000100000000000001 /* PaddleOCRGPUCacheCleaning.swift in Sources */,
 				PH1000000100000000000002 /* PaddleOCRError.swift in Sources */,
 				PH1000000100000000000003 /* DeviceCapabilityService.swift in Sources */,
 				PH1000000100000000000004 /* ModelDownloadService.swift in Sources */,
@@ -712,6 +719,7 @@
 			files = (
 				M10000010000000000000001 /* MangaTranslatorMLX.swift in Sources */,
 				PH1000000200000000000007 /* PaddleOCREngine.swift in Sources */,
+				PG1000000200000000000001 /* MLXGPUCache.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

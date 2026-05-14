@@ -12,6 +12,7 @@ final class OCRRouter {
     private let capabilityChecker: any DeviceCapabilityChecking
     private let downloadManager: any ModelDownloadManaging
     private let paddleOCRFactory: () throws -> any OCRRecognizing
+    private let paddleOCRCacheCleanup: any PaddleOCRGPUCacheCleaning
 
     private var usingPaddleOCR = false
     private var cachedPaddleOCR: (any OCRRecognizing)?
@@ -20,12 +21,14 @@ final class OCRRouter {
         mangaOCRService: MangaOCRService? = nil,
         capabilityChecker: any DeviceCapabilityChecking = DeviceCapabilityService.shared,
         downloadManager: (any ModelDownloadManaging)? = nil,
-        paddleOCRFactory: @escaping () throws -> any OCRRecognizing = { throw PaddleOCRError.modelUnavailable }
+        paddleOCRFactory: @escaping () throws -> any OCRRecognizing = { throw PaddleOCRError.modelUnavailable },
+        paddleOCRCacheCleanup: any PaddleOCRGPUCacheCleaning = NoOpPaddleOCRGPUCacheCleanup()
     ) {
         self.mangaOCRService = mangaOCRService ?? MangaOCRService()
         self.capabilityChecker = capabilityChecker
         self.downloadManager = downloadManager ?? ModelDownloadService.shared
         self.paddleOCRFactory = paddleOCRFactory
+        self.paddleOCRCacheCleanup = paddleOCRCacheCleanup
     }
 
     #if arch(arm64)
@@ -57,7 +60,8 @@ final class OCRRouter {
                     throw PaddleOCRError.modelUnavailable
                 }
                 return PaddleOCRVLRecognizer(modelDirectory: modelDir)
-            }
+            },
+            paddleOCRCacheCleanup: MLXPaddleOCRGPUCacheCleanup()
         )
     }
     #endif
@@ -93,6 +97,7 @@ final class OCRRouter {
 
     func processWithPaddleOCR(image: NSImage) async throws -> [BubbleCluster] {
         usingPaddleOCR = true
+        defer { paddleOCRCacheCleanup.clearGPUCache() }
         do {
             if cachedPaddleOCR == nil {
                 cachedPaddleOCR = try paddleOCRFactory()
