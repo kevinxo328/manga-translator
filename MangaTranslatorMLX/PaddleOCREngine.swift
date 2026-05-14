@@ -1,5 +1,4 @@
 import Foundation
-import Accelerate
 import AppKit
 import CoreImage
 import os
@@ -138,7 +137,7 @@ private func applyRotaryPosEmbVision(_ tensor: MLXArray, freqs: MLXArray) -> MLX
     return ((t * cosF) + (rotateHalfVision(t) * sinF)).asType(origDtype)
 }
 
-private let debugVisionLayerIndices: Set<Int> = [6, 18, 25, 27]
+private let debugVisionLayerIndices: Set<Int> = [1, 6, 14, 18, 25, 27]
 
 // MARK: - Manga Vision Encoder (jzhang533/PaddleOCR-VL-For-Manga architecture)
 
@@ -374,6 +373,8 @@ private class MangaVisionEncoder: Module {
 
     let rotaryDim: Int   // head_dim / 2 = 36
     let rotaryTheta: Float = 10000.0
+    // When true, runs all 27 encoder layers in float32 to avoid bfloat16 accumulation drift.
+    var useFloat32Encoding: Bool = false
 
     init(hiddenSize: Int, numHeads: Int, numLayers: Int, patchSize: Int,
          imageSize: Int, intermediateSize: Int, layerNormEps: Float) {
@@ -414,12 +415,15 @@ private class MangaVisionEncoder: Module {
 
     func callAsFunction(_ pixelValues: MLXArray, t: Int, h: Int, w: Int) -> MLXArray {
         var x = embeddings(pixelValues, h: h, w: w)  // (N, hidden)
+        let origDtype = x.dtype
+        if useFloat32Encoding { x = x.asType(.float32) }
         let rotaryPosEmb = computeRotaryFreqs(t: t, h: h, w: w)  // (N, 36)
 
         for layer in layers {
             x = layer(x, rotaryPosEmb: rotaryPosEmb)
         }
         x = postLayerNorm(x)
+        if useFloat32Encoding { x = x.asType(origDtype) }
         return x.expandedDimensions(axis: 0)  // (1, N, hidden) to match projector input
     }
 
@@ -451,6 +455,8 @@ private class MangaVisionEncoder: Module {
         let rotaryPosEmb = computeRotaryFreqs(t: t, h: h, w: w)
 
         var x = embeddingDebug.summedEmbeddings
+        let origDtype = x.dtype
+        if useFloat32Encoding { x = x.asType(.float32) }
         var layerOutputs: [MLXArray] = []
         var targetLayerSubsteps: [(layerIndex: Int, debug: (
             inputHiddenStates: MLXArray,
@@ -492,7 +498,8 @@ private class MangaVisionEncoder: Module {
             firstLayerOutput = x
         }
 
-        let encoded = postLayerNorm(x).expandedDimensions(axis: 0)
+        var encoded = postLayerNorm(x)
+        if useFloat32Encoding { encoded = encoded.asType(origDtype) }
         return (
             embeddingDebug.patchEmbeddings,
             embeddingDebug.positionEmbeddings,
@@ -500,7 +507,7 @@ private class MangaVisionEncoder: Module {
             firstLayerOutput,
             layerOutputs,
             targetLayerSubsteps,
-            encoded
+            encoded.expandedDimensions(axis: 0)
         )
     }
 }
@@ -601,6 +608,9 @@ private struct ImagePreprocessor {
         return (data, width, height)
     }
 
+    // PIL-equivalent BICUBIC resize (Keys cubic, a=-0.5).
+    // Matches HuggingFace image processor resample=3 (PIL.Image.BICUBIC) used in verify.py.
+    // Operates on raw sRGB gamma-encoded RGBA8 bytes to match PIL's pipeline exactly.
     private func resizedRGBA8(
         _ source: (data: Data, width: Int, height: Int),
         width targetWidth: Int,
@@ -609,33 +619,69 @@ private struct ImagePreprocessor {
         guard source.width != targetWidth || source.height != targetHeight else {
             return source.data
         }
-
-        var sourceData = source.data
-        var destinationData = Data(count: targetWidth * targetHeight * 4)
-        sourceData.withUnsafeMutableBytes { sourceBytes in
-            destinationData.withUnsafeMutableBytes { destinationBytes in
-                var sourceBuffer = vImage_Buffer(
-                    data: sourceBytes.baseAddress!,
-                    height: vImagePixelCount(source.height),
-                    width: vImagePixelCount(source.width),
-                    rowBytes: source.width * 4
-                )
-                var destinationBuffer = vImage_Buffer(
-                    data: destinationBytes.baseAddress!,
-                    height: vImagePixelCount(targetHeight),
-                    width: vImagePixelCount(targetWidth),
-                    rowBytes: targetWidth * 4
-                )
-                let error = vImageScale_ARGB8888(
-                    &sourceBuffer,
-                    &destinationBuffer,
-                    nil,
-                    vImage_Flags(kvImageHighQualityResampling)
-                )
-                precondition(error == kvImageNoError, "vImageScale_ARGB8888 failed: \(error)")
+        let xCoeffs = pilBicubicCoeffs(outSize: targetWidth, scale: Double(source.width) / Double(targetWidth), srcSize: source.width)
+        let yCoeffs = pilBicubicCoeffs(outSize: targetHeight, scale: Double(source.height) / Double(targetHeight), srcSize: source.height)
+        var dst = Data(count: targetWidth * targetHeight * 4)
+        source.data.withUnsafeBytes { srcBytes in
+            let src = srcBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            dst.withUnsafeMutableBytes { dstBytes in
+                let d = dstBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                for dy in 0..<targetHeight {
+                    let yc = yCoeffs[dy]
+                    for dx in 0..<targetWidth {
+                        let xc = xCoeffs[dx]
+                        var r = 0.0, g = 0.0, b = 0.0, a = 0.0
+                        for (j, wy) in yc.weights.enumerated() {
+                            let sy = yc.start + j
+                            for (i, wx) in xc.weights.enumerated() {
+                                let sx = xc.start + i
+                                let w = wx * wy
+                                let p = (sy * source.width + sx) * 4
+                                r += Double(src[p]) * w
+                                g += Double(src[p + 1]) * w
+                                b += Double(src[p + 2]) * w
+                                a += Double(src[p + 3]) * w
+                            }
+                        }
+                        let p = (dy * targetWidth + dx) * 4
+                        d[p]     = UInt8(min(max(Int(r + 0.5), 0), 255))
+                        d[p + 1] = UInt8(min(max(Int(g + 0.5), 0), 255))
+                        d[p + 2] = UInt8(min(max(Int(b + 0.5), 0), 255))
+                        d[p + 3] = UInt8(min(max(Int(a + 0.5), 0), 255))
+                    }
+                }
             }
         }
-        return destinationData
+        return dst
+    }
+
+    private struct BicubicCoeff {
+        let start: Int
+        let weights: [Double]
+    }
+
+    // Precomputes per-output-pixel bicubic coefficients matching PIL's Resample.c algorithm.
+    // For downscaling (scale > 1) expands support and normalizes — matching PIL's antialiasing.
+    private func pilBicubicCoeffs(outSize: Int, scale: Double, srcSize: Int) -> [BicubicCoeff] {
+        let filterScale = max(scale, 1.0)
+        let support = 2.0 * filterScale
+        return (0..<outSize).map { i in
+            let center = (Double(i) + 0.5) * scale
+            let start = max(Int(center - support + 0.5), 0)
+            let end = min(Int(center + support + 0.5) - 1, srcSize - 1)
+            var weights = (start...max(start, end)).map { x -> Double in
+                pilBicubicKernel(abs(Double(x) + 0.5 - center) / filterScale)
+            }
+            let wsum = weights.reduce(0, +)
+            if wsum > 1e-10 { weights = weights.map { $0 / wsum } }
+            return BicubicCoeff(start: start, weights: weights)
+        }
+    }
+
+    private func pilBicubicKernel(_ t: Double) -> Double {
+        if t <= 1.0 { return (1.5 * t - 2.5) * t * t + 1.0 }
+        if t < 2.0 { return ((-0.5 * t + 2.5) * t - 4.0) * t + 2.0 }
+        return 0.0
     }
 
     private func normalizedPixelArray(_ rgba8Data: Data, width: Int, height: Int) -> MLXArray {
