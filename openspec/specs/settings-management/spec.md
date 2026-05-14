@@ -27,7 +27,7 @@ The system SHALL store translation service API keys (DeepL, Google, OpenAI) in t
 - **THEN** the system retrieves the DeepL API key from Keychain
 
 ### Requirement: Settings UI
-The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The view SHALL also provide a dedicated Debug tab for inspection and management of app-owned persistent debug logs. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders. All language selection pickers SHALL display languages using international standard short codes (e.g., JA, EN, ZH-TW) for consistency and space efficiency. The API Keys tab SHALL include a GitHub Copilot section that displays the availability status of the Copilot CLI and, when available, a model picker populated from the Copilot API. The engine picker in the Preferences tab SHALL only show the GitHub Copilot option when the Copilot CLI is installed and logged in.
+The system SHALL provide a settings view (accessible via Cmd+,) where users can configure API keys, default language pair, default translation engine, and update preferences. The view SHALL also provide a dedicated Debug tab for inspection and management of app-owned persistent debug logs. The Preferences tab SHALL include an "Updates" section with a toggle for automatic update checking and a "Check for Updates Now" button. The OpenAI section SHALL be renamed to "OpenAI Compatible" and SHALL include a Base URL text field, a free-text Model field, and "Reset" buttons for both fields. The `UpdateSettingsView` component SHALL own its `CheckForUpdatesViewModel` using `@StateObject` to ensure the ViewModel is retained across parent re-renders. All language selection pickers SHALL display languages using flag emoji and full English names (e.g., `"🇯🇵 Japanese"`, `"🇺🇸 English"`, `"🇹🇼 Traditional Chinese"`). The API Keys tab SHALL include a GitHub Copilot section that displays the availability status of the Copilot CLI and, when available, a model picker populated from the Copilot API. The engine picker in the Preferences tab SHALL only show the GitHub Copilot option when the Copilot CLI is installed and logged in.
 
 #### Scenario: Open settings
 - **WHEN** user presses Cmd+,
@@ -52,9 +52,9 @@ The system SHALL provide a settings view (accessible via Cmd+,) where users can 
 
 #### Scenario: Language picker display codes
 - **WHEN** user opens the source language picker in settings or the toolbar
-- **THEN** the options SHALL be displayed as JA and EN only
+- **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"` and `"🇺🇸 English"` only
 - **WHEN** user opens the target language picker in settings or the toolbar
-- **THEN** the options SHALL be displayed as JA, EN, and ZH-TW
+- **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"`, `"🇺🇸 English"`, and `"🇹🇼 Traditional Chinese"`
 
 #### Scenario: GitHub Copilot section — CLI detected
 - **WHEN** user opens the API Keys tab and the Copilot CLI is installed and logged in

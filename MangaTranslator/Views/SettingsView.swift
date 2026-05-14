@@ -55,9 +55,6 @@ struct SettingsView: View {
             if !copilotAvailability.isAvailable && preferences.translationEngine == .githubCopilot {
                 preferences.translationEngine = .openAI
             }
-            if !Language.sourceLanguages.contains(preferences.sourceLanguage) {
-                preferences.sourceLanguage = .ja
-            }
             if case .available(let token) = copilotAvailability {
                 isLoadingCopilotModels = true
                 copilotModels = (try? await CopilotEnvironment.fetchModels(token: token)) ?? []

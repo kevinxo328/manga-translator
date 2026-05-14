@@ -76,6 +76,19 @@ struct PreferencesServiceTests {
         #expect(reloaded.translationEngine == .google)
     }
 
+    @Test("Persisted zh-Hant source language is migrated to ja on init")
+    func persistedInvalidSourceLanguageMigratedToJa() {
+        let migrationSuiteName = "\(suiteName).migration"
+        let migrationDefaults = UserDefaults(suiteName: migrationSuiteName)!
+        migrationDefaults.removePersistentDomain(forName: migrationSuiteName)
+        migrationDefaults.set("zh-Hant", forKey: "sourceLanguage")
+
+        let preferences = PreferencesService(defaults: migrationDefaults)
+
+        #expect(preferences.sourceLanguage == .ja,
+                "A persisted 'zh-Hant' sourceLanguage must be reset to .ja because it is not a valid source language")
+    }
+
     @Test("Invalid Base URL is not written to UserDefaults")
     func invalidBaseURLNotPersistedToDefaults() {
         let preferences = PreferencesService(defaults: defaults)

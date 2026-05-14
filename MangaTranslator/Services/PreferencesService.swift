@@ -49,7 +49,7 @@ final class PreferencesService: ObservableObject {
         let copilotM = defaults.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
         let showP = defaults.object(forKey: "showPathBar") as? Bool ?? true
 
-        self.sourceLanguage = Language(rawValue: sourceLang) ?? .ja
+        self.sourceLanguage = Language(rawValue: sourceLang).flatMap { Language.sourceLanguages.contains($0) ? $0 : nil } ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
         self.translationEngine = TranslationEngine(rawValue: engine) ?? .openAI
         self.openAIModel = openAIM
