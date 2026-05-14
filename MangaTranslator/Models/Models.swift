@@ -17,7 +17,8 @@ enum Language: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    static var sourceLanguages: [Language] { [.ja, .en] }
+    // OCR currently supports Japanese and English as source languages only.
+    static let sourceLanguages: [Language] = [.ja, .en]
 
 }
 
