@@ -41,6 +41,88 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertNil(vm.pages[0].imageHash, "imageHash must not be set when same-language guard fires first")
     }
 
+    // MARK: - Log metadata
+
+    func testSameLanguageEmitsCorrectLogMetadata() async {
+        let prefs = makePrefs(source: .ja, target: .ja)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/same-lang-log.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        let startDate = Date()
+        await vm.translatePage(at: 0, bypassCache: true)
+        await DebugLogger.shared.flush()
+
+        var filter = DebugLogFilter()
+        filter.category = .pipeline
+        filter.startDate = startDate
+        let entries = await DebugLogStore.shared.queryAll(filter: filter)
+        let entry = entries.first { $0.metadataJSON.contains("same_language") }
+        guard let entry else {
+            return XCTFail("No pipeline log entry with reason:same_language found")
+        }
+        let meta = decodeMeta(entry.metadataJSON)
+        XCTAssertEqual(meta["reason"], "same_language")
+        XCTAssertEqual(meta["source_language"], "ja")
+        XCTAssertEqual(meta["target_language"], "ja")
+        XCTAssertEqual(meta["page_index"], "0")
+    }
+
+    func testMeaninglessFilterEmitsFilteredCountMetadata() async {
+        let router = await makeRouter(recognizerText: "。")
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/punct-log.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        let startDate = Date()
+        await vm.translatePage(at: 0, bypassCache: true)
+        await DebugLogger.shared.flush()
+
+        var filter = DebugLogFilter()
+        filter.category = .pipeline
+        filter.startDate = startDate
+        let entries = await DebugLogStore.shared.queryAll(filter: filter)
+        let filterEntry = entries.first { $0.metadataJSON.contains("filtered_count") }
+        guard let filterEntry else {
+            return XCTFail("No pipeline log entry with filtered_count found")
+        }
+        let meta = decodeMeta(filterEntry.metadataJSON)
+        XCTAssertEqual(meta["filtered_count"], "1")
+        XCTAssertEqual(meta["total_count"], "1")
+        XCTAssertEqual(meta["page_index"], "0")
+
+        let skipEntry = entries.first { $0.metadataJSON.contains("all_bubbles_meaningless") }
+        guard let skipEntry else {
+            return XCTFail("No pipeline log entry with reason:all_bubbles_meaningless found")
+        }
+        XCTAssertEqual(decodeMeta(skipEntry.metadataJSON)["reason"], "all_bubbles_meaningless")
+    }
+
+    // MARK: - Empty-text bubble
+
+    func testEmptyTextBubbleNotInSidebarAndSkipsTranslation() async {
+        var translationCalled = false
+        let router = await makeRouter(recognizerText: "")
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true })
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/empty.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+        await vm.translatePage(at: 0, bypassCache: true)
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(bubbles.isEmpty, "Empty-text bubble must not appear in sidebar")
+        XCTAssertFalse(translationCalled, "Translation must not be called when all bubbles have empty text")
+    }
+
     // MARK: - 3. TDD — Meaningless bubble filter
 
     func testPunctuationOnlyBubblesNotInSidebar() async {
@@ -116,6 +198,22 @@ private func makeTestImage() -> NSImage {
 }
 
 @MainActor
+private func makeEmptyRouter() -> OCRRouter {
+    return OCRRouter(
+        mangaOCRService: MangaOCRService(detector: EmptyComicTextDetector()),
+        capabilityChecker: MockCapabilityChecker(.unsupported),
+        downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+        paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+    )
+}
+
+private func decodeMeta(_ json: String) -> [String: String] {
+    guard let data = json.data(using: .utf8),
+          let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+    return dict
+}
+
+@MainActor
 private func makeRouter(recognizerText: String) async -> OCRRouter {
     let recognizer = FixedTextOCRRecognizer(text: recognizerText)
     let service = MangaOCRService(detector: MockComicTextDetectorSingle())
@@ -173,6 +271,10 @@ private final class SequentialOCRRecognizer: @unchecked Sendable, OCRRecognizing
         callCount += 1
         return (text, 1.0)
     }
+}
+
+private struct EmptyComicTextDetector: ComicTextDetecting {
+    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] { [] }
 }
 
 private struct MockComicTextDetectorSingle: ComicTextDetecting {
