@@ -1,11 +1,11 @@
 ## 1. Add `.pipeline` log category
 
-- [ ] 1.1 In `MangaTranslator/Services/DebugLogger.swift`, add `case pipeline` to `DebugLogCategory` after `case debugLog = "debug.log"` (raw value defaults to `"pipeline"`)
-- [ ] 1.2 Build the project to confirm no compiler errors: `xcodebuild build -scheme MangaTranslator -destination 'platform=macOS' 2>&1 | tail -5`
+- [x] 1.1 In `MangaTranslator/Services/DebugLogger.swift`, add `case pipeline` to `DebugLogCategory` after `case debugLog = "debug.log"` (raw value defaults to `"pipeline"`)
+- [x] 1.2 Build the project to confirm no compiler errors: `xcodebuild build -scheme MangaTranslator -destination 'platform=macOS' 2>&1 | tail -5`
 
 ## 2. TDD — Same-language OCR skip
 
-- [ ] 2.1 Create `MangaTranslatorTests/TranslationViewModelTests.swift` with `@testable import MangaTranslator`. Add helper types:
+- [x] 2.1 Create `MangaTranslatorTests/TranslationViewModelTests.swift` with `@testable import MangaTranslator`. Add helper types:
   - `ThrowingOCRRecognizer` — always throws `PaddleOCRError.inferenceFailed("forced")`, proves OCR was reached
   - `MockComicTextDetectorSingle` — returns one `DetectedTextRegion(boundingBox: CGRect(x:0,y:0,width:10,height:10), confidence:1.0, classIndex:0)`
   - `TrackingTranslationService` — records whether `translate(bubbles:from:to:context:)` was called; passthrough for any bubbles it receives
@@ -48,31 +48,14 @@
       XCTAssertNil(vm.pages[0].imageHash, "imageHash must not be set when same-language guard fires first")
   }
   ```
-- [ ] 2.2 Run the test and confirm it fails: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/TranslationViewModelTests/testSameLanguageSkipsOCRAndTranslation 2>&1 | grep -E "passed|failed|error"`
-- [ ] 2.3 In `TranslationViewModel.translatePage(at:bypassCache:)`, add the early-exit guard as the first statement after `pages[index].state = .processing`, before image loading or hash computation:
-  ```swift
-  guard preferences.sourceLanguage != preferences.targetLanguage else {
-      DebugLogger.shared.log(
-          "Page \(index): skipped OCR and translation — source == target",
-          level: .info,
-          category: .pipeline,
-          metadata: [
-              "page_index": "\(index)",
-              "source_language": preferences.sourceLanguage.rawValue,
-              "target_language": preferences.targetLanguage.rawValue,
-              "reason": "same_language"
-          ]
-      )
-      pages[index].state = .translated([])
-      return
-  }
-  ```
-- [ ] 2.4 Remove the `let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage` line and update the API key guard condition from `if needsTranslation && ...` to `if translationServiceOverride == nil && ...`
-- [ ] 2.5 Run the test and confirm it passes
+- [x] 2.2 Run the test and confirm it fails: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/TranslationViewModelTests/testSameLanguageSkipsOCRAndTranslation 2>&1 | grep -E "passed|failed|error"`
+- [x] 2.3 In `TranslationViewModel.translatePage(at:bypassCache:)`, add the early-exit guard as the first statement after `pages[index].state = .processing`, before image loading or hash computation:
+- [x] 2.4 Remove the `let needsTranslation = preferences.sourceLanguage != preferences.targetLanguage` line and update the API key guard condition from `if needsTranslation && ...` to `if translationServiceOverride == nil && ...`
+- [x] 2.5 Run the test and confirm it passes
 
 ## 3. TDD — Meaningless bubble filter
 
-- [ ] 3.1 In `TranslationViewModelTests.swift`, add:
+- [x] 3.1 In `TranslationViewModelTests.swift`, add:
   - `MockOCRRecognizer(text:)` — returns a fixed `text` string for every `recognizeText` call
   - `MockComicTextDetectorDouble` — returns two `DetectedTextRegion` each with `CGRect(x:0,y:0,width:10,height:10)`
   - `SequentialOCRRecognizer(texts:)` — returns `texts[0]` on first call, `texts[1]` on second call, etc.
@@ -145,8 +128,8 @@
   }
   ```
 
-- [ ] 3.2 Run all three tests and confirm they fail: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/TranslationViewModelTests 2>&1 | grep -E "passed|failed|error"`
-- [ ] 3.3 In `translatePage`, replace the existing `if preferences.sourceLanguage == preferences.targetLanguage || ordered.allSatisfy(...)` block and the `else` block with:
+- [x] 3.2 Run all three tests and confirm they fail: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/TranslationViewModelTests 2>&1 | grep -E "passed|failed|error"`
+- [x] 3.3 In `translatePage`, replace the existing `if preferences.sourceLanguage == preferences.targetLanguage || ordered.allSatisfy(...)` block and the `else` block with:
   ```swift
   let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
   let skippedCount = ordered.count - meaningful.count
@@ -186,11 +169,11 @@
       translated = output.bubbles.sorted { $0.index < $1.index }
   }
   ```
-- [ ] 3.4 Run all three tests — confirm they pass
-- [ ] 3.5 Run the full test suite: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' 2>&1 | grep -E "passed|failed|error"`
+- [x] 3.4 Run all three tests — confirm they pass
+- [x] 3.5 Run the full test suite: `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' 2>&1 | grep -E "passed|failed|error"`
 
 ## 4. Cleanup and commit
 
-- [ ] 4.1 Verify `needsTranslation` variable is fully removed from `translatePage` and no dead code remains from the old `if/else` block
-- [ ] 4.2 Build and run the app manually: set source == target language, open an image, confirm the debug log view shows a `pipeline` category entry with `reason: same_language` metadata
-- [ ] 4.3 Commit: `git add MangaTranslator/Services/DebugLogger.swift MangaTranslator/ViewModels/TranslationViewModel.swift MangaTranslatorTests/TranslationViewModelTests.swift && git commit -m "feat(pipeline): skip OCR for same-language, filter meaningless bubbles, log skip reasons"`
+- [x] 4.1 Verify `needsTranslation` variable is fully removed from `translatePage` and no dead code remains from the old `if/else` block
+- [x] 4.2 Build and run the app manually: set source == target language, open an image, confirm the debug log view shows a `pipeline` category entry with `reason: same_language` metadata
+- [x] 4.3 Commit: `git add MangaTranslator/Services/DebugLogger.swift MangaTranslator/ViewModels/TranslationViewModel.swift MangaTranslatorTests/TranslationViewModelTests.swift && git commit -m "feat(pipeline): skip OCR for same-language, filter meaningless bubbles, log skip reasons"`

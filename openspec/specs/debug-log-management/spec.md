@@ -62,7 +62,7 @@ The system SHALL classify debug events using exactly the V1 log levels `debug`, 
 
 #### Scenario: Filterable category value
 - **WHEN** an event is persisted
-- **THEN** its category SHALL be one of `app.lifecycle`, `settings`, `file.input`, `ocr.router`, `ocr.manga`, `ocr.paddle`, `translation.openai`, `translation.google`, `translation.deepl`, `translation.copilot`, `cache`, `model.download`, `keychain`, `export`, or `debug.log`
+- **THEN** its category SHALL be one of `app.lifecycle`, `settings`, `file.input`, `ocr.router`, `ocr.manga`, `ocr.paddle`, `translation.openai`, `translation.google`, `translation.deepl`, `translation.copilot`, `cache`, `model.download`, `keychain`, `export`, `debug.log`, or `pipeline`
 
 ### Requirement: Persist content logs
 The system SHALL support content logs for OCR source text and translated text. Content logs SHALL use the same retention policy as operational logs.
