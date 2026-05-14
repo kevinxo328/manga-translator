@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.4 (2026-05-14)
+
+### Changes
+
+- Source language is now restricted to Japanese and English. Traditional Chinese remains available as a target language only.
+
 ## v1.4.3 (2026-05-13)
 
 ### New Features

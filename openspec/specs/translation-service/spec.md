@@ -40,12 +40,12 @@ The system SHALL support OpenAI API (GPT models) as a translation backend. The s
 - **WHEN** bubbles with indices [0, 2, 3] are sent (after punctuation filtering)
 - **THEN** the response contains exactly indices [0, 2, 3], not [0, 1, 2]
 
-### Requirement: Six translation directions
-The system SHALL support translation between any pair of: Japanese (ja), English (en), Traditional Chinese (zh-Hant). This includes all six directed pairs.
+### Requirement: Four translation directions
+The system SHALL support the following four translation directions: Japanese → English, Japanese → Traditional Chinese, English → Japanese, English → Traditional Chinese. Traditional Chinese is available as a target language only and SHALL NOT appear as a source language option.
 
 #### Scenario: All language pairs available
 - **WHEN** user opens the language selection UI
-- **THEN** source and target language dropdowns each contain Japanese, English, and Traditional Chinese, and any combination is selectable (except same source and target)
+- **THEN** the source language dropdown contains Japanese and English only; the target language dropdown contains Japanese, English, and Traditional Chinese; any valid combination is selectable (except same source and target)
 
 ### Requirement: Support GitHub Copilot translation backend
 The system SHALL support GitHub Copilot as a translation backend. The engine SHALL read the OAuth token from the local keychain entry stored by the Copilot CLI (`copilot-cli` service). The engine SHALL call `api.individual.githubcopilot.com` (for Individual accounts) or `api.githubcopilot.com` (for Business/Enterprise accounts) using the OpenAI-compatible chat completions endpoint with the `Copilot-Integration-Id: vscode-chat` header and `X-GitHub-Api-Version: 2022-11-28` header. The engine SHALL use the same LLM prompt, JSON parsing, and retry logic as the OpenAI backend. If the Copilot CLI is not installed or not logged in, the system SHALL throw `TranslationError.missingAPIKey(.githubCopilot)`.

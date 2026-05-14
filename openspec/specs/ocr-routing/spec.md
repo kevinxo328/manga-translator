@@ -5,7 +5,7 @@ Routing OCR requests to the appropriate engine based on model availability and u
 ## Requirements
 
 ### Requirement: Route OCR based on source language
-The system SHALL use the high-accuracy OCR pipeline when the device is Apple Silicon (`#if arch(arm64)`), the model is downloaded and verified, and the user has enabled high-accuracy OCR in preferences. Otherwise, the system SHALL use the standard manga-ocr ONNX pipeline. This routing rule SHALL apply to all supported source languages (`.ja`, `.en`, `.zhHant`).
+The system SHALL use the high-accuracy OCR pipeline when the device is Apple Silicon (`#if arch(arm64)`), the model is downloaded and verified, and the user has enabled high-accuracy OCR in preferences. Otherwise, the system SHALL use the standard manga-ocr ONNX pipeline. This routing rule SHALL apply to all supported source languages (`.ja`, `.en`).
 
 #### Scenario: Japanese source language, high-accuracy enabled and model downloaded
 - **WHEN** the user has set source language to Japanese, the device is Apple Silicon, the model is downloaded, and high-accuracy OCR is enabled
@@ -29,10 +29,6 @@ The system SHALL use the high-accuracy OCR pipeline when the device is Apple Sil
 
 #### Scenario: English source language
 - **WHEN** the user has set source language to English
-- **THEN** the system applies the same PaddleOCR/MangaOCR routing rule used for Japanese
-
-#### Scenario: Traditional Chinese source language
-- **WHEN** the user has set source language to Traditional Chinese
 - **THEN** the system applies the same PaddleOCR/MangaOCR routing rule used for Japanese
 
 ### Requirement: No fallback OCR engine after manga-ocr failure

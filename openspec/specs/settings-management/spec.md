@@ -51,7 +51,9 @@ The system SHALL provide a settings view (accessible via Cmd+,) where users can 
 - **THEN** `UpdateSettingsView` retains the same `CheckForUpdatesViewModel` instance
 
 #### Scenario: Language picker display codes
-- **WHEN** user opens the language selection picker in settings or the toolbar
+- **WHEN** user opens the source language picker in settings or the toolbar
+- **THEN** the options SHALL be displayed as JA and EN only
+- **WHEN** user opens the target language picker in settings or the toolbar
 - **THEN** the options SHALL be displayed as JA, EN, and ZH-TW
 
 #### Scenario: GitHub Copilot section — CLI detected
