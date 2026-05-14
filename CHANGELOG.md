@@ -2,9 +2,15 @@
 
 ## v1.4.4 (2026-05-14)
 
-### Changes
+### Improvements
 
-- Source language is now restricted to Japanese and English. Traditional Chinese remains available as a target language only.
+- **Optimized Translation** — Pages already in the source language are now skipped automatically, and empty or meaningless speech bubbles are ignored, making translation noticeably faster.
+- Source language options are now limited to Japanese and English, keeping the picker simple and accurate.
+- Improved text recognition quality with better image processing before OCR runs.
+
+### Bug Fixes
+
+- Fixed an issue where an unsupported source language saved from a previous version could cause incorrect behavior on startup.
 
 ## v1.4.3 (2026-05-13)
 
