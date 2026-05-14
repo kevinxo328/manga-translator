@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.5 (2026-05-14)
+
+### Improvements
+
+- **Reduced Memory Usage** — Improved memory management for high-accuracy text recognition, ensuring the app remains responsive even when processing many pages in a row.
+
 ## v1.4.4 (2026-05-14)
 
 ### Improvements
