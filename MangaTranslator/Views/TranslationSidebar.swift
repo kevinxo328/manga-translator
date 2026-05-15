@@ -1,4 +1,20 @@
 import SwiftUI
+import AppKit
+
+// MARK: - Clipboard Abstraction
+
+protocol ClipboardWriting {
+    @discardableResult
+    func write(_ string: String) -> Bool
+}
+
+struct NSPasteboardClipboard: ClipboardWriting {
+    func write(_ string: String) -> Bool {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.setString(string, forType: .string)
+    }
+}
 
 struct TranslationSidebar: View {
     let translations: [TranslatedBubble]
@@ -105,6 +121,7 @@ struct TranslationCard: View {
     let bubble: TranslatedBubble
     let displayNumber: Int
     let isHighlighted: Bool
+    var clipboard: ClipboardWriting = NSPasteboardClipboard()
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -150,5 +167,22 @@ struct TranslationCard: View {
         )
         .scaleEffect(isHighlighted ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHighlighted)
+        .contextMenu {
+            Button("Copy Translation") { copyTranslation() }
+            Button("Copy Original Text") { copyOriginalText() }
+            Button("Copy Both") { copyBoth() }
+        }
+    }
+
+    func copyTranslation() {
+        clipboard.write(bubble.translatedText)
+    }
+
+    func copyOriginalText() {
+        clipboard.write(bubble.bubble.text)
+    }
+
+    func copyBoth() {
+        clipboard.write("Original: \(bubble.bubble.text)\nTranslation: \(bubble.translatedText)")
     }
 }
