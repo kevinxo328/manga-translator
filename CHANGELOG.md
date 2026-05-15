@@ -1,6 +1,10 @@
 # Changelog
 
-## v1.4.5 (2026-05-14)
+## v1.4.5 (2026-05-15)
+
+### Bug Fixes
+
+- Fixed a build issue where a required internal bundle was missing from the distributed DMG, preventing the high-accuracy OCR from working correctly.
 
 ### Improvements
 
