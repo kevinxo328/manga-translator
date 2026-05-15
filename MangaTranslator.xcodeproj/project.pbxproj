@@ -162,6 +162,27 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		RS0000010000000000000001 /* Copy mlx-swift_Cmlx.bundle */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(OBJROOT)/UninstalledProducts/$(PLATFORM_NAME)/mlx-swift_Cmlx.bundle/Contents/Info.plist",
+				"$(OBJROOT)/UninstalledProducts/$(PLATFORM_NAME)/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib",
+			);
+			name = "Copy mlx-swift_Cmlx.bundle";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/mlx-swift_Cmlx.bundle/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib",
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nBUNDLE=mlx-swift_Cmlx.bundle\nSRC=\"${OBJROOT}/UninstalledProducts/${PLATFORM_NAME}/${BUNDLE}\"\nDST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Resources/${BUNDLE}\"\nif [ ! -f \"${SRC}/Contents/Info.plist\" ] || [ ! -f \"${SRC}/Contents/Resources/default.metallib\" ]; then\n  echo \"error: ${BUNDLE} not found at ${SRC}\"\n  exit 1\nfi\nmkdir -p \"${DST}/Contents/Resources\"\ncp \"${SRC}/Contents/Info.plist\" \"${DST}/Contents/Info.plist\"\ncp \"${SRC}/Contents/Resources/default.metallib\" \"${DST}/Contents/Resources/default.metallib\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFileReference section */
 		A20000010000000000000001 /* MangaTranslatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorApp.swift; sourceTree = "<group>"; };
 		A20000010000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -490,6 +511,7 @@
 				A60000010000000000000001 /* Sources */,
 				A30000010000000000000001 /* Frameworks */,
 				A80000010000000000000001 /* Resources */,
+				RS0000010000000000000001 /* Copy mlx-swift_Cmlx.bundle */,
 				PH3000000200000000000001 /* Embed Frameworks */,
 			);
 			buildRules = (
