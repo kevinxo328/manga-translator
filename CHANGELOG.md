@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.6 (2026-05-15)
+
+### New Features
+
+- **Settings Redesign** — A modern, sidebar-based layout for settings, making it easier to navigate and adjust your preferences.
+- **Copy to Clipboard** — You can now right-click on any translation to quickly copy the text to your clipboard.
+
 ## v1.4.5 (2026-05-15)
 
 ### Bug Fixes
