@@ -4,7 +4,8 @@
     "commit-message": {
       "source": "kevinxo328/agent-skills",
       "sourceType": "github",
-      "computedHash": "dc0d5560f71844a3305b36d17efcb679f217c91b81d9aa07d2cc647633f39c81"
+      "skillPath": "skills/commit-message/SKILL.md",
+      "computedHash": "55528d1f494ddf2ee8d0b11939bfa80ddd70cda40ef6ec7c1ceb4b3b5e1e35f4"
     }
   }
 }
