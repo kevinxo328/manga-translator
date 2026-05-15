@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
     @State private var showGlossarySheet = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 0) {
@@ -55,7 +56,7 @@ struct ContentView: View {
         }
         .alert("Missing API Key", isPresented: $viewModel.showMissingKeyAlert) {
             Button("Open Settings") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                openWindow(id: "settings")
             }
             Button("Cancel", role: .cancel) {}
         } message: {

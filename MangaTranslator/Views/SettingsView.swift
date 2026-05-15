@@ -1,6 +1,28 @@
 import SwiftUI
 import Sparkle
 
+private enum SettingsTab: Hashable, CaseIterable {
+    case apiKeys, preferences, debug, about
+
+    var label: String {
+        switch self {
+        case .apiKeys: return "API Keys"
+        case .preferences: return "Preferences"
+        case .debug: return "Debug"
+        case .about: return "About"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .apiKeys: return "key"
+        case .preferences: return "gearshape"
+        case .debug: return "ant"
+        case .about: return "info.circle"
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var preferences: PreferencesService
     private let keychainService = KeychainService()
@@ -34,21 +56,31 @@ struct SettingsView: View {
         self.updater = updater
     }
 
+    @State private var selectedTab: SettingsTab = .apiKeys
+
     var body: some View {
-        TabView {
-            apiKeysTab
-                .tabItem { Label("API Keys", systemImage: "key") }
-
-            preferencesTab
-                .tabItem { Label("Preferences", systemImage: "gearshape") }
-
-            debugTab
-                .tabItem { Label("Debug", systemImage: "ant") }
-
-            aboutTab
-                .tabItem { Label("About", systemImage: "info.circle") }
+        NavigationSplitView {
+            List(selection: $selectedTab) {
+                ForEach(SettingsTab.allCases, id: \.self) { tab in
+                    Label(tab.label, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+        } detail: {
+            Group {
+                switch selectedTab {
+                case .apiKeys: apiKeysTab
+                case .preferences: preferencesTab
+                case .debug: debugTab
+                case .about: aboutTab
+                }
+            }
+            .navigationTitle(selectedTab.label)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: ViewLayout.Settings.width, height: ViewLayout.Settings.height)
+        .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: ViewLayout.Settings.width, minHeight: ViewLayout.Settings.height)
         .onAppear { loadKeys() }
         .task {
             copilotAvailability = CopilotEnvironment.check()

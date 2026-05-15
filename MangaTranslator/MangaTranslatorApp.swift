@@ -3,8 +3,8 @@ import Sparkle
 
 enum ViewLayout {
     enum Settings {
-        static let width: CGFloat = 500
-        static let height: CGFloat = 630
+        static let width: CGFloat = 600
+        static let height: CGFloat = 650
     }
     enum MainWindow {
         static let minWidth: CGFloat = 800
@@ -24,6 +24,19 @@ enum ViewLayout {
 /// Holds a strong reference to the About window so it can be reused on repeated clicks.
 final class AppWindowHolder {
     var aboutWindow: NSWindow?
+}
+
+/// Replaces the `App > Settings…` menu item because we use a custom `Window` scene
+/// (Settings scene silently ignores `.windowResizability`).
+private struct OpenSettingsButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Settings…") {
+            openWindow(id: "settings")
+        }
+        .keyboardShortcut(",", modifiers: .command)
+    }
 }
 
 @main
@@ -90,10 +103,17 @@ struct MangaTranslatorApp: App {
                 Toggle("Show Path Bar", isOn: $preferences.showPathBar)
                     .keyboardShortcut("p", modifiers: [.command, .option])
             }
+
+            CommandGroup(replacing: .appSettings) {
+                OpenSettingsButton()
+            }
         }
 
-        Settings {
+        Window("Settings", id: "settings") {
             SettingsView(preferences: preferences, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater)
         }
+        .defaultSize(width: ViewLayout.Settings.width, height: ViewLayout.Settings.height)
+        .windowResizability(.contentMinSize)
+        .commandsRemoved()
     }
 }
