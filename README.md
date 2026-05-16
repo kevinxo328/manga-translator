@@ -30,6 +30,10 @@ A native macOS application that automatically detects, recognizes, and translate
    - Go to **System Settings > Privacy & Security**.
    - Scroll down to the Security section and click **Open Anyway** next to the MangaTranslator message.
    - Click **Open** in the confirmation dialog.
+   - **Alternatively**, you can run the following command in Terminal to bypass this:
+     ```bash
+     xattr -cr /Applications/MangaTranslator.app
+     ```
 
 ## Getting Started
 
