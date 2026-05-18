@@ -131,6 +131,7 @@ Use this suite when you want to evaluate OCR quality on representative manga pag
 Each engine runs as an independent production pipeline; results are anchored on PaddleOCR and paired by greedy IoU matching (threshold ≥ 0.5) against MangaOCR. The report shows paired regions with texts and IoU score, unmatched sections, per-engine latency, and image failure counts.
 
 **Setup**: Place manga images under `examples/` (any subdirectory depth, `.jpg`/`.jpeg`/`.png`).
+The scanner skips any subdirectory whose name starts with `.` or `_`, so keep benchmark images in visible folders.
 
 **Run**:
 ```bash

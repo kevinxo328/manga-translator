@@ -26,6 +26,7 @@ from scripts.convert_model.verify import (
     load_crop_samples,
     load_single_image_sample,
     load_samples_from_args,
+    list_page_images,
     normalize_text,
     parse_crop_box_arg,
     percentile,
@@ -93,6 +94,27 @@ class VerifyHelpersTests(unittest.TestCase):
             self.assertEqual(samples[0].image_path, image_path.resolve())
             self.assertEqual(samples[0].crop_box, CropBox(x=1, y=2, width=3, height=4))
             self.assertEqual(samples[0].reference_text, "abc")
+
+    def test_list_page_images_skips_dot_and_underscore_directories(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            visible = base / "visible"
+            hidden = base / ".hidden"
+            private = base / "_private"
+            nested = visible / "__nested"
+            visible.mkdir()
+            hidden.mkdir()
+            private.mkdir()
+            nested.mkdir()
+
+            Image.new("RGB", (20, 20), "white").save(visible / "keep.png")
+            Image.new("RGB", (20, 20), "white").save(hidden / "skip.png")
+            Image.new("RGB", (20, 20), "white").save(private / "skip.jpg")
+            Image.new("RGB", (20, 20), "white").save(nested / "skip.jpeg")
+
+            images = list_page_images(base)
+
+            self.assertEqual([path.name for path in images], ["keep.png"])
 
     def test_prepare_samples_crops_images_and_records_padding(self):
         with tempfile.TemporaryDirectory() as temp_dir:

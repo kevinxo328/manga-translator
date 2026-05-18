@@ -442,9 +442,22 @@ def list_page_images(test_dir: Path) -> list[Path]:
     extensions = {".png", ".jpg", ".jpeg", ".webp"}
     image_paths = []
     for image_path in sorted(test_dir.rglob("*")):
+        if _has_skipped_directory_ancestor(image_path, test_dir):
+            continue
         if image_path.is_file() and image_path.suffix.lower() in extensions:
             image_paths.append(image_path.resolve())
     return image_paths
+
+
+def _has_skipped_directory_ancestor(path: Path, root: Path) -> bool:
+    """Return True when a path lives under a dot- or underscore-prefixed directory."""
+    try:
+        relative_path = path.relative_to(root)
+    except ValueError:
+        return False
+
+    parent_parts = relative_path.parts[:-1]
+    return any(part.startswith(".") or part.startswith("_") for part in parent_parts)
 
 
 def load_crop_samples(manifest_path: Path) -> list[Sample]:

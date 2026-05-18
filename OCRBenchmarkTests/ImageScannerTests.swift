@@ -29,6 +29,26 @@ final class ImageScannerTests: XCTestCase {
         XCTAssertEqual(images.count, 2)
     }
 
+    func testSkipsDotAndUnderscoreDirectories() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let visibleDir = tmpDir.appendingPathComponent("visible")
+        let hiddenDir = tmpDir.appendingPathComponent(".hidden")
+        let privateDir = tmpDir.appendingPathComponent("_private")
+        let nestedDir = visibleDir.appendingPathComponent("__nested")
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        try FileManager.default.createDirectory(at: nestedDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: hiddenDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: privateDir, withIntermediateDirectories: true)
+        try Data("img".utf8).write(to: visibleDir.appendingPathComponent("keep.png"))
+        try Data("img".utf8).write(to: hiddenDir.appendingPathComponent("skip.png"))
+        try Data("img".utf8).write(to: privateDir.appendingPathComponent("skip.jpg"))
+        try Data("img".utf8).write(to: nestedDir.appendingPathComponent("skip.jpeg"))
+
+        let images = scanner.findImages(in: tmpDir)
+        XCTAssertEqual(images.map(\.lastPathComponent), ["keep.png"])
+    }
+
     // Task 3.3 - empty directory returns empty results
     func testEmptyDirectoryReturnsEmpty() throws {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

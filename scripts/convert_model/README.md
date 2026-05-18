@@ -59,7 +59,7 @@ The primary goal is **Parity**: ensuring the quantized model's output is
 mathematically close to the original BF16 model. We measure this using
 **Character Error Rate (CER) Delta**.
 
-- **Default data**: `examples/` directory (full manga pages).
+- **Default data**: `examples/` directory (full manga pages). The directory scan skips any subdirectory whose name starts with `.` or `_`.
 - **`--image` data**: a single image file, optionally constrained with `--crop`.
 - **`--test-images` data**: detector-driven region crops produced by the same
   `ComicTextDetectorService` used by the macOS app.
@@ -85,7 +85,8 @@ The verification report includes:
   one explicit region and avoids detector export entirely.
 - **`--test-images` is crop-first**: page directories are converted into
   region-level OCR samples through the standalone Swift `DetectorExportCLI`.
-  Full pages are not sent directly to OCR in this mode.
+  Full pages are not sent directly to OCR in this mode. The page scan also skips
+  any subdirectory whose name starts with `.` or `_`.
 - **Crop expansion parity**: detector crops are expanded with the same padding
   rules as `PaddleOCRVLRecognizer.expandedCropRegion()` in the app.
 - **`--crop-manifest` remains supported**: curated crop datasets still use the
