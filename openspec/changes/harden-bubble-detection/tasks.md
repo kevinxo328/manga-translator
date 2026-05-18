@@ -9,7 +9,7 @@
 ## 2. Detector — confidence bump and `seg` plumbing
 
 - [ ] 2.1 Write failing test: feed `ComicTextDetectorService` a fixture image with a known bbox at conf `0.50` (synthetic or curated) and assert the bbox is rejected; feed another at conf `0.78` and assert it is kept
-- [ ] 2.2 Change `ComicTextDetectorService.confidenceThreshold` from `0.4` to `0.55`; keep it as a `private static let` named constant
+- [ ] 2.2 Keep `ComicTextDetectorService.confidenceThreshold` as a `private static let` named constant
 - [ ] 2.3 Write failing test asserting `ComicTextDetectorService.detectTextRegions(in:)` returns the new `ComicTextDetectorResult` with a non-`nil` `textPixelMask` whose `>0`-pixel count is between 0.5 % and 12 % of the page area on `examples/001.jpg`
 - [ ] 2.4 Read and retain the `seg` output (already requested in the existing `ORTSession.run` call); convert it to a binary mask: threshold at `0.5`, dilate by 3 px, resample to original image resolution, wrap as 8-bit grayscale `CGImage`
 - [ ] 2.5 Write failing test asserting an empty-detection page yields `textPixelMask == nil`
@@ -48,7 +48,7 @@
 ## 7. Integration verification
 
 - [ ] 7.1 Run the full `OCRBenchmark` scheme against `examples/`; capture the generated report
-- [ ] 7.2 Confirm no regression: on `examples/001.jpg`, every bubble that was detected pre-change is still detected (production threshold `0.55` is below the lowest TP confidence observed in U13)
+- [ ] 7.2 Confirm no regression: on `examples/001.jpg`, every bubble that was detected pre-change is still detected (current named confidence threshold preserves the observed true positives)
 - [ ] 7.3 Confirm the two known U13 false positives (`book1/008.jpg` SFX detection, `book1/010.jpg` collar pattern detection) no longer appear in the report
 - [ ] 7.4 Confirm `invertedBubbles` is `>= 5` across `examples/002.jpg` + `examples/003.jpg` combined (matches U5's 7 inverted bubbles, allowing for minor differences from Swift vs Python preprocessing)
 - [ ] 7.5 Capture before/after benchmark output snippets into the PR description for review

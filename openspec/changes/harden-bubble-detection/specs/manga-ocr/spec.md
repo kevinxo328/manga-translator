@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Detect text regions using comic-text-detector
-The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output. The confidence filter SHALL default to `0.55`, calibrated from a Phase 1 audit demonstrating that all observed corpus false positives sit below `0.60` and all observed corpus true positives sit at or above `0.77`. The system SHALL also expose the `seg` head of the detector as a page-level text-pixel mask (see the `bubble-detection` spec for the mask contract).
+The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output. The confidence filter SHALL remain a named constant in the implementation, with this change not hard-coding a new value. The system SHALL also expose the `seg` head of the detector as a page-level text-pixel mask (see the `bubble-detection` spec for the mask contract).
 
 #### Scenario: Manga page with multiple speech bubbles
 - **WHEN** a manga page image is provided containing 6 speech bubbles

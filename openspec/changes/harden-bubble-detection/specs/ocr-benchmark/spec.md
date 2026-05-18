@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Low-confidence detection counter
-For each image, the benchmark report SHALL record the number of detector outputs whose confidence falls in the band `[0.40, 0.60)`. This counter monitors the FP-risk margin around the production threshold (raised to `0.55` in this change) so that a future corpus-diversification audit can detect drift without requiring a full visual re-audit.
+For each image, the benchmark report SHALL record the number of detector outputs whose confidence falls in the band `[0.40, 0.60)`. This counter monitors the FP-risk margin around the current shared threshold so that a future corpus-diversification audit can detect drift without requiring a full visual re-audit.
 
 #### Scenario: Page with no marginal detections
 - **WHEN** every detection on a page has confidence at or above `0.60`
