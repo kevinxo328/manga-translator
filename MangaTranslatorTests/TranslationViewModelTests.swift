@@ -6,6 +6,42 @@ import AppKit
 @MainActor
 final class TranslationViewModelTests: XCTestCase {
 
+    // MARK: - textPixelMask cleared on non-OCR paths
+
+    func testSameLanguageClearsTextPixelMask() async {
+        let prefs = makePrefs(source: .ja, target: .ja)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/same-lang-mask.jpg"))
+        page.image = makeTestImage()
+        page.textPixelMask = makeTestCGImage()
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        XCTAssertNil(vm.pages[0].textPixelMask, "Same-language path must clear stale textPixelMask")
+    }
+
+    func testCacheHitClearsTextPixelMask() async {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let router = await makeRouter(recognizerText: "こんにちは")
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/cache-hit-mask.jpg"))
+        page.image = makeTestImage()
+        page.textPixelMask = makeTestCGImage()
+        vm.pages = [page]
+
+        // First pass populates the cache
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        // Restore stale mask to simulate a second load scenario
+        vm.pages[0].textPixelMask = makeTestCGImage()
+
+        // Second pass hits the cache
+        await vm.translatePage(at: 0)
+
+        XCTAssertNil(vm.pages[0].textPixelMask, "Cache-hit path must clear stale textPixelMask")
+    }
+
     // MARK: - 2. TDD — Same-language OCR skip
 
     func testSameLanguageSkipsOCRAndTranslation() async {
@@ -179,6 +215,12 @@ final class TranslationViewModelTests: XCTestCase {
 
 // MARK: - Helpers
 
+private func makeTestCGImage() -> CGImage {
+    let colorSpace = CGColorSpaceCreateDeviceGray()
+    let context = CGContext(data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 10, space: colorSpace, bitmapInfo: 0)!
+    return context.makeImage()!
+}
+
 private func makeTestImage() -> NSImage {
     let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil,
@@ -274,21 +316,31 @@ private final class SequentialOCRRecognizer: @unchecked Sendable, OCRRecognizing
 }
 
 private struct EmptyComicTextDetector: ComicTextDetecting {
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] { [] }
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        ComicTextDetectorResult(regions: [], textPixelMask: nil, lowConfidenceRegionCount: 0)
+    }
 }
 
 private struct MockComicTextDetectorSingle: ComicTextDetecting {
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
-        return [DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0)]
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        ComicTextDetectorResult(
+            regions: [DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0)],
+            textPixelMask: nil,
+            lowConfidenceRegionCount: 0
+        )
     }
 }
 
 private struct MockComicTextDetectorDouble: ComicTextDetecting {
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
-        return [
-            DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0),
-            DetectedTextRegion(boundingBox: CGRect(x: 20, y: 20, width: 10, height: 10), confidence: 1.0, classIndex: 0)
-        ]
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        ComicTextDetectorResult(
+            regions: [
+                DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0),
+                DetectedTextRegion(boundingBox: CGRect(x: 20, y: 20, width: 10, height: 10), confidence: 1.0, classIndex: 0)
+            ],
+            textPixelMask: nil,
+            lowConfidenceRegionCount: 0
+        )
     }
 }
 

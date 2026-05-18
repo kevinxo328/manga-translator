@@ -95,12 +95,13 @@ final class OCRBenchmarkTests: XCTestCase {
         }
 
         let router = try await productionRouter()
-        let paddleBubbles = try? await router.processWithPaddleOCR(image: nsImage)
-        let mangaBubbles = try await router.processWithMangaOCR(image: nsImage)
+        let paddleResult = try? await router.processWithPaddleOCR(image: nsImage)
+        let mangaResult = try await router.processWithMangaOCR(image: nsImage)
+        let mangaBubbles = mangaResult.bubbles
 
         print(
             "Image: \(firstImageURL.path), " +
-            "Paddle bubbles: \(paddleBubbles?.count ?? 0), " +
+            "Paddle bubbles: \(paddleResult?.bubbles.count ?? 0), " +
             "Manga bubbles: \(mangaBubbles.count)"
         )
         XCTAssertGreaterThanOrEqual(mangaBubbles.count, 0)
@@ -118,52 +119,60 @@ final class OCRBenchmarkTests: XCTestCase {
         let clock = ContinuousClock()
 
         // 1. Batch process all images with PaddleOCR
-        var paddleResults: [URL: (bubbles: [BubbleCluster], latency: Double, failed: Bool)] = [:]
+        var paddleResults: [URL: (result: MangaOCRPageResult, latency: Double, failed: Bool)] = [:]
         for imagePath in images {
             guard let nsImage = NSImage(contentsOf: imagePath) else { continue }
-            
+
             let start = clock.now
             do {
-                let bubbles = try await router.processWithPaddleOCR(image: nsImage)
+                let result = try await router.processWithPaddleOCR(image: nsImage)
                 let elapsed = start.duration(to: clock.now)
                 let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-                paddleResults[imagePath] = (bubbles, ms, false)
+                paddleResults[imagePath] = (result, ms, false)
             } catch {
                 print("PaddleOCR failed for \(imagePath.lastPathComponent): \(error)")
-                paddleResults[imagePath] = ([], 0, true)
+                let empty = MangaOCRPageResult(bubbles: [], textPixelMask: nil, lowConfidenceDetectionCount: 0)
+                paddleResults[imagePath] = (empty, 0, true)
             }
         }
 
         // 2. Batch process all images with MangaOCR
-        var mangaResults: [URL: (bubbles: [BubbleCluster], latency: Double, failed: Bool)] = [:]
+        var mangaResults: [URL: (result: MangaOCRPageResult, latency: Double, failed: Bool)] = [:]
         for imagePath in images {
             guard let nsImage = NSImage(contentsOf: imagePath) else { continue }
-            
+
             let start = clock.now
             do {
-                let bubbles = try await router.processWithMangaOCR(image: nsImage)
+                let result = try await router.processWithMangaOCR(image: nsImage)
                 let elapsed = start.duration(to: clock.now)
                 let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-                mangaResults[imagePath] = (bubbles, ms, false)
+                mangaResults[imagePath] = (result, ms, false)
             } catch {
                 print("MangaOCR failed for \(imagePath.lastPathComponent): \(error)")
-                mangaResults[imagePath] = ([], 0, true)
+                let empty = MangaOCRPageResult(bubbles: [], textPixelMask: nil, lowConfidenceDetectionCount: 0)
+                mangaResults[imagePath] = (empty, 0, true)
             }
         }
 
         // 3. Assemble results and calculate IoU (Report logic remains identical)
+        let emptyPageResult = MangaOCRPageResult(bubbles: [], textPixelMask: nil, lowConfidenceDetectionCount: 0)
         var imageResults: [ImageResult] = []
         for imagePath in images {
-            let pRes = paddleResults[imagePath] ?? ([], 0, true)
-            let mRes = mangaResults[imagePath] ?? ([], 0, true)
+            let pRes = paddleResults[imagePath] ?? (emptyPageResult, 0, true)
+            let mRes = mangaResults[imagePath] ?? (emptyPageResult, 0, true)
 
             var latency: [String: Double] = [:]
             var failures: Set<String> = []
-            
+
             if !pRes.failed { latency["PaddleOCR"] = pRes.latency } else { failures.insert("PaddleOCR") }
             if !mRes.failed { latency["MangaOCR"] = mRes.latency } else { failures.insert("MangaOCR") }
 
-            let paddleVsManga = BubbleRegionMatcher.match(anchor: pRes.bubbles, compared: mRes.bubbles)
+            let mangaBubbles = mRes.result.bubbles
+            let paddleBubbles = pRes.result.bubbles
+            let paddleVsManga = BubbleRegionMatcher.match(anchor: paddleBubbles, compared: mangaBubbles)
+
+            let lowConfCount = mRes.failed ? 0 : mRes.result.lowConfidenceDetectionCount
+            let invertedCount = mangaBubbles.filter { $0.isInverted }.count
 
             imageResults.append(ImageResult(
                 imagePath: imagePath.path,
@@ -171,7 +180,9 @@ final class OCRBenchmarkTests: XCTestCase {
                 unmatchedPaddleManga: paddleVsManga.unmatchedAnchor,
                 unmatchedManga: paddleVsManga.unmatchedCompared,
                 latency: latency,
-                failures: failures
+                failures: failures,
+                lowConfidenceDetections: lowConfCount,
+                invertedBubbles: invertedCount
             ))
         }
 

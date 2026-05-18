@@ -106,15 +106,21 @@ public struct ComicTextDetectorExporter {
     }
 }
 
+struct ComicTextDetectorResult {
+    let regions: [DetectedTextRegion]
+    let textPixelMask: CGImage?
+    let lowConfidenceRegionCount: Int
+}
+
 protocol ComicTextDetecting: Sendable {
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion]
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult
 }
 
 extension ComicTextDetectorService: ComicTextDetecting, @unchecked Sendable {}
 
 public class ComicTextDetectorService: ComicTextRegionDetecting {
     private static let inputSize = 1024
-    private static let confidenceThreshold: Float = 0.4
+    private static let confidenceThreshold: Float = 0.60
     private static let nmsThreshold: Float = 0.35
 
     private var session: ORTSession?
@@ -130,10 +136,10 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw OCRError.invalidImage
         }
-        return try detectTextRegions(in: cgImage)
+        return try detectTextRegions(in: cgImage).regions
     }
 
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
         let session = try getSession()
 
         let origW = cgImage.width
@@ -178,7 +184,7 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
             Array(ptr.bindMemory(to: Float.self))
         }
 
-        return postprocessYolo(
+        let (regions, lowConfCount) = postprocessYolo(
             predictions: predictions,
             numBoxes: numBoxes,
             numOutputs: numOutputs,
@@ -186,6 +192,22 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
             origH: origH,
             resizedW: resizedW,
             resizedH: resizedH
+        )
+
+        // Build seg mask only when detections exist
+        let segMask: CGImage?
+        if regions.isEmpty {
+            segMask = nil
+        } else if let segTensor = outputs["seg"] {
+            segMask = buildSegMask(from: segTensor, origW: origW, origH: origH, resizedW: resizedW, resizedH: resizedH)
+        } else {
+            segMask = nil
+        }
+
+        return ComicTextDetectorResult(
+            regions: regions,
+            textPixelMask: segMask,
+            lowConfidenceRegionCount: lowConfCount
         )
     }
 
@@ -261,13 +283,20 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
         origH: Int,
         resizedW: Int,
         resizedH: Int
-    ) -> [DetectedTextRegion] {
+    ) -> ([DetectedTextRegion], Int) {
         let wRatio = Float(origW) / Float(resizedW)
         let hRatio = Float(origH) / Float(resizedH)
         let numClasses = numOutputs - 5
 
-        // Parse predictions: [cx, cy, w, h, objectness, class0, class1, ...]
+        // Boxes that survive the main threshold and boxes in the low-confidence band are
+        // collected separately so each set can go through its own NMS pass. The
+        // low-confidence metric is counted from raw predictions before NMS so it tracks
+        // detector drift even when overlapping anchors collapse to a single region.
+        let lowConfBandMin: Float = 0.40
+        let lowConfBandMax: Float = 0.60
+
         var allBoxes = [[DetectedTextRegion]](repeating: [], count: numClasses)
+        var allLowConfBoxes = [[DetectedTextRegion]](repeating: [], count: numClasses)
 
         for i in 0..<numBoxes {
             let offset = i * numOutputs
@@ -285,7 +314,6 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
             }
 
             let confidence = objectness * bestClassScore
-            if confidence < Self.confidenceThreshold { continue }
 
             let cx = predictions[offset]
             let cy = predictions[offset + 1]
@@ -303,17 +331,106 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
                 confidence: confidence,
                 classIndex: bestClassIdx
             )
-            allBoxes[bestClassIdx].append(region)
+
+            if confidence >= Self.confidenceThreshold {
+                allBoxes[bestClassIdx].append(region)
+            } else if confidence >= lowConfBandMin && confidence < lowConfBandMax {
+                allLowConfBoxes[bestClassIdx].append(region)
+            }
         }
 
-        // Apply NMS per class
+        // Apply NMS per class for kept detections
         var result = [DetectedTextRegion]()
         for classIdx in 0..<numClasses {
-            let nmsResult = nonMaximumSuppression(allBoxes[classIdx], threshold: Self.nmsThreshold)
-            result.append(contentsOf: nmsResult)
+            result.append(contentsOf: nonMaximumSuppression(allBoxes[classIdx], threshold: Self.nmsThreshold))
         }
 
-        return result
+        // Apply NMS to low-conf band separately; count raw predictions in the band.
+        var lowConfidenceCount = 0
+        for classIdx in 0..<numClasses {
+            lowConfidenceCount += allLowConfBoxes[classIdx].count
+        }
+
+        return (result, lowConfidenceCount)
+    }
+
+    private func buildSegMask(from segTensor: ORTValue, origW: Int, origH: Int, resizedW: Int, resizedH: Int) -> CGImage? {
+        guard let segData = try? segTensor.tensorData() as Data,
+              let segShape = try? segTensor.tensorTypeAndShapeInfo().shape,
+              segShape.count == 4 else { return nil }
+        let maskH = segShape[2].intValue
+        let maskW = segShape[3].intValue
+        let floats = segData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        guard floats.count == maskH * maskW else { return nil }
+
+        // Threshold at 0.5 → binary uint8
+        var binaryPixels = [UInt8](repeating: 0, count: maskH * maskW)
+        for i in 0..<(maskH * maskW) {
+            binaryPixels[i] = floats[i] >= 0.5 ? 255 : 0
+        }
+
+        // Dilate by 3px to ensure text pixels are fully masked
+        binaryPixels = dilateGray(pixels: binaryPixels, width: maskW, height: maskH, radius: 3)
+
+        // Crop the valid resizedW × resizedH region from the top-left of the 1024×1024 mask.
+        // Preprocessing letterboxes the image into the top-left corner; the remainder is zero-padded.
+        // Stretching the full mask to origW×origH would shift coordinates on non-square pages.
+        let cropW = min(resizedW, maskW)
+        let cropH = min(resizedH, maskH)
+        var croppedPixels = [UInt8](repeating: 0, count: cropW * cropH)
+        for y in 0..<cropH {
+            for x in 0..<cropW {
+                croppedPixels[y * cropW + x] = binaryPixels[y * maskW + x]
+            }
+        }
+
+        let graySpace = CGColorSpaceCreateDeviceGray()
+        let maskCropped = croppedPixels.withUnsafeMutableBytes { ptr -> CGImage? in
+            guard let ctx = CGContext(
+                data: ptr.baseAddress,
+                width: cropW,
+                height: cropH,
+                bitsPerComponent: 8,
+                bytesPerRow: cropW,
+                space: graySpace,
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            ) else { return nil }
+            return ctx.makeImage()
+        }
+        guard let maskCropped else { return nil }
+
+        // Scale the cropped valid region to original image resolution
+        guard let resizeCtx = CGContext(
+            data: nil,
+            width: origW,
+            height: origH,
+            bitsPerComponent: 8,
+            bytesPerRow: origW,
+            space: graySpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        resizeCtx.interpolationQuality = .none
+        resizeCtx.draw(maskCropped, in: CGRect(x: 0, y: 0, width: origW, height: origH))
+        return resizeCtx.makeImage()
+    }
+
+    private func dilateGray(pixels: [UInt8], width: Int, height: Int, radius: Int) -> [UInt8] {
+        var output = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                guard pixels[y * width + x] != 0 else { continue }
+                let yMin = max(0, y - radius)
+                let yMax = min(height - 1, y + radius)
+                let xMin = max(0, x - radius)
+                let xMax = min(width - 1, x + radius)
+                for ny in yMin...yMax {
+                    for nx in xMin...xMax {
+                        output[ny * width + nx] = 255
+                    }
+                }
+            }
+        }
+        return output
     }
 
     private func nonMaximumSuppression(_ boxes: [DetectedTextRegion], threshold: Float) -> [DetectedTextRegion] {
@@ -343,6 +460,11 @@ public class ComicTextDetectorService: ComicTextRegionDetecting {
         let intersectionArea = Float(intersection.width * intersection.height)
         let unionArea = Float(a.width * a.height + b.width * b.height) - intersectionArea
         return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+
+    // Exposed for testing only
+    func testPostprocessYolo(predictions: [Float], numBoxes: Int, numOutputs: Int, origW: Int, origH: Int, resizedW: Int, resizedH: Int) -> ([DetectedTextRegion], Int) {
+        postprocessYolo(predictions: predictions, numBoxes: numBoxes, numOutputs: numOutputs, origW: origW, origH: origH, resizedW: resizedW, resizedH: resizedH)
     }
 }
 

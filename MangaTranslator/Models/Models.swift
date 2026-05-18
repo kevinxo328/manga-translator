@@ -89,6 +89,13 @@ struct BubbleCluster: Identifiable {
     let text: String
     let observations: [TextObservation]
     var index: Int = 0
+    var isInverted: Bool = false
+}
+
+struct MangaOCRPageResult {
+    let bubbles: [BubbleCluster]
+    let textPixelMask: CGImage?
+    let lowConfidenceDetectionCount: Int
 }
 
 struct TranslatedBubble: Identifiable {
@@ -111,6 +118,7 @@ struct MangaPage: Identifiable {
     var image: NSImage? = nil
     var imageHash: String? = nil
     var state: PageState = .pending
+    var textPixelMask: CGImage? = nil
 }
 
 struct GlossaryTerm: Identifiable {

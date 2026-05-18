@@ -66,7 +66,7 @@ final class OCRRouter {
     }
     #endif
 
-    func processPage(image: NSImage, sourceLanguage: Language) async throws -> [BubbleCluster] {
+    func processPage(image: NSImage, sourceLanguage: Language) async throws -> MangaOCRPageResult {
         let (downloadState, downloadEnabled) = await MainActor.run {
             (downloadManager.state, downloadManager.isPaddleOCREnabled)
         }
@@ -95,7 +95,7 @@ final class OCRRouter {
         usingPaddleOCR = false
     }
 
-    func processWithPaddleOCR(image: NSImage) async throws -> [BubbleCluster] {
+    func processWithPaddleOCR(image: NSImage) async throws -> MangaOCRPageResult {
         usingPaddleOCR = true
         defer { paddleOCRCacheCleanup.clearGPUCache() }
         do {
@@ -103,9 +103,10 @@ final class OCRRouter {
                 cachedPaddleOCR = try paddleOCRFactory()
             }
             await mangaOCRService.setRecognizer(cachedPaddleOCR)
-            let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
-            DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(bubbles.count)", level: .info, category: .ocrPaddle)
-            return readingOrderSorter.sort(bubbles)
+            let result = try await mangaOCRService.recognizeAndCluster(in: image)
+            let sorted = readingOrderSorter.sort(result.bubbles)
+            DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(sorted.count)", level: .info, category: .ocrPaddle)
+            return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
         } catch let error as PaddleOCRError {
             DebugLogger.shared.log("PaddleOCR failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
             throw error
@@ -115,14 +116,15 @@ final class OCRRouter {
         }
     }
 
-    func processWithMangaOCR(image: NSImage) async throws -> [BubbleCluster] {
+    func processWithMangaOCR(image: NSImage) async throws -> MangaOCRPageResult {
         if usingPaddleOCR {
             await mangaOCRService.resetRecognizer()
             usingPaddleOCR = false
         }
-        let bubbles = try await mangaOCRService.recognizeAndCluster(in: image)
-        DebugLogger.shared.log("Completed OCR with MangaOCR, bubbles=\(bubbles.count)", level: .info, category: .ocrManga)
-        return readingOrderSorter.sort(bubbles)
+        let result = try await mangaOCRService.recognizeAndCluster(in: image)
+        let sorted = readingOrderSorter.sort(result.bubbles)
+        DebugLogger.shared.log("Completed OCR with MangaOCR, bubbles=\(sorted.count)", level: .info, category: .ocrManga)
+        return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
     }
 
     private func logRoutingDecision(

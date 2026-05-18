@@ -20,6 +20,8 @@ struct ImageResult {
     let unmatchedManga: [BubbleCluster]
     let latency: [String: Double] // engine id -> ms
     let failures: Set<String> // engine ids that failed
+    let lowConfidenceDetections: Int
+    let invertedBubbles: Int
 }
 
 struct BenchmarkResult {
@@ -92,6 +94,9 @@ struct BenchmarkReporter {
                     lines.append("  - \(bubble.boundingBox): \(bubble.text)")
                 }
             }
+
+            lines.append("Low-confidence detections: \(imgResult.lowConfidenceDetections)")
+            lines.append("Inverted bubbles: \(imgResult.invertedBubbles)")
 
         }
 

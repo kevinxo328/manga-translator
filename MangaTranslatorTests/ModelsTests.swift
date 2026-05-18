@@ -27,4 +27,18 @@ struct ModelsTests {
         #expect(Language.sourceLanguages[1] == .en)
         #expect(!Language.sourceLanguages.contains(.zhHant))
     }
+
+    @Test("BubbleCluster.isInverted defaults to false for legacy initializers")
+    func bubbleClusterIsInvertedDefault() {
+        let bubble = BubbleCluster(boundingBox: .zero, text: "test", observations: [])
+        #expect(bubble.isInverted == false)
+    }
+
+    @Test("MangaOCRPageResult with nil textPixelMask round-trips correctly")
+    func mangaOCRPageResultNilMask() {
+        let result = MangaOCRPageResult(bubbles: [], textPixelMask: nil, lowConfidenceDetectionCount: 0)
+        #expect(result.bubbles.isEmpty)
+        #expect(result.textPixelMask == nil)
+        #expect(result.lowConfidenceDetectionCount == 0)
+    }
 }

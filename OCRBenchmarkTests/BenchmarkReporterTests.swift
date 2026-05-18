@@ -28,7 +28,9 @@ final class BenchmarkReporterTests: XCTestCase {
             unmatchedPaddleManga: [unmatchedP],
             unmatchedManga: [unmatchedM],
             latency: ["PaddleOCR": 150.0, "MangaOCR": 100.0],
-            failures: ["MangaOCR"]
+            failures: ["MangaOCR"],
+            lowConfidenceDetections: 0,
+            invertedBubbles: 0
         )
         let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [imageResult])
         let report = reporter.generateReport(from: result)
@@ -63,6 +65,40 @@ final class BenchmarkReporterTests: XCTestCase {
         let report = reporter.generateReport(from: result)
         XCTAssertTrue(report.contains("WARNING"))
         XCTAssertTrue(report.contains("No images found"))
+    }
+
+    // Task 6.1
+    func testLowConfidenceDetectionsCounter() {
+        let imageResult = ImageResult(
+            imagePath: "test.jpg",
+            paddleVsManga: [],
+            unmatchedPaddleManga: [],
+            unmatchedManga: [],
+            latency: [:],
+            failures: [],
+            lowConfidenceDetections: 2,
+            invertedBubbles: 0
+        )
+        let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [imageResult])
+        let report = reporter.generateReport(from: result)
+        XCTAssertTrue(report.contains("Low-confidence detections: 2"))
+    }
+
+    // Task 6.2
+    func testInvertedBubblesCounter() {
+        let imageResult = ImageResult(
+            imagePath: "test.jpg",
+            paddleVsManga: [],
+            unmatchedPaddleManga: [],
+            unmatchedManga: [],
+            latency: [:],
+            failures: [],
+            lowConfidenceDetections: 0,
+            invertedBubbles: 3
+        )
+        let result = BenchmarkResult(timestamp: Date(), imageCount: 1, imageResults: [imageResult])
+        let report = reporter.generateReport(from: result)
+        XCTAssertTrue(report.contains("Inverted bubbles: 3"))
     }
 
     // Task 2.7 - output directory creation when missing

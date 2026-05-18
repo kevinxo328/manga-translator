@@ -101,6 +101,10 @@
 		DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000005 /* DebugLogGuardTests.swift */; };
 		DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000006 /* DebugLogViewTests.swift */; };
 		TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV20000010000000000000001 /* TranslationViewModelTests.swift */; };
+		D10000010000000000000019 /* BubblePolarityClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000019 /* BubblePolarityClassifier.swift */; };
+		T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000F /* BubblePolarityClassifierTests.swift */; };
+		T10000010000000000000010 /* ComicTextDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000011 /* ComicTextDetectorTests.swift */; };
+		T10000010000000000000012 /* CacheServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000012 /* CacheServiceTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -273,6 +277,10 @@
 		PG2000000200000000000001 /* MLXGPUCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXGPUCache.swift; sourceTree = "<group>"; };
 		PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRVLRecognizerTests.swift; sourceTree = "<group>"; };
 		TV20000010000000000000001 /* TranslationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModelTests.swift; sourceTree = "<group>"; };
+		D20000010000000000000019 /* BubblePolarityClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubblePolarityClassifier.swift; sourceTree = "<group>"; };
+		T2000001000000000000000F /* BubblePolarityClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubblePolarityClassifierTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000011 /* ComicTextDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000012 /* CacheServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheServiceTests.swift; sourceTree = "<group>"; };
 
 		M20000010000000000000010 /* MangaTranslatorMLX.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MangaTranslatorMLX.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CL20000010000000000000002 /* OCRError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRError.swift; sourceTree = "<group>"; };
@@ -393,6 +401,7 @@
 				A20000010000000000000041 /* PreferencesService.swift */,
 				A20000010000000000000042 /* FileInputService.swift */,
 				D20000010000000000000001 /* ComicTextDetectorService.swift */,
+				D20000010000000000000019 /* BubblePolarityClassifier.swift */,
 				D20000010000000000000002 /* MangaOCRTokenizer.swift */,
 				D20000010000000000000003 /* MangaOCRRecognizer.swift */,
 				D20000010000000000000004 /* MangaOCRService.swift */,
@@ -497,6 +506,9 @@
 				DL20000010000000000000005 /* DebugLogGuardTests.swift */,
 			DL20000010000000000000006 /* DebugLogViewTests.swift */,
 			TV20000010000000000000001 /* TranslationViewModelTests.swift */,
+			T2000001000000000000000F /* BubblePolarityClassifierTests.swift */,
+			T20000010000000000000011 /* ComicTextDetectorTests.swift */,
+			T20000010000000000000012 /* CacheServiceTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -715,6 +727,7 @@
 				A10000010000000000000024 /* GlossarySubstitution.swift in Sources */,
 				A10000010000000000000023 /* GlossaryView.swift in Sources */,
 				D10000010000000000000001 /* ComicTextDetectorService.swift in Sources */,
+				D10000010000000000000019 /* BubblePolarityClassifier.swift in Sources */,
 				D10000010000000000000002 /* MangaOCRTokenizer.swift in Sources */,
 				D10000010000000000000003 /* MangaOCRRecognizer.swift in Sources */,
 				D10000010000000000000004 /* MangaOCRService.swift in Sources */,
@@ -783,6 +796,9 @@
 				DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */,
 			DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */,
 			TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */,
+			T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */,
+			T10000010000000000000010 /* ComicTextDetectorTests.swift in Sources */,
+			T10000010000000000000012 /* CacheServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

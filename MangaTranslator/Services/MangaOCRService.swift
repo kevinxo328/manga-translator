@@ -23,14 +23,14 @@ actor MangaOCRService {
         return MangaOCRRecognizer(tokenizer: tokenizer)
     }
 
-    func recognizeAndCluster(in image: NSImage) throws -> [BubbleCluster] {
+    func recognizeAndCluster(in image: NSImage) throws -> MangaOCRPageResult {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw OCRError.invalidImage
         }
         return try recognizeAndCluster(in: cgImage)
     }
 
-    func recognizeAndCluster(in cgImage: CGImage) throws -> [BubbleCluster] {
+    func recognizeAndCluster(in cgImage: CGImage) throws -> MangaOCRPageResult {
         if recognizer == nil {
             recognizer = try Self.makeRecognizer()
         }
@@ -39,10 +39,13 @@ actor MangaOCRService {
         }
 
         DebugLogger.shared.log("Detecting text regions...", level: .info, category: .ocrManga)
-        let regions = try detector.detectTextRegions(in: cgImage)
+        let detectorResult = try detector.detectTextRegions(in: cgImage)
+        let regions = detectorResult.regions
         DebugLogger.shared.log("Found \(regions.count) text regions", level: .info, category: .ocrManga)
 
-        if regions.isEmpty { return [] }
+        if regions.isEmpty {
+            return MangaOCRPageResult(bubbles: [], textPixelMask: nil, lowConfidenceDetectionCount: detectorResult.lowConfidenceRegionCount)
+        }
 
         var bubbles = [BubbleCluster]()
         for (index, region) in regions.enumerated() {
@@ -54,6 +57,13 @@ actor MangaOCRService {
                 let (text, confidence) = try recognizer.recognizeText(in: cgImage, region: region.boundingBox)
                 if text.isEmpty { continue }
 
+                let isInverted: Bool
+                if let mask = detectorResult.textPixelMask {
+                    isInverted = classifyInverted(canvas: cgImage, seg: mask, region: region.boundingBox)
+                } else {
+                    isInverted = false
+                }
+
                 let observation = TextObservation(
                     boundingBox: region.boundingBox,
                     text: text,
@@ -64,7 +74,8 @@ actor MangaOCRService {
                     boundingBox: region.boundingBox,
                     text: text,
                     observations: [observation],
-                    index: index
+                    index: index,
+                    isInverted: isInverted
                 )
                 bubbles.append(bubble)
             } catch let error as PaddleOCRError {
@@ -76,6 +87,10 @@ actor MangaOCRService {
         }
 
         DebugLogger.shared.log("Recognized \(bubbles.count) text bubbles", level: .info, category: .ocrManga)
-        return bubbles
+        return MangaOCRPageResult(
+            bubbles: bubbles,
+            textPixelMask: detectorResult.textPixelMask,
+            lowConfidenceDetectionCount: detectorResult.lowConfidenceRegionCount
+        )
     }
 }

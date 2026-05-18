@@ -214,6 +214,7 @@ final class TranslationViewModel: ObservableObject {
         guard pages.indices.contains(index) else { return }
 
         pages[index].state = .processing
+        pages[index].textPixelMask = nil
 
         guard preferences.sourceLanguage != preferences.targetLanguage else {
             DebugLogger.shared.log(
@@ -227,6 +228,7 @@ final class TranslationViewModel: ObservableObject {
                     "reason": "same_language"
                 ]
             )
+            pages[index].textPixelMask = nil
             pages[index].state = .translated([])
             return
         }
@@ -279,12 +281,15 @@ final class TranslationViewModel: ObservableObject {
                 target: preferences.targetLanguage,
                 engine: preferences.translationEngine
             ) {
-                pages[index].state = .translated(cached)
+                pages[index].textPixelMask = cached.textPixelMask
+                pages[index].state = .translated(cached.bubbles)
                 return
             }
 
             // OCR
-            let ordered = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
+            let pageResult = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
+            pages[index].textPixelMask = pageResult.textPixelMask
+            let ordered = pageResult.bubbles
 
             let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
             let skippedCount = ordered.count - meaningful.count
@@ -332,7 +337,8 @@ final class TranslationViewModel: ObservableObject {
                 source: preferences.sourceLanguage,
                 target: preferences.targetLanguage,
                 engine: preferences.translationEngine,
-                bubbles: translated
+                bubbles: translated,
+                textPixelMask: pageResult.textPixelMask
             )
 
             pages[index].state = .translated(translated)
@@ -345,6 +351,7 @@ final class TranslationViewModel: ObservableObject {
         cacheService.clearAll()
         for i in pages.indices {
             pages[i].state = .pending
+            pages[i].textPixelMask = nil
         }
     }
 
@@ -354,6 +361,7 @@ final class TranslationViewModel: ObservableObject {
 
     func dismissError(at index: Int) {
         guard pages.indices.contains(index), case .error = pages[index].state else { return }
+        pages[index].textPixelMask = nil
         pages[index].state = .pending
     }
 

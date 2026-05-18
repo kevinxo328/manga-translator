@@ -430,8 +430,8 @@ final class OCRRouterTests: XCTestCase {
         emptyImage.addRepresentation(rep)
         
         let result = try await router.processPage(image: emptyImage, sourceLanguage: .ja)
-        // With an empty image, the detector should find 0 regions, returning []
-        XCTAssertTrue(result.isEmpty, "Empty region should safely return empty results")
+        // With an empty image, the detector should find 0 regions, returning empty bubbles
+        XCTAssertTrue(result.bubbles.isEmpty, "Empty region should safely return empty results")
     }
 
     func testAsyncOCRPathCancellation() async throws {
@@ -517,9 +517,15 @@ private final class MockOCRRecognizer: OCRRecognizing {
 private struct MockComicTextDetector: ComicTextDetecting {
     let returnsEmpty: Bool
     init(returnsEmpty: Bool = false) { self.returnsEmpty = returnsEmpty }
-    func detectTextRegions(in cgImage: CGImage) throws -> [DetectedTextRegion] {
-        if returnsEmpty { return [] }
-        return [DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0)]
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        if returnsEmpty {
+            return ComicTextDetectorResult(regions: [], textPixelMask: nil, lowConfidenceRegionCount: 0)
+        }
+        return ComicTextDetectorResult(
+            regions: [DetectedTextRegion(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), confidence: 1.0, classIndex: 0)],
+            textPixelMask: nil,
+            lowConfidenceRegionCount: 0
+        )
     }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SQLite3
 import CryptoKit
 
@@ -37,6 +38,7 @@ final class CacheService {
             target_lang TEXT NOT NULL,
             engine TEXT NOT NULL,
             bubbles_json TEXT NOT NULL,
+            text_pixel_mask_png BLOB,
             created_at REAL NOT NULL
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_lookup
@@ -68,6 +70,7 @@ final class CacheService {
         );
         """
         sqlite3_exec(db, sql, nil, nil, nil)
+        ensureTranslationCacheColumns()
     }
 
     static func imageHash(data: Data) -> String {
@@ -75,11 +78,16 @@ final class CacheService {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
+    struct CachedTranslationResult {
+        let bubbles: [TranslatedBubble]
+        let textPixelMask: CGImage?
+    }
+
     func lookup(
         imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> [TranslatedBubble]? {
+    ) -> CachedTranslationResult? {
         let sql = """
-        SELECT bubbles_json FROM translation_cache
+        SELECT bubbles_json, text_pixel_mask_png FROM translation_cache
         WHERE image_hash = ? AND source_lang = ? AND target_lang = ? AND engine = ?
         """
 
@@ -96,8 +104,20 @@ final class CacheService {
 
         guard let jsonCStr = sqlite3_column_text(stmt, 0) else { return nil }
         let jsonString = String(cString: jsonCStr)
+        let bubbles = decodeBubbles(from: jsonString)
+        let maskData: Data?
+        if let blob = sqlite3_column_blob(stmt, 1) {
+            let length = Int(sqlite3_column_bytes(stmt, 1))
+            maskData = Data(bytes: blob, count: length)
+        } else {
+            maskData = nil
+        }
 
-        return decodeBubbles(from: jsonString)
+        guard let bubbles else { return nil }
+        return CachedTranslationResult(
+            bubbles: bubbles,
+            textPixelMask: decodeMask(from: maskData)
+        )
     }
 
     func store(
@@ -105,14 +125,15 @@ final class CacheService {
         source: Language,
         target: Language,
         engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
+        bubbles: [TranslatedBubble],
+        textPixelMask: CGImage?
     ) {
         guard let jsonString = encodeBubbles(bubbles) else { return }
 
         let sql = """
         INSERT OR REPLACE INTO translation_cache
-            (image_hash, source_lang, target_lang, engine, bubbles_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (image_hash, source_lang, target_lang, engine, bubbles_json, text_pixel_mask_png, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """
 
         var stmt: OpaquePointer?
@@ -125,7 +146,18 @@ final class CacheService {
         sqlite3_bind_text(stmt, 3, target.rawValue, -1, transient)
         sqlite3_bind_text(stmt, 4, engine.rawValue, -1, transient)
         sqlite3_bind_text(stmt, 5, jsonString, -1, transient)
-        sqlite3_bind_double(stmt, 6, Date().timeIntervalSince1970)
+        if let maskData = encodeMask(textPixelMask) {
+            maskData.withUnsafeBytes { bytes in
+                guard let baseAddress = bytes.baseAddress else {
+                    sqlite3_bind_null(stmt, 6)
+                    return
+                }
+                sqlite3_bind_blob(stmt, 6, baseAddress, Int32(maskData.count), transient)
+            }
+        } else {
+            sqlite3_bind_null(stmt, 6)
+        }
+        sqlite3_bind_double(stmt, 7, Date().timeIntervalSince1970)
 
         sqlite3_step(stmt)
     }
@@ -174,6 +206,39 @@ final class CacheService {
         let originalText: String
         let translatedText: String
         let index: Int
+        let isInverted: Bool
+
+        init(
+            x: Double,
+            y: Double,
+            width: Double,
+            height: Double,
+            originalText: String,
+            translatedText: String,
+            index: Int,
+            isInverted: Bool
+        ) {
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+            self.originalText = originalText
+            self.translatedText = translatedText
+            self.index = index
+            self.isInverted = isInverted
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            x = try container.decode(Double.self, forKey: .x)
+            y = try container.decode(Double.self, forKey: .y)
+            width = try container.decode(Double.self, forKey: .width)
+            height = try container.decode(Double.self, forKey: .height)
+            originalText = try container.decode(String.self, forKey: .originalText)
+            translatedText = try container.decode(String.self, forKey: .translatedText)
+            index = try container.decode(Int.self, forKey: .index)
+            isInverted = try container.decodeIfPresent(Bool.self, forKey: .isInverted) ?? false
+        }
     }
 
     private func encodeBubbles(_ bubbles: [TranslatedBubble]) -> String? {
@@ -185,7 +250,8 @@ final class CacheService {
                 height: bubble.bubble.boundingBox.height,
                 originalText: bubble.bubble.text,
                 translatedText: bubble.translatedText,
-                index: bubble.index
+                index: bubble.index,
+                isInverted: bubble.bubble.isInverted
             )
         }
 
@@ -204,13 +270,46 @@ final class CacheService {
                 boundingBox: rect,
                 text: item.originalText,
                 observations: [],
-                index: item.index
+                index: item.index,
+                isInverted: item.isInverted
             )
             return TranslatedBubble(
                 bubble: cluster,
                 translatedText: item.translatedText,
                 index: item.index
             )
+        }
+    }
+
+    private func encodeMask(_ image: CGImage?) -> Data? {
+        guard let image else { return nil }
+        let rep = NSBitmapImageRep(cgImage: image)
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    private func decodeMask(from data: Data?) -> CGImage? {
+        guard let data,
+              let imageRep = NSBitmapImageRep(data: data) else { return nil }
+        return imageRep.cgImage
+    }
+
+    private func ensureTranslationCacheColumns() {
+        let sql = "PRAGMA table_info(translation_cache)"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        var hasMaskColumn = false
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let nameCStr = sqlite3_column_text(stmt, 1),
+               String(cString: nameCStr) == "text_pixel_mask_png" {
+                hasMaskColumn = true
+                break
+            }
+        }
+
+        if !hasMaskColumn {
+            sqlite3_exec(db, "ALTER TABLE translation_cache ADD COLUMN text_pixel_mask_png BLOB", nil, nil, nil)
         }
     }
 }

@@ -16,7 +16,7 @@ The system SHALL load comic-text-detector and manga-ocr ONNX model files from th
 - **THEN** the system throws a descriptive error
 
 ### Requirement: Detect text regions using comic-text-detector
-The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output.
+The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output. The system SHALL also expose the `seg` head of the detector as a page-level text-pixel mask (see the `bubble-detection` spec for the mask contract).
 
 #### Scenario: Manga page with multiple speech bubbles
 - **WHEN** a manga page image is provided containing 6 speech bubbles
@@ -68,8 +68,8 @@ The system SHALL define an `OCRRecognizing` protocol with a single method `recog
 - **THEN** the service path normalizes to standard manga-ocr recognizer behavior and the enabled preference is corrected to `false` before processing
 
 ### Requirement: Produce TextObservation-compatible output
-The system SHALL output results as arrays of `TextObservation` (boundingBox, text, confidence) and `BubbleCluster` (boundingBox, text, observations, index) that are compatible with the existing translation pipeline.
+The system SHALL output results as arrays of `TextObservation` (boundingBox, text, confidence) and `BubbleCluster` (boundingBox, text, observations, index, and `isInverted`) that are compatible with the existing translation pipeline.
 
 #### Scenario: Pipeline integration
 - **WHEN** manga OCR processes a page and detects 4 text regions
-- **THEN** it produces 4 BubbleCluster objects with bounding boxes in image coordinates, recognized Japanese text, and sequential indices — ready to be passed directly to the translation service
+- **THEN** it produces 4 BubbleCluster objects with bounding boxes in image coordinates, recognized Japanese text, sequential indices, and an `isInverted` flag — ready to be passed directly to the translation service
