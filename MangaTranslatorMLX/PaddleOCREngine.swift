@@ -4,11 +4,11 @@ import CoreImage
 import os
 
 #if arch(arm64)
-@_implementationOnly import MLX
-@_implementationOnly import MLXNN
-@_implementationOnly import MLXFast
-@_implementationOnly import Metal
-@_implementationOnly import PaddleOCRVL
+internal import MLX
+internal import MLXNN
+internal import MLXFast
+internal import Metal
+internal import PaddleOCRVL
 
 // MARK: - Inference engine protocol (for testability)
 

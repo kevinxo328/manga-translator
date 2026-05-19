@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "PaddleOCRVLCLI", targets: ["PaddleOCRVLCLI"])
     ],
     dependencies: [
-        .package(url: "https://github.com/kevinxo328/mlx-swift", revision: "b28f98c22a31e9a344d39b670bdd3997eccec7b4"),
+        .package(url: "https://github.com/kevinxo328/mlx-swift", revision: "4b421e0137a901855882abfea9e2296101cfc9c1"),
         .package(url: "https://github.com/huggingface/swift-transformers", .upToNextMinor(from: "0.1.21")),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.2.0")
     ],

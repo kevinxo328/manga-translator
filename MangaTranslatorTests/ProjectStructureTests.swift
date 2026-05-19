@@ -91,7 +91,7 @@ final class ProjectStructureTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("Vendor/paddleocr-vl.swift/Package.swift"),
             encoding: .utf8
         )
-        let patchedRevision = "b28f98c22a31e9a344d39b670bdd3997eccec7b4"
+        let patchedRevision = "4b421e0137a901855882abfea9e2296101cfc9c1"
 
         XCTAssertTrue(projectContents.contains(#"repositoryURL = "https://github.com/kevinxo328/mlx-swift";"#))
         XCTAssertTrue(projectContents.contains("revision = \(patchedRevision);"))

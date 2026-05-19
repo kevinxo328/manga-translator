@@ -157,6 +157,8 @@ public final class PaddleOCRVLRecognizer: OCRRecognizing, @unchecked Sendable {
                     return .verifyFailed
                 }
                 return .inferenceFailed(message)
+            @unknown default:
+                return .inferenceFailed(error.localizedDescription)
             }
         }
         return .inferenceFailed(error.localizedDescription)
