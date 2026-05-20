@@ -16,7 +16,7 @@ The system SHALL load comic-text-detector and manga-ocr ONNX model files from th
 - **THEN** the system throws a descriptive error
 
 ### Requirement: Detect text regions using comic-text-detector
-The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output. The system SHALL also expose the `seg` head of the detector as a page-level text-pixel mask (see the `bubble-detection` spec for the mask contract).
+The system SHALL preprocess the input image (resize to model input dimensions, normalize pixel values) and run the comic-text-detector ONNX model to produce text region bounding boxes. The system SHALL apply post-processing (confidence filtering, non-maximum suppression) to the raw model output. The system SHALL also expose the `seg` head of the detector as a page-level text-pixel mask (see the `bubble-clustering` spec for the mask contract).
 
 #### Scenario: Manga page with multiple speech bubbles
 - **WHEN** a manga page image is provided containing 6 speech bubbles

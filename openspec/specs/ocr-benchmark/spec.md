@@ -149,7 +149,7 @@ For each image, the benchmark report SHALL record the number of detector outputs
 - **THEN** the report records `lowConfidenceDetections = 2` for that page
 
 ### Requirement: Inverted-bubble counter
-For each image, the benchmark report SHALL record the number of `BubbleCluster` results whose `isInverted` flag is `true`. This counter validates that polarity detection (see `bubble-detection` spec) is firing on pages known to contain inverted bubbles.
+For each image, the benchmark report SHALL record the number of `BubbleCluster` results whose `isInverted` flag is `true`. This counter validates that polarity detection (see `bubble-clustering` spec) is firing on pages known to contain inverted bubbles.
 
 #### Scenario: Page with only normal-polarity bubbles
 - **WHEN** every detected bubble on a page has `isInverted == false`
