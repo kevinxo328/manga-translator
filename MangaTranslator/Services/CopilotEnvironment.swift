@@ -23,13 +23,13 @@ struct CopilotEnvironment {
 
     // MARK: - Model fetching
 
-    static func fetchModels(token: String) async throws -> [CopilotModel] {
+    static func fetchModels(token: String, session: URLSession = .shared) async throws -> [CopilotModel] {
         let endpoints = [
             "https://api.individual.githubcopilot.com/models",
             "https://api.githubcopilot.com/models"
         ]
         for endpoint in endpoints {
-            if let models = try? await fetchModelsFromEndpoint(token: token, urlString: endpoint),
+            if let models = try? await fetchModelsFromEndpoint(token: token, urlString: endpoint, session: session),
                !models.isEmpty {
                 return models
             }
@@ -39,12 +39,13 @@ struct CopilotEnvironment {
 
     // MARK: - Internal (internal for testing)
 
-    static func fetchModelsFromEndpoint(token: String, urlString: String) async throws -> [CopilotModel] {
+    static func fetchModelsFromEndpoint(token: String, urlString: String, session: URLSession = .shared) async throws -> [CopilotModel] {
         var request = URLRequest(url: URL(string: urlString)!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("copilot-developer-cli", forHTTPHeaderField: "Copilot-Integration-Id")
+        request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
@@ -70,7 +71,7 @@ struct CopilotEnvironment {
 
         let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
         return decoded.data
-            .filter { $0.modelPickerEnabled != false }
+            .filter { $0.modelPickerEnabled == true }
             .map { model in
                 CopilotModel(
                     id: model.id,
