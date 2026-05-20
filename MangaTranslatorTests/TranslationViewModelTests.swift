@@ -86,13 +86,12 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        let startDate = Date()
         await vm.translatePage(at: 0, bypassCache: true)
         await DebugLogger.shared.flush()
 
         var filter = DebugLogFilter()
         filter.category = .pipeline
-        filter.startDate = startDate
+        filter.sessionIDFilter = .session(DebugLogger.shared.sessionID)
         let entries = await DebugLogStore.shared.queryAll(filter: filter)
         let entry = entries.first { $0.metadataJSON.contains("same_language") }
         guard let entry else {
@@ -113,13 +112,12 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        let startDate = Date()
         await vm.translatePage(at: 0, bypassCache: true)
         await DebugLogger.shared.flush()
 
         var filter = DebugLogFilter()
         filter.category = .pipeline
-        filter.startDate = startDate
+        filter.sessionIDFilter = .session(DebugLogger.shared.sessionID)
         let entries = await DebugLogStore.shared.queryAll(filter: filter)
         let filterEntry = entries.first { $0.metadataJSON.contains("filtered_count") }
         guard let filterEntry else {
@@ -383,7 +381,8 @@ final class TranslationViewModelTests: XCTestCase {
         await vm.loadFolder(root)
 
         XCTAssertEqual(vm.pages.count, 6)
-        XCTAssertLessThanOrEqual(translationService.maxConcurrent, 3)
+        let maxConcurrent = await translationService.maxConcurrent()
+        XCTAssertLessThanOrEqual(maxConcurrent, 3)
     }
 
     func testLoadArchiveUsesOriginalSourcePathAndLoadsExtractedImages() async throws {
@@ -648,30 +647,41 @@ private final class CapturingTranslationService: TranslationService {
 private final class ConcurrencyTrackingTranslationService: TranslationService {
     var engine: TranslationEngine { .githubCopilot }
     private let delay: UInt64
-    private let lock = NSLock()
-    private var current = 0
-    private(set) var maxConcurrent = 0
+    private let counter = ConcurrencyCounter()
 
     init(delay: UInt64) {
         self.delay = delay
     }
 
+    func maxConcurrent() async -> Int {
+        await counter.maxConcurrent
+    }
+
     func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
-        lock.lock()
-        current += 1
-        maxConcurrent = max(maxConcurrent, current)
-        lock.unlock()
+        await counter.enter()
 
         try await Task.sleep(nanoseconds: delay)
 
-        lock.lock()
-        current -= 1
-        lock.unlock()
+        await counter.leave()
 
         let translated = bubbles.map {
             TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index)
         }
         return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+}
+
+private actor ConcurrencyCounter {
+    private var current = 0
+    private(set) var maxConcurrent = 0
+
+    func enter() {
+        current += 1
+        maxConcurrent = max(maxConcurrent, current)
+    }
+
+    func leave() {
+        current -= 1
     }
 }
 
