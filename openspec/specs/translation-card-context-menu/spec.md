@@ -1,5 +1,3 @@
-# Spec: Translation Card Context Menu
-
 ## Purpose
 
 Provide quick clipboard copy actions on each translation card in the sidebar, allowing users to copy translated text, original OCR text, or both with a single right-click.

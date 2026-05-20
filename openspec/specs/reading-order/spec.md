@@ -25,3 +25,7 @@ When an LLM translation backend is active, the system SHALL include bubble posit
 #### Scenario: Non-LLM backend uses spatial order only
 - **WHEN** the user selects DeepL as translation engine
 - **THEN** only spatial heuristic ordering is applied, no LLM correction
+
+## Known Limitations
+
+- **Reading direction**: `ReadingOrderSorter` assumes right-to-left column ordering for all content. Per-page direction detection is not currently implemented.

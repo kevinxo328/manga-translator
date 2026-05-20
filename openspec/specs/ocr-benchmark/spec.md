@@ -1,5 +1,3 @@
-# OCR Benchmark
-
 ## Purpose
 
 The OCR Benchmark capability provides a standalone diagnostic tool that runs both MangaOCR and PaddleOCR engines side by side on a set of sample images and produces a plain-text report. It is intended for development and quality evaluation — not for production use.

@@ -1,5 +1,3 @@
-# paddleocr-recognizer Specification
-
 ## Purpose
 
 Single owner for PaddleOCR-VL recognizer runtime behavior on Apple Silicon: model load from `local-model-lifecycle`-managed storage, OCR inference on detector-derived crops, lazy load and explicit unload/reset hooks, memory-pressure release with reload-on-next-inference, deterministic decode-loop and truncation termination, UI-responsive execution, baseline regression output preservation, input-boundary handling, and per-page MLX GPU buffer cache cleanup that preserves recognizer reuse.

@@ -1,5 +1,3 @@
-# local-model-lifecycle Specification
-
 ## Purpose
 
 Single owner for on-device local model lifecycle: device capability detection, model download from a configured remote source to Application Support, SHA256 integrity verification at install and at app launch, deletion, deterministic state convergence of `ModelDownloadState` and `paddleocr.enabled`, and invalid enabled-state correction. Other capabilities (`ocr-routing`, `settings-management`, `manga-ocr`, `paddleocr-recognizer`) consume this contract instead of restating it.

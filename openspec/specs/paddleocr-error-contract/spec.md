@@ -1,5 +1,3 @@
-# paddleocr-error-contract Specification
-
 ## Purpose
 
 Single owner for the stable PaddleOCR error-code contract used by UI and telemetry. Defines the six fixed error-code strings (`paddleocr.download_failed`, `paddleocr.verify_failed`, `paddleocr.model_unavailable`, `paddleocr.inference_failed`, `paddleocr.storage_unavailable`, `paddleocr.operation_cancelled`) and the policy that error codes are contract keys, not localization keys: UI strings are mapped from codes through a dedicated layer so message wording can change without altering the emitted code.

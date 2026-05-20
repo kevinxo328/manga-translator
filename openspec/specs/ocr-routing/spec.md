@@ -67,7 +67,3 @@ The system SHALL reset the active recognizer instance when the user toggles high
 #### Scenario: Very small image input (boundary)
 - **WHEN** a 1×1 pixel image is passed to the OCR router
 - **THEN** the system returns an empty `BubbleCluster` array without crashing
-
-## Known Limitations
-
-- **Reading direction**: ReadingOrderSorter assumes right-to-left column ordering for all content. Per-page direction detection is not currently implemented.

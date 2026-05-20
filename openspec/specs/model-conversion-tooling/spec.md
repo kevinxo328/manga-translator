@@ -1,5 +1,3 @@
-# model-conversion-tooling Specification
-
 ## Purpose
 
 Single owner for the reproducible Python tooling under `scripts/convert_model/` that converts the upstream HuggingFace PaddleOCR-VL model to MLX format, runs quantization sweeps, and performs crop-level BF16-vs-quantized parity verification using detector-aligned crops (or explicit crop manifests). Covers `uv` environment setup, scoped HuggingFace cache location, and complete teardown. Out of scope: app runtime, OCR routing, recognizer memory management, and user-facing error codes.
