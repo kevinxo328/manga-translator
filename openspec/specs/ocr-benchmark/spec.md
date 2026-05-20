@@ -127,7 +127,7 @@ The benchmark SHALL be runnable via a dedicated Xcode Scheme (`OCRBenchmark`) wi
 - **THEN** the full benchmark executes and produces a report
 
 ### Requirement: Benchmark suite includes targeted regression checks for known PaddleOCR empty cases
-The OCR benchmark capability SHALL provide targeted regression validation for known PaddleOCR benchmark crops that previously produced empty or newline-only results in the production Swift runtime.
+The OCR benchmark capability SHALL provide targeted regression validation for known PaddleOCR benchmark crops that previously produced empty or newline-only results in the production Swift runtime. The validation SHALL exercise the production Swift PaddleOCR runtime on fixed crops and compare its first-step behavior against the verified reference expectation for those same crops.
 
 #### Scenario: Regression case remains covered
 - **WHEN** the benchmark-oriented regression suite runs
@@ -136,6 +136,29 @@ The OCR benchmark capability SHALL provide targeted regression validation for kn
 #### Scenario: Fixed runtime on known empty case
 - **WHEN** the production Swift PaddleOCR path is executed on a known benchmark-empty crop after the runtime fix
 - **THEN** the regression result records non-empty recognition behavior instead of an empty or newline-only output
+
+#### Scenario: Known benchmark-empty punctuation crop
+- **WHEN** the regression suite runs against a known punctuation crop that previously produced an empty result in the Swift runtime
+- **THEN** the Swift runtime SHALL emit a non-empty first-step text token instead of terminating with `EOS` or newline
+
+#### Scenario: Known benchmark-empty dialogue crop
+- **WHEN** the regression suite runs against a known dialogue crop that previously produced an empty result in the Swift runtime
+- **THEN** the Swift runtime SHALL emit a first-step token consistent with real text generation instead of terminating immediately
+
+#### Scenario: Known benchmark crop no longer terminates with first-step EOS
+- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step `EOS`
+- **THEN** the runtime SHALL produce non-empty text generation behavior consistent with the verified reference path
+
+#### Scenario: Known benchmark crop no longer terminates with first-step newline
+- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step newline-only output
+- **THEN** the runtime SHALL produce text generation behavior instead of terminating with a newline-only result
+
+### Requirement: Preserve targeted parity validation without production-only debug surface
+The system SHALL retain regression validation for the known runtime-parity failures without requiring permanent production-facing tensor export hooks.
+
+#### Scenario: Post-fix regression suite
+- **WHEN** the fix is complete and investigation-only hooks are removed or restricted
+- **THEN** the regression suite SHALL still validate the known benchmark-empty cases through stable test-only or debug-only entry points
 
 ### Requirement: Low-confidence detection counter
 For each image, the benchmark report SHALL record the number of detector outputs whose confidence falls in the band `[0.40, 0.60)`. This counter monitors the FP-risk margin around the current shared threshold so that a future corpus-diversification audit can detect drift without requiring a full visual re-audit.

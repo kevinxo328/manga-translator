@@ -177,13 +177,7 @@ Any responsiveness optimization for this requirement MUST preserve baseline regr
 - **WHEN** a 4K+ resolution image is provided
 - **THEN** inference completes without out-of-memory crash
 
-#### Scenario: Known benchmark crop no longer terminates with first-step EOS
-- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step `EOS`
-- **THEN** the runtime SHALL produce non-empty text generation behavior consistent with the verified reference path
-
-#### Scenario: Known benchmark crop no longer terminates with first-step newline
-- **WHEN** the Swift high-accuracy OCR runtime processes a known regression crop that previously emitted first-step newline-only output
-- **THEN** the runtime SHALL produce text generation behavior instead of terminating with a newline-only result
+Note: Regression scenarios for known benchmark-empty crops (first-step `EOS` / newline termination) are owned by the `ocr-benchmark` spec under the `Benchmark suite includes targeted regression checks for known PaddleOCR empty cases` requirement.
 
 #### Scenario: UI remains responsive during high-accuracy inference
 - **WHEN** high-accuracy OCR processes one or more regions for an in-progress page translation
