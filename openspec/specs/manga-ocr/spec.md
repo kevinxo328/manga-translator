@@ -63,9 +63,9 @@ The system SHALL define an `OCRRecognizing` protocol with a single method `recog
 - **WHEN** `MangaOCRService.resetRecognizer()` is called
 - **THEN** the internal recognizer is set to `nil` and will be re-initialized on next inference call
 
-#### Scenario: Guard against externally corrupted high-accuracy preference
-- **WHEN** persisted preference indicates high-accuracy enabled but model state is unavailable or unverified
-- **THEN** the service path normalizes to standard manga-ocr recognizer behavior and the enabled preference is corrected to `false` before processing
+#### Scenario: Service path honors local-model-lifecycle state correction
+- **WHEN** `local-model-lifecycle` corrects an externally corrupted `paddleocr.enabled` (e.g., `true` while the model is unavailable or unverified) to `false`
+- **THEN** `MangaOCRService` proceeds with the standard manga-ocr recognizer path on the next inference
 
 ### Requirement: Produce TextObservation-compatible output
 The system SHALL output results as arrays of `TextObservation` (boundingBox, text, confidence) and `BubbleCluster` (boundingBox, text, observations, index, and `isInverted`) that are compatible with the existing translation pipeline.

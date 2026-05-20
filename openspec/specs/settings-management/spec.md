@@ -165,7 +165,7 @@ The system SHALL present a confirmation dialog before deleting the model. The di
 - **THEN** no deletion occurs and state is unchanged
 
 ### Requirement: Persist high-accuracy OCR preference
-The system SHALL persist the user's high-accuracy OCR enabled/disabled preference in `UserDefaults` under the key `paddleocr.enabled`. The system SHALL notify `MangaOCRService` to reset its recognizer when this preference changes. The system SHALL NOT allow `paddleocr.enabled = true` unless the model is downloaded and verified.
+The system SHALL persist the user's high-accuracy OCR enabled/disabled preference in `UserDefaults` under the key `paddleocr.enabled`. The system SHALL notify `MangaOCRService` to reset its recognizer when this preference changes. State-machine constraints on this preference — rejecting enable when the model is not `.downloaded`, and resetting to `false` on deletion — are owned by `local-model-lifecycle`; Settings UI surfaces those decisions to the user.
 
 #### Scenario: Preference persists across launches
 - **WHEN** user enables high-accuracy OCR and relaunches the app
@@ -173,15 +173,11 @@ The system SHALL persist the user's high-accuracy OCR enabled/disabled preferenc
 
 #### Scenario: Enable blocked when model is absent
 - **WHEN** the model is not downloaded (or fails verification) and user attempts to enable high-accuracy OCR
-- **THEN** `paddleocr.enabled` remains `false`, Settings keeps the disabled/not-downloaded state, and the UI displays actionable guidance ("Download model first")
+- **THEN** `local-model-lifecycle` rejects the transition (per its state machine), Settings keeps the disabled/not-downloaded state, and the UI displays actionable guidance ("Download model first")
 
 #### Scenario: Enable blocked after failed verification
 - **WHEN** model verification fails and user attempts to enable high-accuracy OCR
-- **THEN** enable is rejected, an error message explains model integrity failure, and the UI offers re-download guidance
-
-#### Scenario: Preference resets when model deleted
-- **WHEN** the model is deleted
-- **THEN** `paddleocr.enabled` is set to `false` in `UserDefaults`
+- **THEN** enable is rejected by `local-model-lifecycle`, an error message explains model integrity failure, and the UI offers re-download guidance
 
 ### Requirement: Validate API key presence before translation
 The system SHALL check that the required API key exists before attempting translation. If the key is missing, the system SHALL prompt the user to enter it in settings.

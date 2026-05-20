@@ -42,20 +42,12 @@ The system SHALL NOT fall back to a secondary OCR engine when the manga-ocr pipe
 - **WHEN** the manga-ocr ONNX models fail to load
 - **THEN** the system surfaces the error without running another OCR engine
 
-### Requirement: High-accuracy mode requires downloaded model
-The system SHALL prevent entering high-accuracy enabled state unless the model is downloaded and verified.
+### Requirement: Routing honors local-model-lifecycle state
+The state machine governing `paddleocr.enabled` and `ModelDownloadState` is owned by `local-model-lifecycle` (see its "Enforce deterministic local model state machine" requirement). Routing SHALL observe whatever value `local-model-lifecycle` has converged to before making each routing decision: when `paddleocr.enabled` is `true` and the model is `.downloaded`, routing uses the strict high-accuracy path; otherwise routing uses the standard manga-ocr path.
 
-#### Scenario: User tries to enable before download
-- **WHEN** the model is not downloaded and the user attempts to enable high-accuracy OCR
-- **THEN** enable is rejected, `paddleocr.enabled` remains `false`, and the user is prompted to download first
-
-#### Scenario: Download and Enable flow completes
-- **WHEN** the user taps "Download and Enable" and download + verification succeed
-- **THEN** `paddleocr.enabled` is set to `true` and routing uses the strict high-accuracy path
-
-#### Scenario: Model becomes unavailable after being enabled
-- **WHEN** launch verification or deletion determines the model is unavailable
-- **THEN** `paddleocr.enabled` is reset to `false` before routing and the standard manga-ocr path is used
+#### Scenario: Routing falls back after model becomes unavailable
+- **WHEN** `local-model-lifecycle` resets `paddleocr.enabled` to `false` because launch verification or deletion determined the model is unavailable
+- **THEN** the next routing decision uses the standard manga-ocr path
 
 ### Requirement: Reset recognizer on engine switch
 The system SHALL reset the active recognizer instance when the user toggles high-accuracy OCR in preferences or deletes the model, so that the next inference uses the correct recognizer.
