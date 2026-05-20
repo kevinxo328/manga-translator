@@ -98,6 +98,27 @@ When bypassing cache for a page that already had translated state, preserve the 
 
 Pages may enter `.processing` as soon as preparation starts. Pages should update to `.translated` or `.error` when their own final result is known. The deterministic LLM ordering requirement applies to context-consuming translation calls, not necessarily to when OCR begins.
 
+### Deferred Optimization: Producer/Consumer LLM Pipeline
+
+The shipped implementation runs a conservative two-phase batch pipeline for context-consuming LLM engines:
+
+1. All page preparations run with bounded concurrency.
+2. All preparations complete before any LLM `finalizePage` call begins.
+3. LLM finalizations then run serially in page-index order.
+
+A throughput-friendlier alternative is a producer/consumer pipeline: keep bounded preparation, but begin serial LLM `finalizePage` as soon as page 1's preparation is ready, consuming preparations in ascending page-index order from an ordered buffer. Page N's LLM call still waits for page N-1's LLM call to finish and for page N's own preparation to be ready.
+
+| | Prep-all-then-finalize (shipped) | Producer/consumer (deferred) |
+|---|---|---|
+| Deterministic page-ordered context | yes | yes |
+| Page 1 LLM latency | Waits for every page's OCR/cache lookup | Waits only for page 1 preparation |
+| Large-batch throughput | Lower | Higher |
+| Implementation complexity | Low (two sequential phases) | Medium (ordered async buffer) |
+
+Decision: defer. The shipped version is simpler and easier to reason about for the determinism guarantees the spec requires. Throughput regression is bounded by total preparation time, which is dominated by OCR for typical batches.
+
+Test note: `testOcrWorkCanStillCompleteBeforeSerialLLMTranslation` asserts `ocrCountAtFirstTranslate == widths.count`. This assertion is intentionally tight for the shipped pipeline and over-constrains the spec, which only requires that OCR for higher-index pages can start before lower-index LLM translation finishes. If the producer/consumer optimization is pursued later, relax this assertion (for example to `>= 2`, or replace it with a timing-based check) so OCR can interleave with LLM translation.
+
 ## Risks
 
 - Over-serializing all work would fix context order but regress batch throughput. Tests should assert OCR can start concurrently while LLM calls remain page-ordered.

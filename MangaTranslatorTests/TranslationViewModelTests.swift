@@ -416,6 +416,199 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(vm.pages.count, 1)
         XCTAssertTrue(vm.errorMessage?.contains("Failed to extract archive") == true)
     }
+
+    // MARK: - Batch recent-context ordering (fix-batch-recent-context-order)
+
+    func testLLMBatchTranslationBuildsRecentContextInPageOrder() async throws {
+        let widths = [111, 112, 113, 114]
+        let texts = ["p1", "p2", "p3", "p4"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        let (root, recognizer, translationService, vm) = try await makeBatchOrderingFixture(
+            widths: widths,
+            textByWidth: textByWidth,
+            engine: .githubCopilot,
+            delaysByInput: ["p1": 50_000_000, "p2": 250_000_000]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = recognizer
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(translationService.callCount, 4)
+        XCTAssertEqual(translationService.context(forInput: "p1")?.recentPageSummaries, [])
+        XCTAssertEqual(translationService.context(forInput: "p2")?.recentPageSummaries, ["T:p1"])
+        XCTAssertEqual(translationService.context(forInput: "p3")?.recentPageSummaries, ["T:p1", "T:p2"])
+        XCTAssertEqual(translationService.context(forInput: "p4")?.recentPageSummaries, ["T:p1", "T:p2", "T:p3"])
+    }
+
+    func testNonContextualEnginesDoNotReceiveRecentPageContext() async throws {
+        let widths = [121, 122, 123, 124]
+        let texts = ["q1", "q2", "q3", "q4"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        let (root, recognizer, translationService, vm) = try await makeBatchOrderingFixture(
+            widths: widths,
+            textByWidth: textByWidth,
+            engine: .deepL
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = recognizer
+
+        let glossary = vm.glossaryServiceForView.createGlossary(name: "BatchNonLLM")
+        XCTAssertNotNil(glossary)
+        _ = vm.glossaryServiceForView.insertTerm(
+            glossaryID: glossary!.id,
+            sourceTerm: "q1",
+            targetTerm: "Q1",
+            autoDetected: false
+        )
+        vm.loadGlossaries()
+        vm.activeGlossaryID = glossary?.id
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(translationService.callCount, 4)
+        for input in texts {
+            let ctx = translationService.context(forInput: input)
+            XCTAssertNotNil(ctx, "Missing context for \(input)")
+            XCTAssertEqual(ctx?.recentPageSummaries, [], "DeepL/Google must receive empty recentPageSummaries for \(input)")
+            XCTAssertEqual(ctx?.glossaryTerms.first?.sourceTerm, "q1", "Glossary must still flow for \(input)")
+            XCTAssertEqual(ctx?.glossaryTerms.first?.targetTerm, "Q1", "Glossary must still flow for \(input)")
+        }
+    }
+
+    func testOcrWorkCanStillCompleteBeforeSerialLLMTranslation() async throws {
+        let widths = [131, 132, 133, 134, 135, 136]
+        let texts = ["r1", "r2", "r3", "r4", "r5", "r6"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        let delays = Dictionary(uniqueKeysWithValues: texts.map { ($0, UInt64(120_000_000)) })
+        let (root, recognizer, translationService, vm) = try await makeBatchOrderingFixture(
+            widths: widths,
+            textByWidth: textByWidth,
+            engine: .githubCopilot,
+            delaysByInput: delays
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(translationService.callOrderInputs, texts,
+                       "LLM translation calls must start in ascending page-index order")
+        XCTAssertEqual(translationService.maxConcurrentTranslations, 1,
+                       "Context-consuming LLM engines must not run concurrently")
+        XCTAssertEqual(
+            translationService.ocrCountAtFirstTranslate,
+            widths.count,
+            "OCR must complete for all pages before the first LLM translation starts"
+        )
+        XCTAssertEqual(recognizer.observedTextsInOrder.count, widths.count)
+    }
+
+    func testLLMBatchCacheHitsContributeToLaterRecentContextWithoutRetranslating() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let widths = [141, 142]
+        let texts = ["s1", "s2"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        try writeUniqueColoredPNG(at: root.appendingPathComponent("page_1.png"), width: widths[0])
+
+        let recognizer = SizeMappedOCRRecognizer(textByWidth: textByWidth)
+        let translationService = OrderedContextRecorder(engine: .githubCopilot, ocrObserver: recognizer)
+        let router = await makeOrderedBatchRouter(recognizer: recognizer)
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: router,
+            translationService: translationService
+        )
+        vm.clearCacheAndResetPages()
+
+        // First load populates the translation cache for page_1.
+        await vm.loadFolder(root)
+        XCTAssertEqual(translationService.callOrderInputs, ["s1"],
+                       "First batch must translate page 1")
+        guard case .translated = vm.pages[0].state else {
+            return XCTFail("Expected page 1 to be .translated after first batch, got \(vm.pages[0].state)")
+        }
+
+        // Add page_2 then re-load: page_1 should be a cache hit, page_2 should translate.
+        try writeUniqueColoredPNG(at: root.appendingPathComponent("page_2.png"), width: widths[1])
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(vm.pages.count, 2)
+        XCTAssertEqual(translationService.callOrderInputs, ["s1", "s2"],
+                       "Second batch must translate page 2 only; page 1 must be served from cache")
+        let s2Ctx = translationService.context(forInput: "s2")
+        XCTAssertEqual(
+            s2Ctx?.recentPageSummaries,
+            ["T:s1"],
+            "Cache-hit page must contribute its cached translated text to later LLM recent context"
+        )
+    }
+
+    func testLLMBatchSkipsFailedPagesInLaterRecentContext() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let widths = [151, 152]
+        let texts = ["t1", "t2"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        for (i, width) in widths.enumerated() {
+            try writeUniqueColoredPNG(at: root.appendingPathComponent("page_\(i + 1).png"), width: width)
+        }
+
+        let recognizer = SizeMappedOCRRecognizer(textByWidth: textByWidth, throwForWidths: [widths[0]])
+        let translationService = OrderedContextRecorder(engine: .githubCopilot, ocrObserver: recognizer)
+        let router = await makeOrderedBatchRouter(recognizer: recognizer)
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: router,
+            translationService: translationService
+        )
+        vm.clearCacheAndResetPages()
+
+        await vm.loadFolder(root)
+
+        guard case .error = vm.pages[0].state else {
+            return XCTFail("Expected page 1 to be .error after OCR failure, got \(vm.pages[0].state)")
+        }
+        guard case .translated = vm.pages[1].state else {
+            return XCTFail("Expected page 2 to be .translated despite page 1 failing, got \(vm.pages[1].state)")
+        }
+        XCTAssertEqual(translationService.callOrderInputs, ["t2"],
+                       "Failed page must not call the translation service")
+        XCTAssertEqual(
+            translationService.context(forInput: "t2")?.recentPageSummaries,
+            [],
+            "Failed page must not contribute to later recent-page context"
+        )
+    }
+
+    func testRetranslateAllPagesUsesPageOrderedRecentContextForLLMEngines() async throws {
+        let widths = [161, 162, 163, 164]
+        let texts = ["u1", "u2", "u3", "u4"]
+        let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
+        let (root, _, translationService, vm) = try await makeBatchOrderingFixture(
+            widths: widths,
+            textByWidth: textByWidth,
+            engine: .githubCopilot,
+            delaysByInput: ["u2": 200_000_000]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Initial load to populate pages and cache.
+        await vm.loadFolder(root)
+        XCTAssertEqual(translationService.callCount, 4)
+
+        // Retranslate all pages bypasses cache and must apply the same page-ordered context rules.
+        await vm.retranslateAllPages()
+
+        XCTAssertEqual(translationService.callCount, 8)
+        let retranslate = translationService.contextsForRetranslateBatch(inputs: texts)
+        XCTAssertEqual(retranslate["u1"], [])
+        XCTAssertEqual(retranslate["u2"], ["T:u1"])
+        XCTAssertEqual(retranslate["u3"], ["T:u1", "T:u2"])
+        XCTAssertEqual(retranslate["u4"], ["T:u1", "T:u2", "T:u3"])
+    }
 }
 
 // MARK: - Helpers
@@ -699,4 +892,210 @@ private final class MockDownloadManager: ModelDownloadManaging {
         self.enabled = enabled
     }
     var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
+}
+
+// MARK: - Batch ordering helpers (fix-batch-recent-context-order)
+
+// Writes a PNG with a unique fill color so the cache image hash differs across test invocations.
+private func writeUniqueColoredPNG(at url: URL, width: Int = 16, height: Int = 16) throws {
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
+    rep.size = NSSize(width: width, height: height)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    let r = CGFloat.random(in: 0...1)
+    let g = CGFloat.random(in: 0...1)
+    let b = CGFloat.random(in: 0...1)
+    NSColor(red: r, green: g, blue: b, alpha: 1.0).setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let data = rep.representation(using: .png, properties: [:]) else {
+        throw OCRError.invalidImage
+    }
+    try data.write(to: url)
+}
+
+// OCR recognizer that maps the page image's CGImage.width to a fixed text and can throw for chosen widths.
+private final class SizeMappedOCRRecognizer: @unchecked Sendable, OCRRecognizing {
+    private let textByWidth: [Int: String]
+    private let throwForWidths: Set<Int>
+    private let lock = NSLock()
+    private var _observedTextsInOrder: [String] = []
+
+    init(textByWidth: [Int: String], throwForWidths: Set<Int> = []) {
+        self.textByWidth = textByWidth
+        self.throwForWidths = throwForWidths
+    }
+
+    var observedTextsInOrder: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _observedTextsInOrder
+    }
+
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        let width = cgImage.width
+        if throwForWidths.contains(width) {
+            throw PaddleOCRError.inferenceFailed("forced for width \(width)")
+        }
+        let text = textByWidth[width] ?? ""
+        lock.lock()
+        _observedTextsInOrder.append(text)
+        lock.unlock()
+        return (text, 1.0)
+    }
+}
+
+// Translation service that records each call's input and context, tracks call order and concurrency,
+// and snapshots the OCR call count when the first translation begins.
+private final class OrderedContextRecorder: @unchecked Sendable, TranslationService {
+    private let recordedEngine: TranslationEngine
+    var engine: TranslationEngine { recordedEngine }
+
+    private let lock = NSLock()
+    private var _calls: [(input: String, context: TranslationContext)] = []
+    private var _callOrderInputs: [String] = []
+    private var _maxConcurrent: Int = 0
+    private var _currentConcurrent: Int = 0
+    private var _ocrCountAtFirstTranslate: Int?
+
+    private let delaysByInput: [String: UInt64]
+    private let failingInputs: Set<String>
+    private weak var ocrObserver: SizeMappedOCRRecognizer?
+
+    init(engine: TranslationEngine = .githubCopilot,
+         delaysByInput: [String: UInt64] = [:],
+         failingInputs: Set<String> = [],
+         ocrObserver: SizeMappedOCRRecognizer? = nil) {
+        self.recordedEngine = engine
+        self.delaysByInput = delaysByInput
+        self.failingInputs = failingInputs
+        self.ocrObserver = ocrObserver
+    }
+
+    var callCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _calls.count
+    }
+
+    var callOrderInputs: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _callOrderInputs
+    }
+
+    var maxConcurrentTranslations: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _maxConcurrent
+    }
+
+    var ocrCountAtFirstTranslate: Int? {
+        lock.lock(); defer { lock.unlock() }
+        return _ocrCountAtFirstTranslate
+    }
+
+    func context(forInput input: String) -> TranslationContext? {
+        lock.lock(); defer { lock.unlock() }
+        return _calls.first { $0.input == input }?.context
+    }
+
+    // For retranslate-all tests, the second pass through the same inputs is the last N calls
+    // (where N == inputs.count). Return a map from input to its recentPageSummaries.
+    func contextsForRetranslateBatch(inputs: [String]) -> [String: [String]] {
+        lock.lock(); defer { lock.unlock() }
+        let tail = _calls.suffix(inputs.count)
+        var result: [String: [String]] = [:]
+        for call in tail {
+            result[call.input] = call.context.recentPageSummaries
+        }
+        return result
+    }
+
+    func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
+        let inputText = bubbles.first?.text ?? ""
+        let observerCount = ocrObserver?.observedTextsInOrder.count
+
+        lock.lock()
+        if _ocrCountAtFirstTranslate == nil {
+            _ocrCountAtFirstTranslate = observerCount
+        }
+        _callOrderInputs.append(inputText)
+        _calls.append((input: inputText, context: context))
+        _currentConcurrent += 1
+        if _currentConcurrent > _maxConcurrent {
+            _maxConcurrent = _currentConcurrent
+        }
+        lock.unlock()
+
+        defer {
+            lock.lock()
+            _currentConcurrent -= 1
+            lock.unlock()
+        }
+
+        if failingInputs.contains(inputText) {
+            throw TranslationError.apiError("forced failure for \(inputText)")
+        }
+
+        if let delay = delaysByInput[inputText], delay > 0 {
+            try await Task.sleep(nanoseconds: delay)
+        }
+
+        let translated = bubbles.map {
+            TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
+        }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+}
+
+@MainActor
+private func makeOrderedBatchRouter(recognizer: SizeMappedOCRRecognizer) async -> OCRRouter {
+    let service = MangaOCRService(detector: MockComicTextDetectorSingle())
+    await service.setRecognizer(recognizer)
+    return OCRRouter(
+        mangaOCRService: service,
+        capabilityChecker: MockCapabilityChecker(.unsupported),
+        downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+        paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+    )
+}
+
+@MainActor
+private func makeBatchOrderingFixture(
+    widths: [Int],
+    textByWidth: [Int: String],
+    engine: TranslationEngine,
+    delaysByInput: [String: UInt64] = [:],
+    failingInputs: Set<String> = []
+) async throws -> (root: URL, recognizer: SizeMappedOCRRecognizer, translationService: OrderedContextRecorder, viewModel: TranslationViewModel) {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    for (i, width) in widths.enumerated() {
+        try writeUniqueColoredPNG(at: root.appendingPathComponent("page_\(i + 1).png"), width: width)
+    }
+
+    let recognizer = SizeMappedOCRRecognizer(textByWidth: textByWidth)
+    let translationService = OrderedContextRecorder(
+        engine: engine,
+        delaysByInput: delaysByInput,
+        failingInputs: failingInputs,
+        ocrObserver: recognizer
+    )
+    let router = await makeOrderedBatchRouter(recognizer: recognizer)
+    let vm = TranslationViewModel(
+        preferences: makePrefs(source: .ja, target: .zhHant),
+        ocrRouter: router,
+        translationService: translationService
+    )
+    vm.clearCacheAndResetPages()
+    return (root, recognizer, translationService, vm)
 }

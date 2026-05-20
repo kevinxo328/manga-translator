@@ -62,17 +62,28 @@ final class TranslationViewModel: ObservableObject {
         return glossaries.first { $0.id == id }
     }
 
-    private func buildTranslationContext() -> TranslationContext {
+    // Engine boundary: only OpenAI-compatible and GitHub Copilot consume recent-page summaries.
+    // DeepL and Google receive glossary terms but never recent-page context.
+    private func usesRecentPageContext(_ engine: TranslationEngine) -> Bool {
+        switch engine {
+        case .openAI, .githubCopilot: return true
+        case .deepL, .google: return false
+        }
+    }
+
+    private func buildTranslationContext(usesRecentContext: Bool) -> TranslationContext {
         let terms: [GlossaryTerm]
         if let id = activeGlossaryID {
             terms = glossaryService.listTerms(glossaryID: id)
         } else {
             terms = []
         }
-        return TranslationContext(glossaryTerms: terms, recentPageSummaries: recentPageTranslations)
+        let summaries = usesRecentContext ? recentPageTranslations : []
+        return TranslationContext(glossaryTerms: terms, recentPageSummaries: summaries)
     }
 
-    private func appendToRecentContext(_ translated: [TranslatedBubble]) {
+    private func appendToRecentContextIfNeeded(_ translated: [TranslatedBubble], usesRecentContext: Bool) {
+        guard usesRecentContext else { return }
         let summary = translated
             .sorted { $0.index < $1.index }
             .map { $0.translatedText }
@@ -85,6 +96,18 @@ final class TranslationViewModel: ObservableObject {
 
     private func resetRecentContext() {
         recentPageTranslations = []
+    }
+
+    // Intermediate result of the page-preparation phase that happens before LLM translation.
+    // Carries enough state for the finalize phase to either set the page result directly
+    // (cache hit, skip, failure) or call the translation service in page-index order.
+    private enum PagePreparation {
+        case sameLanguageSkip
+        case missingKey
+        case cacheHit(bubbles: [TranslatedBubble], textPixelMask: CGImage?)
+        case noMeaningfulBubbles(textPixelMask: CGImage?, imageHash: String)
+        case ready(meaningful: [BubbleCluster], textPixelMask: CGImage?, imageHash: String, restoreFrom: MangaPage?)
+        case failed(message: String, restoreFrom: MangaPage?)
     }
 
     var currentPage: MangaPage? {
@@ -188,34 +211,97 @@ final class TranslationViewModel: ObservableObject {
     }
 
     private func translateBatch() async {
-        isProcessing = true
-        await withTaskGroup(of: Void.self) { group in
-            let maxConcurrent = 3
-            var started = 0
-
-            for i in pages.indices {
-                if started >= maxConcurrent {
-                    await group.next()
-                }
-                started += 1
-
-                group.addTask { [weak self] in
-                    guard let self else { return }
-                    await self.translatePage(at: i)
-                }
-            }
-        }
-        isProcessing = false
+        await runBatchPipeline(bypassCache: false)
     }
 
     // MARK: - Translation pipeline
 
     func translatePage(at index: Int, bypassCache: Bool = false) async {
         guard pages.indices.contains(index) else { return }
+        let service = translationService
+        let usesContext = usesRecentPageContext(service.engine)
+        let preparation = await preparePage(at: index, bypassCache: bypassCache, service: service)
+        await finalizePage(at: index, preparation: preparation, service: service, usesRecentContext: usesContext)
+    }
+
+    // Phase A: bounded-concurrency preparation that does not consume or mutate recentPageTranslations.
+    // Phase B: finalize translation either page-ordered (LLM engines) or concurrently (DeepL/Google).
+    //
+    // For context-consuming LLM engines this is the conservative "prep-all-then-finalize" shape.
+    // A throughput-friendlier producer/consumer pipeline is deferred. See the
+    // "Deferred Optimization: Producer/Consumer LLM Pipeline" section in
+    // fix-batch-recent-context-order/design.md for the trade-offs.
+    private func runBatchPipeline(bypassCache: Bool) async {
+        isProcessing = true
+        let service = translationService
+        let usesContext = usesRecentPageContext(service.engine)
+
+        if usesContext {
+            var preparations: [PagePreparation?] = Array(repeating: nil, count: pages.count)
+            await withTaskGroup(of: (Int, PagePreparation).self) { group in
+                let maxConcurrent = 3
+                var started = 0
+                for i in pages.indices {
+                    if started >= maxConcurrent {
+                        if let result = await group.next() {
+                            preparations[result.0] = result.1
+                        }
+                    }
+                    started += 1
+                    group.addTask { [weak self] in
+                        guard let self else {
+                            return (i, .failed(message: "view model deallocated", restoreFrom: nil))
+                        }
+                        let prep = await self.preparePage(at: i, bypassCache: bypassCache, service: service)
+                        return (i, prep)
+                    }
+                }
+                while let result = await group.next() {
+                    preparations[result.0] = result.1
+                }
+            }
+            for i in pages.indices {
+                guard let prep = preparations[i] else { continue }
+                await finalizePage(at: i, preparation: prep, service: service, usesRecentContext: true)
+            }
+        } else {
+            await withTaskGroup(of: Void.self) { group in
+                let maxConcurrent = 3
+                var started = 0
+                for i in pages.indices {
+                    if started >= maxConcurrent {
+                        await group.next()
+                    }
+                    started += 1
+                    group.addTask { [weak self] in
+                        guard let self else { return }
+                        let prep = await self.preparePage(at: i, bypassCache: bypassCache, service: service)
+                        await self.finalizePage(at: i, preparation: prep, service: service, usesRecentContext: false)
+                    }
+                }
+            }
+        }
+        isProcessing = false
+    }
+
+    // Page preparation: does everything up to (but not including) the translation API call.
+    // Returns intermediate state so the finalize phase can serialize translation calls
+    // for context-consuming engines without holding up OCR work for other pages.
+    private func preparePage(at index: Int, bypassCache: Bool, service: any TranslationService) async -> PagePreparation {
+        guard pages.indices.contains(index) else {
+            return .failed(message: "invalid page index", restoreFrom: nil)
+        }
 
         let previousPage = pages[index]
         pages[index].state = .processing
         pages[index].textPixelMask = nil
+
+        let restoreFrom: MangaPage?
+        if bypassCache, case .translated = previousPage.state {
+            restoreFrom = previousPage
+        } else {
+            restoreFrom = nil
+        }
 
         guard preferences.sourceLanguage != preferences.targetLanguage else {
             DebugLogger.shared.log(
@@ -229,69 +315,54 @@ final class TranslationViewModel: ObservableObject {
                     "reason": "same_language"
                 ]
             )
-            pages[index].textPixelMask = nil
-            pages[index].state = .translated([])
-            return
+            return .sameLanguageSkip
         }
 
-        let selectedTranslationService = translationService
+        if translationServiceOverride == nil && service.engine != .githubCopilot {
+            guard keychainService.hasKey(for: preferences.translationEngine) else {
+                showMissingKeyAlert = true
+                return .missingKey
+            }
+        }
+
+        let imageURL = pages[index].imageURL
+
+        let nsImage: NSImage
+        if let cached = pages[index].image {
+            nsImage = cached
+        } else {
+            guard let loaded = NSImage(contentsOf: imageURL) else {
+                return .failed(message: "Failed to load image", restoreFrom: restoreFrom)
+            }
+            pages[index].image = loaded
+            nsImage = loaded
+        }
+
+        let imageHash: String
+        if let storedHash = pages[index].imageHash {
+            imageHash = storedHash
+        } else if let fileData = try? Data(contentsOf: imageURL) {
+            imageHash = CacheService.imageHash(data: fileData)
+            pages[index].imageHash = imageHash
+        } else if let tiffData = nsImage.tiffRepresentation {
+            imageHash = CacheService.imageHash(data: tiffData)
+            pages[index].imageHash = imageHash
+        } else {
+            return .failed(message: "Failed to read image data", restoreFrom: restoreFrom)
+        }
+
+        if !bypassCache, let cached = cacheService.lookup(
+            imageHash: imageHash,
+            source: preferences.sourceLanguage,
+            target: preferences.targetLanguage,
+            engine: preferences.translationEngine
+        ) {
+            return .cacheHit(bubbles: cached.bubbles, textPixelMask: cached.textPixelMask)
+        }
 
         do {
-            if translationServiceOverride == nil && selectedTranslationService.engine != .githubCopilot {
-                guard keychainService.hasKey(for: preferences.translationEngine) else {
-                    showMissingKeyAlert = true
-                    pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
-                    return
-                }
-            }
-
-            let imageURL = pages[index].imageURL
-
-            // Load image if not already cached
-            let nsImage: NSImage
-            if let cached = pages[index].image {
-                nsImage = cached
-            } else {
-                guard let loaded = NSImage(contentsOf: imageURL) else {
-                    pages[index].state = .error("Failed to load image")
-                    return
-                }
-                pages[index].image = loaded
-                nsImage = loaded
-            }
-
-            // Compute image hash (reuse stored hash if available)
-            let imageHash: String
-            if let storedHash = pages[index].imageHash {
-                imageHash = storedHash
-            } else if let fileData = try? Data(contentsOf: imageURL) {
-                imageHash = CacheService.imageHash(data: fileData)
-                pages[index].imageHash = imageHash
-            } else if let tiffData = nsImage.tiffRepresentation {
-                imageHash = CacheService.imageHash(data: tiffData)
-                pages[index].imageHash = imageHash
-            } else {
-                pages[index].state = .error("Failed to read image data")
-                return
-            }
-
-            // Check cache
-            if !bypassCache, let cached = cacheService.lookup(
-                imageHash: imageHash,
-                source: preferences.sourceLanguage,
-                target: preferences.targetLanguage,
-                engine: preferences.translationEngine
-            ) {
-                pages[index].textPixelMask = cached.textPixelMask
-                pages[index].state = .translated(cached.bubbles)
-                return
-            }
-
-            // OCR
             let pageResult = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
-            pages[index].textPixelMask = pageResult.textPixelMask
             let ordered = pageResult.bubbles
-
             let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
             let skippedCount = ordered.count - meaningful.count
             if skippedCount > 0 {
@@ -306,7 +377,6 @@ final class TranslationViewModel: ObservableObject {
                     ]
                 )
             }
-            let translated: [TranslatedBubble]
             if meaningful.isEmpty {
                 DebugLogger.shared.log(
                     "Page \(index + 1): no meaningful bubbles after OCR — skipping translation",
@@ -314,10 +384,54 @@ final class TranslationViewModel: ObservableObject {
                     category: .pipeline,
                     metadata: ["page_index": "\(index + 1)", "reason": "all_bubbles_meaningless"]
                 )
-                translated = []
-            } else {
-                let context = buildTranslationContext()
-                let output = try await selectedTranslationService.translate(
+                return .noMeaningfulBubbles(textPixelMask: pageResult.textPixelMask, imageHash: imageHash)
+            }
+            return .ready(
+                meaningful: meaningful,
+                textPixelMask: pageResult.textPixelMask,
+                imageHash: imageHash,
+                restoreFrom: restoreFrom
+            )
+        } catch {
+            return .failed(message: error.localizedDescription, restoreFrom: restoreFrom)
+        }
+    }
+
+    // Finalize a page: sets the final state and optionally appends to the recent-context window.
+    // The recent-context window is mutated only when `usesRecentContext` is true (LLM engines).
+    private func finalizePage(at index: Int, preparation: PagePreparation, service: any TranslationService, usesRecentContext: Bool) async {
+        guard pages.indices.contains(index) else { return }
+
+        switch preparation {
+        case .sameLanguageSkip:
+            pages[index].textPixelMask = nil
+            pages[index].state = .translated([])
+
+        case .missingKey:
+            pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
+
+        case .cacheHit(let bubbles, let textPixelMask):
+            pages[index].textPixelMask = textPixelMask
+            pages[index].state = .translated(bubbles)
+            appendToRecentContextIfNeeded(bubbles, usesRecentContext: usesRecentContext)
+
+        case .noMeaningfulBubbles(let textPixelMask, let imageHash):
+            pages[index].textPixelMask = textPixelMask
+            pages[index].state = .translated([])
+            cacheService.store(
+                imageHash: imageHash,
+                source: preferences.sourceLanguage,
+                target: preferences.targetLanguage,
+                engine: preferences.translationEngine,
+                bubbles: [],
+                textPixelMask: textPixelMask
+            )
+            appendToRecentContextIfNeeded([], usesRecentContext: usesRecentContext)
+
+        case .ready(let meaningful, let textPixelMask, let imageHash, let restoreFrom):
+            do {
+                let context = buildTranslationContext(usesRecentContext: usesRecentContext)
+                let output = try await service.translate(
                     bubbles: meaningful,
                     from: preferences.sourceLanguage,
                     to: preferences.targetLanguage,
@@ -327,29 +441,34 @@ final class TranslationViewModel: ObservableObject {
                     glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
                     glossaries = glossaryService.listGlossaries()
                 }
-                translated = output.bubbles.sorted { $0.index < $1.index }
+                let translated = output.bubbles.sorted { $0.index < $1.index }
+                cacheService.store(
+                    imageHash: imageHash,
+                    source: preferences.sourceLanguage,
+                    target: preferences.targetLanguage,
+                    engine: preferences.translationEngine,
+                    bubbles: translated,
+                    textPixelMask: textPixelMask
+                )
+                pages[index].textPixelMask = textPixelMask
+                pages[index].state = .translated(translated)
+                appendToRecentContextIfNeeded(translated, usesRecentContext: usesRecentContext)
+            } catch {
+                if let restoreFrom {
+                    pages[index].state = restoreFrom.state
+                    pages[index].textPixelMask = restoreFrom.textPixelMask
+                } else {
+                    pages[index].state = .error(error.localizedDescription)
+                }
             }
 
-            appendToRecentContext(translated)
-
-            // Cache
-            cacheService.store(
-                imageHash: imageHash,
-                source: preferences.sourceLanguage,
-                target: preferences.targetLanguage,
-                engine: preferences.translationEngine,
-                bubbles: translated,
-                textPixelMask: pageResult.textPixelMask
-            )
-
-            pages[index].state = .translated(translated)
-        } catch {
-            if bypassCache, case .translated = previousPage.state {
-                pages[index].state = previousPage.state
-                pages[index].textPixelMask = previousPage.textPixelMask
-                return
+        case .failed(let message, let restoreFrom):
+            if let restoreFrom {
+                pages[index].state = restoreFrom.state
+                pages[index].textPixelMask = restoreFrom.textPixelMask
+            } else {
+                pages[index].state = .error(message)
             }
-            pages[index].state = .error(error.localizedDescription)
         }
     }
 
@@ -376,24 +495,8 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func retranslateAllPages() async {
-        isProcessing = true
-        await withTaskGroup(of: Void.self) { group in
-            let maxConcurrent = 3
-            var started = 0
-
-            for i in pages.indices {
-                if started >= maxConcurrent {
-                    await group.next()
-                }
-                started += 1
-
-                group.addTask { [weak self] in
-                    guard let self else { return }
-                    await self.translatePage(at: i, bypassCache: true)
-                }
-            }
-        }
-        isProcessing = false
+        resetRecentContext()
+        await runBatchPipeline(bypassCache: true)
     }
 
     // MARK: - Navigation
