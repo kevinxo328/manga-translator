@@ -34,3 +34,20 @@ The system SHALL display the model name followed by a human-readable category la
   - `"versatile"` → `"Claude Sonnet 4.5 (Standard)"`
   - `"lightweight"` → `"GPT-5 mini (Lite)"`
   - no category → model name only
+
+### Requirement: Copilot model selection persistence
+The system SHALL persist the user's Copilot model selection to `UserDefaults` under the key `copilotModel`. The selection SHALL be restored on subsequent app launches. The default value when no preference has been saved SHALL be `gpt-5-mini`. Subsequent translations using the GitHub Copilot engine SHALL use the persisted model identifier.
+
+#### Scenario: User selects a GitHub Copilot model
+- **WHEN** the Copilot CLI is available and user picks a model from the Copilot model picker
+- **THEN** the selection is persisted to `copilotModel` in UserDefaults
+- **THEN** subsequent translations using the GitHub Copilot engine use the selected model
+
+#### Scenario: App restart preserves Copilot model choice
+- **WHEN** the user selects a Copilot model and restarts the app
+- **THEN** the previously selected model is shown in the picker
+- **THEN** translations use the previously selected model
+
+#### Scenario: Default Copilot model on first launch
+- **WHEN** no `copilotModel` preference has been saved
+- **THEN** the active Copilot model is `gpt-5-mini`
