@@ -1,7 +1,15 @@
-## Purpose
+## ADDED Requirements
 
-Configurable base URL and model for OpenAI-compatible API endpoints.
-## Requirements
+### Requirement: OpenAI Compatible section in Settings UI
+The API Keys tab in Settings SHALL display the OpenAI-compatible configuration as a section titled "OpenAI Compatible" with a brain icon. The section SHALL contain an API Key secure field, a Base URL text field with a "Reset" button, and a Model text field with a "Reset" button. The Base URL default, Model default, and Reset behaviour are owned by this capability's "Configurable base URL for OpenAI-compatible API" and "Configurable model name for OpenAI-compatible API" requirements.
+
+#### Scenario: OpenAI Compatible section layout
+- **WHEN** user views the API Keys tab
+- **THEN** the section header SHALL display "OpenAI Compatible" with a brain icon
+- **AND** the section SHALL contain an API Key secure field, a Base URL text field with a "Reset" button, and a Model text field with a "Reset" button
+
+## MODIFIED Requirements
+
 ### Requirement: Configurable base URL for OpenAI-compatible API
 The system SHALL allow users to configure a base URL for the OpenAI-compatible translation service. The default base URL SHALL be `https://api.openai.com/v1`. The system SHALL persist the base URL in UserDefaults across app launches.
 
@@ -39,30 +47,3 @@ The system SHALL allow users to enter any model name as free text. The default m
 #### Scenario: Model change applies to next translation
 - **WHEN** user changes the OpenAI model in Settings
 - **THEN** the next translation run uses the updated model identifier
-
-### Requirement: Input sanitization for base URL and model
-The system SHALL sanitize user inputs to prevent common configuration errors.
-
-#### Scenario: Trailing slash in base URL
-- **WHEN** user enters `https://api.openai.com/v1/` (with trailing slash)
-- **THEN** the system SHALL strip the trailing slash before constructing the API request URL
-
-#### Scenario: Leading slash in model name
-- **WHEN** user enters `/gpt-5` (with leading slash)
-- **THEN** the system SHALL strip the leading slash before using the model name in the API request
-
-### Requirement: OpenAI-compatible service uses configured base URL
-The system SHALL construct the API endpoint by appending `/chat/completions` to the configured base URL. The service SHALL use this endpoint for all translation requests.
-
-#### Scenario: API request with custom base URL
-- **WHEN** the base URL is set to `https://custom-api.example.com/v1` and a translation is requested
-- **THEN** the system SHALL send the request to `https://custom-api.example.com/v1/chat/completions`
-
-### Requirement: OpenAI Compatible section in Settings UI
-The API Keys tab in Settings SHALL display the OpenAI-compatible configuration as a section titled "OpenAI Compatible" with a brain icon. The section SHALL contain an API Key secure field, a Base URL text field with a "Reset" button, and a Model text field with a "Reset" button. The Base URL default, Model default, and Reset behaviour are owned by this capability's "Configurable base URL for OpenAI-compatible API" and "Configurable model name for OpenAI-compatible API" requirements.
-
-#### Scenario: OpenAI Compatible section layout
-- **WHEN** user views the API Keys tab
-- **THEN** the section header SHALL display "OpenAI Compatible" with a brain icon
-- **AND** the section SHALL contain an API Key secure field, a Base URL text field with a "Reset" button, and a Model text field with a "Reset" button
-

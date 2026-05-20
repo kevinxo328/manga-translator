@@ -3,9 +3,7 @@
 ## Purpose
 
 Single owner for on-device local model lifecycle: device capability detection, model download from a configured remote source to Application Support, SHA256 integrity verification at install and at app launch, deletion, deterministic state convergence of `ModelDownloadState` and `paddleocr.enabled`, and invalid enabled-state correction. Other capabilities (`ocr-routing`, `settings-management`, `manga-ocr`, `paddleocr-recognizer`) consume this contract instead of restating it.
-
 ## Requirements
-
 ### Requirement: Detect local model capability
 The system SHALL detect whether the current device supports high-accuracy OCR. The system SHALL return `.supported` for Apple Silicon with >=16GB RAM, and `.unsupported` for all other cases (Intel architecture, Apple Silicon with <16GB RAM, or 0GB detected RAM). The 16GB minimum reflects peak inference memory usage of ~13GB for the full-precision model.
 
@@ -152,4 +150,57 @@ Required transition rules:
 #### Scenario: Concurrent delete and verify converge deterministically
 - **WHEN** deletion and launch verification run concurrently
 - **THEN** final state is deterministic, model artifacts are either fully present and valid or fully removed, and mixed partial state is not allowed
+
+### Requirement: High-accuracy OCR settings section
+The system SHALL display a "High-Accuracy OCR" section in SettingsView exclusively on Apple Silicon (`#if arch(arm64)`). The section SHALL be hidden entirely on Intel. The section SHALL reflect the current `ModelDownloadService.state` and update reactively as state changes.
+
+#### Scenario: Intel device
+- **WHEN** the app runs on an Intel Mac
+- **THEN** the High-Accuracy OCR section is not visible in Settings
+
+#### Scenario: Apple Silicon, not downloaded
+- **WHEN** the device is Apple Silicon and the model has not been downloaded
+- **THEN** the section shows a "Download and Enable" button
+
+#### Scenario: Apple Silicon 8GB, not downloaded
+- **WHEN** the device is Apple Silicon with 8GB RAM and the model has not been downloaded
+- **THEN** the section shows the "Download and Enable" button and a warning label about RAM
+
+#### Scenario: Download in progress
+- **WHEN** model download is in progress
+- **THEN** the section shows a progress indicator and a "Cancel" button; "Download and Enable" is hidden
+
+#### Scenario: Model downloaded and enabled
+- **WHEN** the model is downloaded and high-accuracy OCR is enabled
+- **THEN** the section shows an enabled indicator, a "Disable" button, and a "Delete Model Data" button
+
+#### Scenario: Model downloaded and disabled
+- **WHEN** the model is downloaded and high-accuracy OCR is disabled
+- **THEN** the section shows a disabled indicator, an "Enable" button, and a "Delete Model Data" button
+
+### Requirement: Confirm before deleting model data
+The system SHALL present a confirmation dialog before deleting the model. The dialog SHALL use English text. Deletion SHALL only proceed after user confirmation.
+
+#### Scenario: User confirms deletion
+- **WHEN** user clicks "Delete Model Data" and then confirms in the dialog
+- **THEN** `ModelDownloadService.delete()` is called and state transitions to `.notDownloaded`
+
+#### Scenario: User cancels deletion
+- **WHEN** user clicks "Delete Model Data" but cancels in the confirmation dialog
+- **THEN** no deletion occurs and state is unchanged
+
+### Requirement: Persist high-accuracy OCR preference
+The system SHALL persist the user's high-accuracy OCR enabled/disabled preference in `UserDefaults` under the key `paddleocr.enabled`. State-machine constraints on this preference — rejecting enable when the model is not `.downloaded`, and resetting to `false` on deletion — follow the "Enforce deterministic local model state machine" and "Delete local model" requirements in this capability; Settings UI surfaces those decisions to the user. Recognizer-reset on preference change is owned by `ocr-routing`'s "Reset recognizer on engine switch" requirement.
+
+#### Scenario: Preference persists across launches
+- **WHEN** user enables high-accuracy OCR and relaunches the app
+- **THEN** high-accuracy OCR remains enabled if the model is still present
+
+#### Scenario: Enable blocked when model is absent
+- **WHEN** the model is not downloaded (or fails verification) and user attempts to enable high-accuracy OCR
+- **THEN** the transition is rejected per the state machine table (this capability's "Enforce deterministic local model state machine" requirement), Settings keeps the disabled/not-downloaded state, and the UI displays actionable guidance ("Download model first")
+
+#### Scenario: Enable blocked after failed verification
+- **WHEN** model verification fails and user attempts to enable high-accuracy OCR
+- **THEN** enable is rejected per the state machine, an error message explains model integrity failure, and the UI offers re-download guidance
 
