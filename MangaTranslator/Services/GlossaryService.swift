@@ -49,8 +49,20 @@ final class GlossaryService {
     }
 
     func deleteGlossary(id: String) {
-        sqlite3_exec(db, "DELETE FROM glossary_terms WHERE glossary_id = '\(id)'", nil, nil, nil)
-        sqlite3_exec(db, "DELETE FROM glossaries WHERE id = '\(id)'", nil, nil, nil)
+        let deleteTermsSQL = "DELETE FROM glossary_terms WHERE glossary_id = ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, deleteTermsSQL, -1, &stmt, nil) == SQLITE_OK else { return }
+        sqlite3_bind_text(stmt, 1, id, -1, transient)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+
+        let deleteGlossarySQL = "DELETE FROM glossaries WHERE id = ?"
+        stmt = nil
+        guard sqlite3_prepare_v2(db, deleteGlossarySQL, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, id, -1, transient)
+        sqlite3_step(stmt)
     }
 
     // MARK: - Term CRUD

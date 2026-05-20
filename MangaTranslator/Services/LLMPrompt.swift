@@ -61,13 +61,25 @@ struct LLMPrompt {
     }
 
     static func userPrompt(bubbles: [BubbleCluster]) -> String {
-        let bubblesJSON = bubbles.map { bubble in
-            """
-            {"index": \(bubble.index), "x": \(Int(bubble.boundingBox.origin.x)), "y": \(Int(bubble.boundingBox.origin.y)), "width": \(Int(bubble.boundingBox.width)), "height": \(Int(bubble.boundingBox.height)), "text": "\(bubble.text.replacingOccurrences(of: "\"", with: "\\\""))"}
-            """
-        }.joined(separator: ",\n  ")
+        let payload: [[String: Any]] = bubbles.map { bubble in
+            [
+                "index": bubble.index,
+                "x": Int(bubble.boundingBox.origin.x),
+                "y": Int(bubble.boundingBox.origin.y),
+                "width": Int(bubble.boundingBox.width),
+                "height": Int(bubble.boundingBox.height),
+                "text": bubble.text
+            ]
+        }
 
-        return "[\n  \(bubblesJSON)\n]"
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            return "[]"
+        }
+
+        return json
     }
 }
 

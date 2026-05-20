@@ -213,6 +213,7 @@ final class TranslationViewModel: ObservableObject {
     func translatePage(at index: Int, bypassCache: Bool = false) async {
         guard pages.indices.contains(index) else { return }
 
+        let previousPage = pages[index]
         pages[index].state = .processing
         pages[index].textPixelMask = nil
 
@@ -343,6 +344,11 @@ final class TranslationViewModel: ObservableObject {
 
             pages[index].state = .translated(translated)
         } catch {
+            if bypassCache, case .translated = previousPage.state {
+                pages[index].state = previousPage.state
+                pages[index].textPixelMask = previousPage.textPixelMask
+                return
+            }
             pages[index].state = .error(error.localizedDescription)
         }
     }

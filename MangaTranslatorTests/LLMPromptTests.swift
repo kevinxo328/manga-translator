@@ -1,5 +1,6 @@
 import Testing
 import CoreGraphics
+import Foundation
 @testable import MangaTranslator
 
 @Suite("LLMPrompt")
@@ -20,7 +21,7 @@ struct LLMPromptTests {
     // MARK: - userPrompt uses bubble.index, not enumeration offset
 
     @Test("userPrompt preserves original bubble.index after filtering")
-    func userPromptPreservesBubbleIndex() {
+    func userPromptPreservesBubbleIndex() throws {
         // Simulate post-filter bubbles: indices [0, 2, 3] (index 1 was punctuation-only)
         let bubbles = [
             makeBubble(index: 0, text: "Hello"),
@@ -29,13 +30,28 @@ struct LLMPromptTests {
         ]
 
         let prompt = LLMPrompt.userPrompt(bubbles: bubbles)
+        let data = try #require(prompt.data(using: .utf8))
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let indices = json.compactMap { $0["index"] as? Int }
 
         // Each bubble's original index must appear, not 0/1/2
-        #expect(prompt.contains("\"index\": 0"))
-        #expect(prompt.contains("\"index\": 2"))
-        #expect(prompt.contains("\"index\": 3"))
+        #expect(indices == [0, 2, 3])
         // Enumeration offset 1 must NOT appear as an index for the second bubble
-        #expect(!prompt.contains("\"index\": 1"))
+        #expect(!indices.contains(1))
+    }
+
+    @Test("userPrompt emits valid JSON when bubble text contains escapes")
+    func userPromptEscapesJSONStringContent() throws {
+        let bubbles = [
+            makeBubble(index: 5, text: "quote \" slash \\ newline\nend")
+        ]
+
+        let prompt = LLMPrompt.userPrompt(bubbles: bubbles)
+        let data = try #require(prompt.data(using: .utf8))
+        let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+
+        #expect(json?.first?["index"] as? Int == 5)
+        #expect(json?.first?["text"] as? String == "quote \" slash \\ newline\nend")
     }
 
     // MARK: - System prompt does not contain "reorder" instruction
@@ -121,5 +137,31 @@ struct LLMResponseParserTests {
 
         #expect(translated.count == 1)
         #expect(translated[0].bubble.text == "A")
+    }
+
+    @Test("parser accepts fenced JSON and extracts detected terms")
+    func parserAcceptsFencedJSONAndDetectedTerms() throws {
+        let bubbles = [makeBubble(index: 0, text: "花子")]
+        let json = """
+        ```json
+        [
+          {
+            "index": 0,
+            "translation": "Hanako",
+            "detected_terms": [
+              {"source": "花子", "target": "Hanako"}
+            ]
+          }
+        ]
+        ```
+        """
+
+        let (translated, terms) = try LLMResponseParser.parse(json, bubbles: bubbles)
+
+        #expect(translated.first?.translatedText == "Hanako")
+        #expect(terms.count == 1)
+        #expect(terms.first?.sourceTerm == "花子")
+        #expect(terms.first?.targetTerm == "Hanako")
+        #expect(terms.first?.autoDetected == true)
     }
 }
