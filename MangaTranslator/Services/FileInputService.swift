@@ -23,28 +23,24 @@ enum FileInputService {
         return imageURLs.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
-    static func extractArchive(_ archiveURL: URL) throws -> URL {
+    static func extractArchive(
+        _ archiveURL: URL,
+        limits: ArchiveExtractor.Limits = .default,
+        tempDirBase: URL? = nil
+    ) throws -> URL {
         let fm = FileManager.default
-        let tempDir = fm.temporaryDirectory
-            .appendingPathComponent("MangaTranslator")
-            .appendingPathComponent(UUID().uuidString)
+        let base = tempDirBase ?? fm.temporaryDirectory.appendingPathComponent("MangaTranslator")
+        let tempDir = base.appendingPathComponent(UUID().uuidString)
 
         try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-o", archiveURL.path, "-d", tempDir.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
+        do {
+            try ArchiveExtractor.extract(archiveURL: archiveURL, into: tempDir, limits: limits)
+            return tempDir
+        } catch {
+            try? fm.removeItem(at: tempDir)
             throw FileInputError.extractionFailed
         }
-
-        return tempDir
     }
 
     static func copyToTemp(_ url: URL) throws -> URL {
