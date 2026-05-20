@@ -29,6 +29,21 @@ The system SHALL translate pages in the background using Swift concurrency. Page
 - **WHEN** batch translation is running
 - **THEN** no more than 3 pages are being translated simultaneously
 
+### Requirement: Deterministic page state transitions under async OCR
+The system SHALL keep page state transitions deterministic when OCR executes asynchronously during batch translation. Each page SHALL move through `pending` → `processing` → (`translated` | `error`) with every transition occurring exactly once and no intermediate invalid state. OCR compute for each page SHALL execute outside the UI-critical execution context while page state updates continue to flow through the UI state channel.
+
+#### Scenario: Batch translation does not block UI
+- **WHEN** a user starts batch translation with multiple pages and high-accuracy OCR enabled
+- **THEN** OCR compute for each page runs outside the UI-critical execution context while page state updates continue through the UI state channel
+
+#### Scenario: Successful async OCR completion
+- **WHEN** asynchronous OCR completes successfully for a page
+- **THEN** the page transitions from `processing` to `translated` exactly once with no intermediate invalid state
+
+#### Scenario: Async OCR failure
+- **WHEN** asynchronous OCR fails for a page
+- **THEN** the page transitions from `processing` to `error` exactly once and surfaces the OCR error message
+
 ### Requirement: Page navigation
 The system SHALL provide page navigation controls (previous/next buttons, page number indicator) when viewing multi-page manga. Keyboard shortcuts (left/right arrow keys) SHALL also navigate pages.
 
