@@ -10,6 +10,83 @@ protocol ModelDownloading: Sendable {
     func fetchString(from url: URL) async throws -> String
 }
 
+// MARK: - Archive extraction seam
+
+/// Extracts a verified zip archive into a previously-empty staging candidate.
+/// Implementations MUST reject `/usr/bin/unzip` non-zero termination and any
+/// resolved entry path that escapes the staging candidate. Used to isolate
+/// extraction from the install transaction so tests can simulate failures
+/// without crafting real malicious archives.
+protocol ModelArchiveExtracting: Sendable {
+    func extract(archive: URL, into candidate: URL) throws
+}
+
+struct DefaultArchiveExtractor: ModelArchiveExtracting {
+    // Use the project's `ArchiveExtractor` for model archives so we get
+    // `zipinfo`-based pre-extraction validation (absolute-path/`..`/destination-
+    // escape rejection, symlink+special-entry rejection) on top of the same
+    // post-extraction containment check. Doing only post-validation here would
+    // miss entries that `/usr/bin/unzip` writes outside the candidate, since
+    // they wouldn't appear when enumerating the candidate.
+    //
+    // The default ArchiveExtractor.Limits cap a single file at 25 MB and the
+    // total at 500 MB. The PaddleOCR-VL model archive can exceed those limits,
+    // so we widen them here while keeping the file-count cap as a sanity guard.
+    func extract(archive: URL, into candidate: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: candidate, withIntermediateDirectories: true)
+
+        var limits = ArchiveExtractor.Limits()
+        limits.maxSingleFileBytes = 4 * 1024 * 1024 * 1024  // 4 GiB
+        limits.maxTotalBytes = 8 * 1024 * 1024 * 1024       // 8 GiB
+        limits.maxFiles = 10_000
+
+        do {
+            try ArchiveExtractor.extract(archiveURL: archive, into: candidate, limits: limits)
+        } catch {
+            // Map any extractor-specific failure (path traversal, non-zero unzip
+            // exit, post-validation escape) to the model-install verifyFailed.
+            throw PaddleOCRError.verifyFailed
+        }
+    }
+}
+
+// MARK: - Install file-op seam
+
+/// Filesystem operations the install transaction uses for active rename and
+/// rollback. Injecting this seam lets tests simulate rename or rollback
+/// failures deterministically without needing platform-specific permission
+/// tricks.
+protocol ModelInstallFileOps: Sendable {
+    func fileExists(at url: URL) -> Bool
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws
+    func moveItem(at source: URL, to destination: URL) throws
+    func removeItem(at url: URL) throws
+    func contentsOfDirectory(at url: URL) throws -> [URL]
+}
+
+struct DefaultModelInstallFileOps: ModelInstallFileOps {
+    func fileExists(at url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+    }
+
+    func moveItem(at source: URL, to destination: URL) throws {
+        try FileManager.default.moveItem(at: source, to: destination)
+    }
+
+    func removeItem(at url: URL) throws {
+        try FileManager.default.removeItem(at: url)
+    }
+
+    func contentsOfDirectory(at url: URL) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+    }
+}
+
 // MARK: - Configuration
 
 struct ModelDownloadConfiguration {
@@ -18,6 +95,32 @@ struct ModelDownloadConfiguration {
     let modelDirectory: URL
     let userDefaults: UserDefaults
     let downloader: any ModelDownloading
+    let extractor: any ModelArchiveExtracting
+    let installFileOps: any ModelInstallFileOps
+    let availableSpaceProvider: @Sendable () -> Int64?
+
+    init(
+        modelURL: URL,
+        checksumURL: URL,
+        modelDirectory: URL,
+        userDefaults: UserDefaults,
+        downloader: any ModelDownloading,
+        extractor: any ModelArchiveExtracting = DefaultArchiveExtractor(),
+        installFileOps: any ModelInstallFileOps = DefaultModelInstallFileOps(),
+        availableSpaceProvider: @escaping @Sendable () -> Int64? = {
+            let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+            return attrs?[.systemFreeSize] as? Int64
+        }
+    ) {
+        self.modelURL = modelURL
+        self.checksumURL = checksumURL
+        self.modelDirectory = modelDirectory
+        self.userDefaults = userDefaults
+        self.downloader = downloader
+        self.extractor = extractor
+        self.installFileOps = installFileOps
+        self.availableSpaceProvider = availableSpaceProvider
+    }
 
     static var `default`: ModelDownloadConfiguration {
         let modelDir = ModelDownloadService.defaultModelDirectory()
@@ -145,17 +248,53 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
-        cleanupPartialFiles()
-        state = .notDownloaded
+        // The in-flight task's `catch is CancellationError` branch removes any
+        // current-attempt `.next` candidate and empty `.installing` directory and
+        // applies the deterministic failure-state rule. Settle state synchronously
+        // from current evidence in case no task is running.
+        let fm = FileManager.default
+        let container = Self.modelContainer(forLegacyRoot: config.modelDirectory)
+        let priorResolved = Self.resolvedActiveModelDirectory(inContainer: container, fileManager: fm)
+        let priorDownloaded = config.userDefaults.bool(forKey: DefaultsKey.downloaded)
+        if priorResolved != nil && priorDownloaded {
+            state = .downloaded
+        } else {
+            state = .notDownloaded
+        }
     }
 
     func delete() async throws {
+        await lifecycleActor.beginLifecycleMutation()
+        defer {
+            Task {
+                await lifecycleActor.endLifecycleMutation()
+            }
+        }
+
+        // Task 11.2 — wait for any active inference before mutating model artifacts.
         await lifecycleActor.waitForActiveInferences()
 
         let fm = FileManager.default
-        let dir = config.modelDirectory
-        if fm.fileExists(atPath: dir.path) {
-            try fm.removeItem(at: dir)
+        let legacyRoot = config.modelDirectory
+        let container = Self.modelContainer(forLegacyRoot: legacyRoot)
+        let currentDir = container.appendingPathComponent("PaddleOCR-VL.current")
+        let installingRoot = container.appendingPathComponent(".installing")
+
+        // Task 11.1 — remove `.current`, legacy root, `.installing`, and any backup directories.
+        // Task 11.3 — idempotent: only attempt removal when the target path exists.
+        if fm.fileExists(atPath: currentDir.path) {
+            try fm.removeItem(at: currentDir)
+        }
+        if fm.fileExists(atPath: legacyRoot.path) {
+            try fm.removeItem(at: legacyRoot)
+        }
+        if fm.fileExists(atPath: installingRoot.path) {
+            try fm.removeItem(at: installingRoot)
+        }
+        if let kids = try? fm.contentsOfDirectory(at: container, includingPropertiesForKeys: nil) {
+            for kid in kids where kid.lastPathComponent.hasPrefix("PaddleOCR-VL.backup") {
+                try? fm.removeItem(at: kid)
+            }
         }
 
         config.userDefaults.removeObject(forKey: DefaultsKey.downloaded)
@@ -163,12 +302,19 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
         config.userDefaults.set(false, forKey: DefaultsKey.enabled)
         paddleOCREnabled = false
+        // Task 11.4 — `delete()` always settles to `.notDownloaded`; concurrent
+        // `verifyOnLaunch` either runs before delete clears artifacts (resolving
+        // the now-absent model and resetting state) or after (no-op fast path).
         state = .notDownloaded
     }
 
     func verify() async -> Bool {
-        let archivePath = config.modelDirectory.appendingPathComponent("model.zip")
         let fm = FileManager.default
+        let container = Self.modelContainer(forLegacyRoot: config.modelDirectory)
+        guard let activeDir = Self.resolvedActiveModelDirectory(inContainer: container, fileManager: fm) else {
+            return false
+        }
+        let archivePath = activeDir.appendingPathComponent("model.zip")
         guard fm.fileExists(atPath: archivePath.path) else { return false }
 
         let storedChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum) ?? ""
@@ -181,36 +327,45 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     func verifyOnLaunch() async {
         guard config.userDefaults.bool(forKey: DefaultsKey.downloaded) else { return }
 
-        // Fast-path when integrity evidence is fresh (within last 7 days)
-        let lastVerified = config.userDefaults.double(forKey: DefaultsKey.lastVerified)
-        let now = Date().timeIntervalSince1970
-        let isFresh = (now - lastVerified) < (86400 * 7)
+        await lifecycleActor.beginLifecycleMutation()
+        defer {
+            Task {
+                await lifecycleActor.endLifecycleMutation()
+            }
+        }
 
-        // Full SHA256 when evidence is stale or suspicious
-        let storedChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum) ?? ""
-        let archivePath = config.modelDirectory.appendingPathComponent("model.zip")
         let fm = FileManager.default
+        let container = Self.modelContainer(forLegacyRoot: config.modelDirectory)
 
+        // Task 9.1 — resolve the active model directory before choosing the archive path.
+        guard let activeDir = Self.resolvedActiveModelDirectory(inContainer: container, fileManager: fm) else {
+            resetDownloadState()
+            return
+        }
+        let archivePath = activeDir.appendingPathComponent("model.zip")
+
+        // Task 9.3 — clear state when the archive itself is missing.
         guard fm.fileExists(atPath: archivePath.path) else {
             resetDownloadState()
             return
         }
 
-        guard Self.resolvedModelDirectory(in: config.modelDirectory, fileManager: fm) != nil else {
-            resetDownloadState()
-            return
-        }
-
+        let storedChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum) ?? ""
         if storedChecksum.isEmpty {
             resetDownloadState()
             return
         }
 
+        // Task 9.4 — fast-path only when resolution + archive path are valid AND evidence is fresh.
+        let lastVerified = config.userDefaults.double(forKey: DefaultsKey.lastVerified)
+        let now = Date().timeIntervalSince1970
+        let isFresh = (now - lastVerified) < (86400 * 7)
         if isFresh {
             state = .downloaded
             return
         }
 
+        // Task 9.2 — full SHA256 on the resolved archive when evidence is stale.
         let valid = await Task.detached(priority: .background) { [archivePath, storedChecksum] in
             guard let computed = Self.sha256Static(of: archivePath) else { return false }
             return computed == storedChecksum
@@ -239,15 +394,33 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     private func performDownload() async {
         state = .downloading(progress: 0)
 
+        let fm = FileManager.default
+        let legacyRoot = config.modelDirectory
+        let container = Self.modelContainer(forLegacyRoot: legacyRoot)
+        let currentDir = container.appendingPathComponent("PaddleOCR-VL.current")
+        let installingRoot = container.appendingPathComponent(".installing")
+        let attemptID = UUID().uuidString
+        let candidate = installingRoot.appendingPathComponent("PaddleOCR-VL.next.\(attemptID)")
+        let backupURL = container.appendingPathComponent("PaddleOCR-VL.backup.\(attemptID)")
+
+        // Task 5.2 — capture pre-attempt snapshot before mutating install artifacts.
+        let priorResolved = Self.resolvedActiveModelDirectory(inContainer: container, fileManager: fm)
+        let priorDownloaded = config.userDefaults.bool(forKey: DefaultsKey.downloaded)
+        let priorChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum)
+        let priorLastVerified = config.userDefaults.double(forKey: DefaultsKey.lastVerified)
+        let priorEnabled = config.userDefaults.bool(forKey: DefaultsKey.enabled)
+        let hadPriorValid = priorResolved != nil
+
+        var stagingCreated = false
+        var backupCreated = false
+
         do {
-            // Check disk space (heuristic: need at least 2GB free)
-            let fm = FileManager.default
-            let attrs = try? fm.attributesOfFileSystem(forPath: NSHomeDirectory())
-            if let free = attrs?[.systemFreeSize] as? Int64, free < 2_147_483_648 {
+            // Heuristic: need at least 2GB free on the home volume.
+            if let free = config.availableSpaceProvider(), free < 2_147_483_648 {
                 throw PaddleOCRError.storageUnavailable("Insufficient disk space")
             }
 
-            // Fetch expected checksum; sha256sum format is "<hash>  <filename>" — extract first token
+            // sha256sum format is "<hash>  <filename>" — keep only the hash token.
             let rawChecksum = try await config.downloader.fetchString(from: config.checksumURL)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let expectedChecksum = rawChecksum
@@ -258,14 +431,13 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
             }
             DebugLogger.shared.log("Expected checksum prefix: \(expectedChecksum.prefix(16))…", level: .info, category: .modelDownload)
 
-            // Download archive
             let tempFile = try await config.downloader.download(from: config.modelURL) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.state = .downloading(progress: progress)
                 }
             }
 
-            // Verify checksum
+            // Task 5.1 — verify archive checksum BEFORE creating any install directory.
             let actualChecksum = sha256(of: tempFile) ?? ""
             DebugLogger.shared.log("Actual checksum prefix:   \(actualChecksum.prefix(16))…", level: .info, category: .modelDownload)
             guard !actualChecksum.isEmpty, actualChecksum == expectedChecksum else {
@@ -274,90 +446,138 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
                 throw PaddleOCRError.verifyFailed
             }
 
-            // Create destination directory
-            let destDir = config.modelDirectory
-            try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+            // Task 5.3 / 5.4 — stage candidate at `<container>/.installing/PaddleOCR-VL.next.<uuid>`
+            // and move the verified archive inside it before extraction.
+            try config.installFileOps.createDirectory(at: candidate, withIntermediateDirectories: true)
+            stagingCreated = true
+            let stagedArchive = candidate.appendingPathComponent("model.zip")
+            try config.installFileOps.moveItem(at: tempFile, to: stagedArchive)
 
-            // Ensure destination is writable
-            guard fm.isWritableFile(atPath: destDir.path) else {
-                try? fm.removeItem(at: tempFile)
-                throw PaddleOCRError.storageUnavailable("Model directory is not writable")
+            // Task 5.5 / 5.6 — extract only into the candidate; extractor enforces path-traversal
+            // and non-zero unzip exit as failures.
+            try config.extractor.extract(archive: stagedArchive, into: candidate)
+
+            // Task 5.7 — validate using the same predicate as the resolver.
+            guard Self.hasSupportedModelWeights(in: candidate, fileManager: fm) else {
+                throw PaddleOCRError.verifyFailed
             }
 
-            // Extract with path traversal protection
-            let stagingDir = destDir.appendingPathComponent(".staging_\(UUID().uuidString)")
-            try extractZipSecurely(from: tempFile, to: stagingDir, root: destDir)
+            // Task 5.8 — promote candidate to `.current`, backing up any existing `.current` first.
+            if config.installFileOps.fileExists(at: currentDir) {
+                try config.installFileOps.moveItem(at: currentDir, to: backupURL)
+                backupCreated = true
+            }
 
-            // Move extracted files into destDir so the recognizer can load them
-            if let extractedItems = try? fm.contentsOfDirectory(at: stagingDir, includingPropertiesForKeys: nil) {
-                for item in extractedItems {
-                    let dest = destDir.appendingPathComponent(item.lastPathComponent)
-                    if fm.fileExists(atPath: dest.path) {
-                        try fm.removeItem(at: dest)
+            do {
+                try config.installFileOps.moveItem(at: candidate, to: currentDir)
+                stagingCreated = false
+            } catch let promotionError {
+                // Task 5.10 — rollback from backup; if rollback fails, debug-log and rethrow.
+                if backupCreated {
+                    do {
+                        try config.installFileOps.moveItem(at: backupURL, to: currentDir)
+                        backupCreated = false
+                    } catch let rollbackError {
+                        DebugLogger.shared.log(
+                            "Rollback from backup failed: \(rollbackError.localizedDescription)",
+                            level: .error,
+                            category: .modelDownload
+                        )
                     }
-                    try fm.moveItem(at: item, to: dest)
                 }
+                throw promotionError
             }
-            try? fm.removeItem(at: stagingDir)
 
-            // Keep the verified archive alongside extracted files
-            let finalArchive = destDir.appendingPathComponent("model.zip")
-            if fm.fileExists(atPath: finalArchive.path) {
-                try fm.removeItem(at: finalArchive)
+            // Task 5.9 — delete backup only after promotion succeeds.
+            if backupCreated {
+                try? config.installFileOps.removeItem(at: backupURL)
+                backupCreated = false
             }
-            try fm.moveItem(at: tempFile, to: finalArchive)
 
-            // Persist state
+            // Task 5.12 — update metadata only after `.current` resolves as valid.
             config.userDefaults.set(true, forKey: DefaultsKey.downloaded)
             config.userDefaults.set(expectedChecksum, forKey: DefaultsKey.checksum)
             config.userDefaults.set(Date().timeIntervalSince1970, forKey: DefaultsKey.lastVerified)
             config.userDefaults.set(true, forKey: DefaultsKey.enabled)
             paddleOCREnabled = true
-
             state = .downloaded
 
+            // Clean up `.installing` if it is now empty.
+            removeEmptyInstallingRoot(installingRoot)
+
         } catch is CancellationError {
-            cleanupPartialFiles()
-            state = .notDownloaded
+            cleanupStagingArtifacts(candidate: candidate, stagingCreated: stagingCreated, installingRoot: installingRoot)
+            applyDeterministicFailure(
+                hadPriorValid: hadPriorValid,
+                priorChecksum: priorChecksum,
+                priorDownloaded: priorDownloaded,
+                priorLastVerified: priorLastVerified,
+                priorEnabled: priorEnabled,
+                firstInstallState: .notDownloaded
+            )
         } catch let error as PaddleOCRError {
-            state = .failed(error)
+            cleanupStagingArtifacts(candidate: candidate, stagingCreated: stagingCreated, installingRoot: installingRoot)
+            applyDeterministicFailure(
+                hadPriorValid: hadPriorValid,
+                priorChecksum: priorChecksum,
+                priorDownloaded: priorDownloaded,
+                priorLastVerified: priorLastVerified,
+                priorEnabled: priorEnabled,
+                firstInstallState: .failed(error)
+            )
         } catch {
-            state = .failed(.downloadFailed(error.localizedDescription))
+            cleanupStagingArtifacts(candidate: candidate, stagingCreated: stagingCreated, installingRoot: installingRoot)
+            applyDeterministicFailure(
+                hadPriorValid: hadPriorValid,
+                priorChecksum: priorChecksum,
+                priorDownloaded: priorDownloaded,
+                priorLastVerified: priorLastVerified,
+                priorEnabled: priorEnabled,
+                firstInstallState: .failed(.downloadFailed(error.localizedDescription))
+            )
         }
     }
 
-    private func cleanupPartialFiles() {
-        let fm = FileManager.default
-        let dir = config.modelDirectory
-        let archive = dir.appendingPathComponent("model.zip")
-        try? fm.removeItem(at: archive)
+    private func cleanupStagingArtifacts(candidate: URL, stagingCreated: Bool, installingRoot: URL) {
+        if stagingCreated {
+            try? config.installFileOps.removeItem(at: candidate)
+        }
+        removeEmptyInstallingRoot(installingRoot)
     }
 
-    private func extractZipSecurely(from archive: URL, to staging: URL, root: URL) throws {
-        // Security: Process unzips to staging; reject path traversal
-        let fm = FileManager.default
-        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        task.arguments = ["-o", archive.path, "-d", staging.path]
-
-        let pipe = Pipe()
-        task.standardError = pipe
-        task.standardOutput = pipe
-
-        try task.run()
-        task.waitUntilExit()
-
-        // Check for path traversal: all extracted entries must be within staging
-        guard let enumerator = fm.enumerator(at: staging, includingPropertiesForKeys: nil) else { return }
-        for case let url as URL in enumerator {
-            let resolved = url.standardized
-            if !resolved.path.hasPrefix(staging.standardized.path) {
-                try fm.removeItem(at: staging)
-                throw PaddleOCRError.verifyFailed
-            }
+    private func removeEmptyInstallingRoot(_ installingRoot: URL) {
+        if let children = try? config.installFileOps.contentsOfDirectory(at: installingRoot),
+           children.isEmpty {
+            try? config.installFileOps.removeItem(at: installingRoot)
         }
+    }
+
+    // Task 5.13 — restore prior downloaded state when a valid pre-attempt model existed;
+    // otherwise clear metadata, disable enabled, and transition to the requested failure state.
+    private func applyDeterministicFailure(
+        hadPriorValid: Bool,
+        priorChecksum: String?,
+        priorDownloaded: Bool,
+        priorLastVerified: Double,
+        priorEnabled: Bool,
+        firstInstallState: ModelDownloadState
+    ) {
+        if hadPriorValid {
+            // Prior metadata was never overwritten on the success path; just re-settle the
+            // in-memory @Published mirrors so observers see the prior `.downloaded` state.
+            paddleOCREnabled = priorEnabled
+            state = .downloaded
+        } else {
+            config.userDefaults.removeObject(forKey: DefaultsKey.downloaded)
+            config.userDefaults.removeObject(forKey: DefaultsKey.checksum)
+            config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
+            config.userDefaults.set(false, forKey: DefaultsKey.enabled)
+            paddleOCREnabled = false
+            state = firstInstallState
+        }
+        _ = priorChecksum
+        _ = priorDownloaded
+        _ = priorLastVerified
     }
 
     private func resetDownloadState() {
@@ -413,12 +633,43 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         fileManager: FileManager = .default,
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> URL? {
-        for root in productionModelSearchRoots(homeDirectory: homeDirectory) {
-            if let resolved = resolvedModelDirectory(in: root, fileManager: fileManager) {
+        // Each search root is a legacy `PaddleOCR-VL` path. Resolve at the parent
+        // container so the resolver can pick `.current` first, falling back to
+        // legacy root, then the single valid legacy child. Calling the legacy-
+        // root–scoped `resolvedModelDirectory(in:)` here would miss sibling
+        // `.current` directories created by the atomic install path.
+        for legacyRoot in productionModelSearchRoots(homeDirectory: homeDirectory) {
+            let container = modelContainer(forLegacyRoot: legacyRoot)
+            if let resolved = resolvedActiveModelDirectory(inContainer: container, fileManager: fileManager) {
                 return resolved
             }
         }
         return nil
+    }
+
+    // Resolves the active local model directory from the container that holds
+    // `.current`, legacy `PaddleOCR-VL`, and `.installing`. Order:
+    //   1. `<container>/PaddleOCR-VL.current`
+    //   2. `<container>/PaddleOCR-VL`
+    //   3. single valid child under `<container>/PaddleOCR-VL`
+    // Returns nil for any ambiguous or missing state.
+    nonisolated static func resolvedActiveModelDirectory(
+        inContainer container: URL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let current = container.appendingPathComponent("PaddleOCR-VL.current")
+        if hasSupportedModelWeights(in: current, fileManager: fileManager) {
+            return current
+        }
+
+        let legacyRoot = container.appendingPathComponent("PaddleOCR-VL")
+        return resolvedModelDirectory(in: legacyRoot, fileManager: fileManager)
+    }
+
+    // The model container is the parent of the legacy `PaddleOCR-VL` directory.
+    // Install transactions, `.current`, and backups all live under this container.
+    nonisolated static func modelContainer(forLegacyRoot legacyRoot: URL) -> URL {
+        legacyRoot.deletingLastPathComponent()
     }
 
     nonisolated static func resolvedModelDirectory(
@@ -482,6 +733,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
 
 actor ModelLifecycleActor {
     private var activeInferenceCount = 0
+    private var lifecycleMutationActive = false
 
     func beginInference() {
         activeInferenceCount += 1
@@ -495,6 +747,17 @@ actor ModelLifecycleActor {
         while activeInferenceCount > 0 {
             await Task.yield()
         }
+    }
+
+    func beginLifecycleMutation() async {
+        while lifecycleMutationActive {
+            await Task.yield()
+        }
+        lifecycleMutationActive = true
+    }
+
+    func endLifecycleMutation() {
+        lifecycleMutationActive = false
     }
 }
 

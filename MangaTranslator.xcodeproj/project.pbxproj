@@ -110,6 +110,7 @@
 		TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV20000010000000000000001 /* TranslationViewModelTests.swift */; };
 		AE10000010000000000000001 /* ArchiveExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE20000010000000000000001 /* ArchiveExtractor.swift */; };
 		AE10000010000000000000002 /* ArchiveExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE20000010000000000000002 /* ArchiveExtractorTests.swift */; };
+		MD10000010000000000000001 /* ModelDownloadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MD20000010000000000000001 /* ModelDownloadServiceTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -269,6 +270,7 @@
 		TV20000010000000000000001 /* TranslationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModelTests.swift; sourceTree = "<group>"; };
 		AE20000010000000000000001 /* ArchiveExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveExtractor.swift; sourceTree = "<group>"; };
 		AE20000010000000000000002 /* ArchiveExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveExtractorTests.swift; sourceTree = "<group>"; };
+		MD20000010000000000000001 /* ModelDownloadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadServiceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -501,6 +503,7 @@
 				T20000010000000000000011 /* ComicTextDetectorTests.swift */,
 				T20000010000000000000012 /* CacheServiceTests.swift */,
 				AE20000010000000000000002 /* ArchiveExtractorTests.swift */,
+				MD20000010000000000000001 /* ModelDownloadServiceTests.swift */,
 			);
 			path = MangaTranslatorTests;
 			sourceTree = "<group>";
@@ -822,6 +825,7 @@
 				T10000010000000000000010 /* ComicTextDetectorTests.swift in Sources */,
 				T10000010000000000000012 /* CacheServiceTests.swift in Sources */,
 				AE10000010000000000000002 /* ArchiveExtractorTests.swift in Sources */,
+				MD10000010000000000000001 /* ModelDownloadServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

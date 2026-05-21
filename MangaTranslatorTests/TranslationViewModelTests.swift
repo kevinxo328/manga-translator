@@ -81,18 +81,25 @@ final class TranslationViewModelTests: XCTestCase {
 
     func testSameLanguageEmitsCorrectLogMetadata() async {
         let prefs = makePrefs(source: .ja, target: .ja)
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        let logFixture = makeDebugLogFixture()
+        defer { logFixture.cleanup() }
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            pipelineLogger: logFixture.logger
+        )
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/same-lang-log.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
 
         await vm.translatePage(at: 0, bypassCache: true)
-        await DebugLogger.shared.flush()
+        await logFixture.logger.flush()
 
         var filter = DebugLogFilter()
         filter.category = .pipeline
-        filter.sessionIDFilter = .session(DebugLogger.shared.sessionID)
-        let entries = await DebugLogStore.shared.queryAll(filter: filter)
+        filter.sessionIDFilter = .session(logFixture.logger.sessionID)
+        let entries = await logFixture.store.queryAll(filter: filter)
         let entry = entries.first { $0.metadataJSON.contains("same_language") }
         guard let entry else {
             return XCTFail("No pipeline log entry with reason:same_language found")
@@ -107,18 +114,25 @@ final class TranslationViewModelTests: XCTestCase {
     func testMeaninglessFilterEmitsFilteredCountMetadata() async {
         let router = await makeRouter(recognizerText: "。")
         let prefs = makePrefs(source: .ja, target: .zhHant)
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
+        let logFixture = makeDebugLogFixture()
+        defer { logFixture.cleanup() }
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: TrackingTranslationService(),
+            pipelineLogger: logFixture.logger
+        )
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/punct-log.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
 
         await vm.translatePage(at: 0, bypassCache: true)
-        await DebugLogger.shared.flush()
+        await logFixture.logger.flush()
 
         var filter = DebugLogFilter()
         filter.category = .pipeline
-        filter.sessionIDFilter = .session(DebugLogger.shared.sessionID)
-        let entries = await DebugLogStore.shared.queryAll(filter: filter)
+        filter.sessionIDFilter = .session(logFixture.logger.sessionID)
+        let entries = await logFixture.store.queryAll(filter: filter)
         let filterEntry = entries.first { $0.metadataJSON.contains("filtered_count") }
         guard let filterEntry else {
             return XCTFail("No pipeline log entry with filtered_count found")
@@ -691,6 +705,13 @@ private func decodeMeta(_ json: String) -> [String: String] {
     guard let data = json.data(using: .utf8),
           let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
     return dict
+}
+
+private func makeDebugLogFixture() -> (store: DebugLogStore, logger: DebugLogger, cleanup: () -> Void) {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+    let store = DebugLogStore(databaseURL: url)
+    let logger = DebugLogger(store: store)
+    return (store, logger, { try? FileManager.default.removeItem(at: url) })
 }
 
 @MainActor

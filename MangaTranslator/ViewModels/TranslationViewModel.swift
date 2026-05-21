@@ -7,6 +7,35 @@ import UniformTypeIdentifiers
 import MangaTranslatorMLX
 #endif
 
+protocol PipelineLogging: Sendable {
+    var sessionID: String { get }
+    func log(
+        _ message: String,
+        level: DebugLogLevel,
+        category: DebugLogCategory,
+        kind: DebugLogKind,
+        metadata: [String: String],
+        filePath: String?,
+        source: String
+    )
+}
+
+extension PipelineLogging {
+    func log(
+        _ message: String,
+        level: DebugLogLevel,
+        category: DebugLogCategory,
+        kind: DebugLogKind = .operational,
+        metadata: [String: String] = [:],
+        filePath: String? = nil,
+        source: String = #fileID
+    ) {
+        log(message, level: level, category: category, kind: kind, metadata: metadata, filePath: filePath, source: source)
+    }
+}
+
+extension DebugLogger: PipelineLogging {}
+
 @MainActor
 final class TranslationViewModel: ObservableObject {
     @Published var pages: [MangaPage] = []
@@ -34,14 +63,21 @@ final class TranslationViewModel: ObservableObject {
     private let keychainService = KeychainService()
     private var cancellables = Set<AnyCancellable>()
     private let translationServiceOverride: (any TranslationService)?
+    private let pipelineLogger: any PipelineLogging
 
     private var glossaryService: GlossaryService { cacheService.glossaryService }
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
     private var recentPageTranslations: [String] = []
 
-    init(preferences: PreferencesService, ocrRouter: OCRRouter? = nil, translationService: (any TranslationService)? = nil) {
+    init(
+        preferences: PreferencesService,
+        ocrRouter: OCRRouter? = nil,
+        translationService: (any TranslationService)? = nil,
+        pipelineLogger: any PipelineLogging = DebugLogger.shared
+    ) {
         self.preferences = preferences
         self.translationServiceOverride = translationService
+        self.pipelineLogger = pipelineLogger
         #if arch(arm64)
         self.ocrRouter = ocrRouter ?? OCRRouter.makeProductionRouter()
         #else
@@ -304,7 +340,7 @@ final class TranslationViewModel: ObservableObject {
         }
 
         guard preferences.sourceLanguage != preferences.targetLanguage else {
-            DebugLogger.shared.log(
+            pipelineLogger.log(
                 "Page \(index + 1): skipped OCR and translation — source == target",
                 level: .info,
                 category: .pipeline,
@@ -366,7 +402,7 @@ final class TranslationViewModel: ObservableObject {
             let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
             let skippedCount = ordered.count - meaningful.count
             if skippedCount > 0 {
-                DebugLogger.shared.log(
+                pipelineLogger.log(
                     "Page \(index + 1): filtered \(skippedCount) of \(ordered.count) meaningless bubble(s)",
                     level: .info,
                     category: .pipeline,
@@ -378,7 +414,7 @@ final class TranslationViewModel: ObservableObject {
                 )
             }
             if meaningful.isEmpty {
-                DebugLogger.shared.log(
+                pipelineLogger.log(
                     "Page \(index + 1): no meaningful bubbles after OCR — skipping translation",
                     level: .info,
                     category: .pipeline,
