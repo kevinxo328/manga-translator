@@ -11,27 +11,35 @@ struct CopilotEnvironmentTests {
         #expect(result == nil)
     }
 
-    @Test("parseModels keeps only explicitly enabled models")
-    func parseModelsKeepsOnlyExplicitlyEnabledModels() throws {
+    @Test("parseModels keeps usable chat models even when hidden from Copilot's picker")
+    func parseModelsKeepsUsableChatModelsHiddenFromCopilotPicker() throws {
         let json = """
         {
           "data": [
             {
               "id": "claude-sonnet-4.5",
               "name": "Claude Sonnet 4.5",
-              "model_picker_enabled": true,
-              "model_picker_category": "versatile"
+              "model_picker_enabled": false,
+              "model_picker_category": "versatile",
+              "policy": { "state": "enabled" },
+              "capabilities": { "type": "chat" },
+              "supported_endpoints": ["/chat/completions", "/v1/messages"]
             },
             {
-              "id": "gpt-3.5-turbo",
-              "name": "GPT 3.5 Turbo",
-              "model_picker_enabled": false
+              "id": "blocked-model",
+              "name": "Blocked Model",
+              "model_picker_enabled": true,
+              "policy": { "state": "disabled" },
+              "capabilities": { "type": "chat" },
+              "supported_endpoints": ["/chat/completions"]
             },
             {
-              "id": "claude-opus-4.5",
-              "name": "Claude Opus 4.5",
+              "id": "text-embedding-3-small",
+              "name": "Embedding",
               "model_picker_enabled": true,
-              "model_picker_category": "powerful"
+              "policy": { "state": "enabled" },
+              "capabilities": { "type": "embeddings" },
+              "supported_endpoints": ["/embeddings"]
             },
             {
               "id": "gpt-4o",
@@ -43,11 +51,11 @@ struct CopilotEnvironmentTests {
 
         let models = try CopilotEnvironment.parseModels(json)
         #expect(models.count == 2)
-        #expect(models.map(\.id).sorted() == ["claude-opus-4.5", "claude-sonnet-4.5"])
+        #expect(models.map(\.id).sorted() == ["claude-sonnet-4.5", "gpt-4o"])
     }
 
-    @Test("parseModels excludes null and missing model_picker_enabled")
-    func parseModelsExcludesNullAndMissingPickerEnabled() throws {
+    @Test("parseModels excludes only picker-disabled models without usable chat signals")
+    func parseModelsExcludesPickerDisabledModelsWithoutUsableChatSignals() throws {
         let json = """
         {
           "data": [
@@ -60,7 +68,7 @@ struct CopilotEnvironmentTests {
         """.data(using: .utf8)!
 
         let models = try CopilotEnvironment.parseModels(json)
-        #expect(models.map(\.id) == ["true-model"])
+        #expect(models.map(\.id).sorted() == ["missing-model", "null-model", "true-model"])
     }
 
     @Test("parseModels sorts by name")
@@ -126,8 +134,22 @@ final class CopilotEnvironmentFetchModelsTests {
         let disabledJSON = """
         {
           "data": [
-            { "id": "d1", "name": "Disabled1", "model_picker_enabled": false },
-            { "id": "d2", "name": "Disabled2" }
+            {
+              "id": "d1",
+              "name": "Disabled1",
+              "model_picker_enabled": false,
+              "policy": { "state": "disabled" },
+              "capabilities": { "type": "chat" },
+              "supported_endpoints": ["/chat/completions"]
+            },
+            {
+              "id": "d2",
+              "name": "Disabled2",
+              "model_picker_enabled": true,
+              "policy": { "state": "enabled" },
+              "capabilities": { "type": "embeddings" },
+              "supported_endpoints": ["/embeddings"]
+            }
           ]
         }
         """.data(using: .utf8)!

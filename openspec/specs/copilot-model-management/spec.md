@@ -10,12 +10,13 @@ The system SHALL define a `CopilotModel` structure to store information about Gi
 - **THEN** it contains `id`, `name`, and `category` (optional String)
 
 ### Requirement: Filtered model fetching
-The system SHALL fetch the list of available models from GitHub Copilot API and include only models where `model_picker_enabled` is `true`. The system SHALL try `api.individual.githubcopilot.com` first, then fall back to `api.githubcopilot.com` if the first endpoint returns no results.
+The system SHALL fetch the list of available models from GitHub Copilot API and include models that are usable through chat completion endpoints. The system SHALL not treat `model_picker_enabled == false` as sufficient reason to hide a model when the response also indicates the model is policy-enabled or supports `/chat/completions`, because GitHub Copilot CLI can return callable models with `model_picker_enabled == false`. The system SHALL try `api.individual.githubcopilot.com` first, then fall back to `api.githubcopilot.com` if the first endpoint returns no results.
 
 #### Scenario: Fetching and filtering picker-enabled models
 - **WHEN** `CopilotEnvironment.fetchModels` is called
 - **THEN** it sends a request with `Copilot-Integration-Id: vscode-chat` and `X-GitHub-Api-Version: 2022-11-28`
-- **THEN** it returns only models where `model_picker_enabled == true`
+- **THEN** it returns models that are policy-enabled chat models or otherwise have no explicit unusable signal
+- **THEN** it excludes models whose policy state is `disabled`, whose capability type is non-chat, or whose supported endpoints do not include `/chat/completions` or `/responses`
 - **THEN** results are sorted alphabetically by name
 
 #### Scenario: Dual endpoint fallback
@@ -68,4 +69,3 @@ The API Keys tab in Settings SHALL include a GitHub Copilot section that display
 #### Scenario: Engine picker hides Copilot when unavailable
 - **WHEN** user opens the engine picker in the Preferences tab and Copilot CLI is not installed or not logged in
 - **THEN** the "GitHub Copilot" option is not shown in the picker
-
