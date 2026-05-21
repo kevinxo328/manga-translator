@@ -11,35 +11,26 @@ struct CopilotEnvironmentTests {
         #expect(result == nil)
     }
 
-    @Test("parseModels keeps usable chat models even when hidden from Copilot's picker")
-    func parseModelsKeepsUsableChatModelsHiddenFromCopilotPicker() throws {
+    @Test("parseModels keeps picker-enabled and unspecified models")
+    func parseModelsKeepsPickerEnabledAndUnspecifiedModels() throws {
         let json = """
         {
           "data": [
             {
               "id": "claude-sonnet-4.5",
               "name": "Claude Sonnet 4.5",
-              "model_picker_enabled": false,
-              "model_picker_category": "versatile",
-              "policy": { "state": "enabled" },
-              "capabilities": { "type": "chat" },
-              "supported_endpoints": ["/chat/completions", "/v1/messages"]
+              "model_picker_enabled": true,
+              "model_picker_category": "versatile"
             },
             {
-              "id": "blocked-model",
-              "name": "Blocked Model",
-              "model_picker_enabled": true,
-              "policy": { "state": "disabled" },
-              "capabilities": { "type": "chat" },
-              "supported_endpoints": ["/chat/completions"]
+              "id": "disabled-model",
+              "name": "Disabled Model",
+              "model_picker_enabled": false
             },
             {
               "id": "text-embedding-3-small",
               "name": "Embedding",
-              "model_picker_enabled": true,
-              "policy": { "state": "enabled" },
-              "capabilities": { "type": "embeddings" },
-              "supported_endpoints": ["/embeddings"]
+              "model_picker_enabled": true
             },
             {
               "id": "gpt-4o",
@@ -54,8 +45,8 @@ struct CopilotEnvironmentTests {
         #expect(models.map(\.id).sorted() == ["claude-sonnet-4.5", "gpt-4o"])
     }
 
-    @Test("parseModels excludes only picker-disabled models without usable chat signals")
-    func parseModelsExcludesPickerDisabledModelsWithoutUsableChatSignals() throws {
+    @Test("parseModels excludes only picker-disabled models")
+    func parseModelsExcludesOnlyPickerDisabledModels() throws {
         let json = """
         {
           "data": [
@@ -108,8 +99,8 @@ final class CopilotEnvironmentFetchModelsTests {
         CopilotMockURLProtocol.reset()
     }
 
-    @Test("fetchModels sends vscode-chat integration id and api version header")
-    func fetchModelsUsesVSCodeIntegrationHeaders() async throws {
+    @Test("fetchModels sends Copilot CLI integration id")
+    func fetchModelsUsesCopilotCLIIntegrationHeaders() async throws {
         let enabledJSON = """
         { "data": [ { "id": "m1", "name": "M1", "model_picker_enabled": true } ] }
         """.data(using: .utf8)!
@@ -124,31 +115,25 @@ final class CopilotEnvironmentFetchModelsTests {
 
         let requests = CopilotMockURLProtocol.captured()
         let firstRequest = try #require(requests.first)
-        #expect(firstRequest.value(forHTTPHeaderField: "Copilot-Integration-Id") == "vscode-chat")
-        #expect(firstRequest.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
+        #expect(firstRequest.value(forHTTPHeaderField: "Copilot-Integration-Id") == "copilot-developer-cli")
+        #expect(firstRequest.value(forHTTPHeaderField: "X-GitHub-Api-Version") == nil)
         #expect(firstRequest.value(forHTTPHeaderField: "Authorization") == "Bearer tok-abc")
     }
 
-    @Test("fetchModels falls back when first endpoint returns only disabled models")
-    func fetchModelsFallsBackWhenFirstEndpointReturnsOnlyDisabledModels() async throws {
+    @Test("fetchModels falls back when first endpoint returns only picker-disabled models")
+    func fetchModelsFallsBackWhenFirstEndpointReturnsOnlyPickerDisabledModels() async throws {
         let disabledJSON = """
         {
           "data": [
             {
               "id": "d1",
               "name": "Disabled1",
-              "model_picker_enabled": false,
-              "policy": { "state": "disabled" },
-              "capabilities": { "type": "chat" },
-              "supported_endpoints": ["/chat/completions"]
+              "model_picker_enabled": false
             },
             {
               "id": "d2",
               "name": "Disabled2",
-              "model_picker_enabled": true,
-              "policy": { "state": "enabled" },
-              "capabilities": { "type": "embeddings" },
-              "supported_endpoints": ["/embeddings"]
+              "model_picker_enabled": false
             }
           ]
         }

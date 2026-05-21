@@ -42,8 +42,7 @@ struct CopilotEnvironment {
     static func fetchModelsFromEndpoint(token: String, urlString: String, session: URLSession = .shared) async throws -> [CopilotModel] {
         var request = URLRequest(url: URL(string: urlString)!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("vscode-chat", forHTTPHeaderField: "Copilot-Integration-Id")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue("copilot-developer-cli", forHTTPHeaderField: "Copilot-Integration-Id")
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
@@ -59,42 +58,11 @@ struct CopilotEnvironment {
                 let name: String?
                 let modelPickerEnabled: Bool?
                 let modelPickerCategory: String?
-                let policy: Policy?
-                let capabilities: Capabilities?
-                let supportedEndpoints: [String]?
-
-                struct Policy: Decodable {
-                    let state: String?
-                }
-
-                struct Capabilities: Decodable {
-                    let type: String?
-                }
 
                 enum CodingKeys: String, CodingKey {
                     case id, name
                     case modelPickerEnabled = "model_picker_enabled"
                     case modelPickerCategory = "model_picker_category"
-                    case policy, capabilities
-                    case supportedEndpoints = "supported_endpoints"
-                }
-
-                var isUsableChatModel: Bool {
-                    if id.hasPrefix("text-embedding") { return false }
-                    if policy?.state == "disabled" { return false }
-                    if let type = capabilities?.type, type != "chat" { return false }
-                    if let supportedEndpoints,
-                       !supportedEndpoints.contains("/chat/completions"),
-                       !supportedEndpoints.contains("/responses") {
-                        return false
-                    }
-                    if modelPickerEnabled == false {
-                        return policy?.state == "enabled"
-                            || capabilities?.type == "chat"
-                            || supportedEndpoints?.contains("/chat/completions") == true
-                            || supportedEndpoints?.contains("/responses") == true
-                    }
-                    return true
                 }
             }
             let data: [Model]
@@ -102,7 +70,8 @@ struct CopilotEnvironment {
 
         let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
         return decoded.data
-            .filter(\.isUsableChatModel)
+            .filter { !$0.id.hasPrefix("text-embedding") }
+            .filter { $0.modelPickerEnabled != false }
             .map { model in
                 CopilotModel(
                     id: model.id,
