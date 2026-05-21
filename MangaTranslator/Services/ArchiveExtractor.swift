@@ -260,6 +260,14 @@ enum ArchiveExtractor {
         switch entry.firstChar {
         case "-", "d":
             return
+        case "?":
+            // Some ZIP producers (Python zipfile defaults, certain Windows tools)
+            // emit entries whose external attributes do not encode Unix file-type
+            // bits, which zipinfo renders as `?`. Treat these as regular-file
+            // candidates: the authoritative type check is the post-extraction
+            // `lstat` pass, which rejects symlinks, special files, and anything
+            // that is not a regular file.
+            return
         case "l":
             logRejection(category: "symlink_entry", archiveTag: archiveTag)
             throw Error.unsupportedEntryType(.symbolicLink)

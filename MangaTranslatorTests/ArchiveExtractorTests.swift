@@ -160,18 +160,25 @@ final class ArchiveExtractorTests: XCTestCase {
         assertNoEscape(workSnapshotBefore: snapshot, destination: dest)
     }
 
-    func test_rejectsUnknownOrUnparseableEntries_unknownType() throws { // Task 2.6 (unknown)
+    func test_acceptsZeroOrUnknownTypeBitsAsRegularFile() throws { // Task 2.6 (unknown)
+        // Zips whose external attributes lack Unix file-type bits (zipinfo renders the
+        // permission string with a leading `?`) are common from tools that do not fill
+        // in Unix mode bits (Python zipfile defaults, some Windows utilities). The
+        // pre-extraction safety boundary treats `?` as a regular-file candidate; the
+        // authoritative type check happens after extraction via `lstat`, which rejects
+        // symlinks, special files, and anything that is not a regular file.
         let zipURL = archiveURL("unknown.zip")
         try TestZipWriter.write([
-            .unknownType("mystery")
+            .unknownType("mystery.jpg")
         ], to: zipURL)
         let dest = try makeDestination()
-        let snapshot = filesUnder(workDir)
 
-        XCTAssertThrowsError(try ArchiveExtractor.extract(archiveURL: zipURL, into: dest)) { error in
-            XCTAssertEqual(error as? ArchiveExtractor.Error, .unsupportedEntryType(.unknownType))
-        }
-        assertNoEscape(workSnapshotBefore: snapshot, destination: dest)
+        try ArchiveExtractor.extract(archiveURL: zipURL, into: dest)
+
+        let extracted = dest.appendingPathComponent("mystery.jpg")
+        var isDir: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: extracted.path, isDirectory: &isDir))
+        XCTAssertFalse(isDir.boolValue)
     }
 
     func test_rejectsUnknownOrUnparseableEntries_unparseable() throws { // Task 2.6 (unparseable)

@@ -62,6 +62,18 @@ struct ContentView: View {
         } message: {
             Text("Please add an API key for \(viewModel.preferences.translationEngine.displayName) in Settings.")
         }
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            ),
+            presenting: viewModel.errorMessage
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { providers in
             handlePaste(providers)
         }

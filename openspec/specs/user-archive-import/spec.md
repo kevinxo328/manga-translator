@@ -5,9 +5,9 @@ Defines the safe extraction boundary for user-imported ZIP and CBZ archives in `
 ## Requirements
 
 ### Requirement: Safely extract user ZIP and CBZ archives
-The system SHALL extract user-imported ZIP and CBZ archives through a dedicated archive extraction boundary before image scanning. The extraction boundary SHALL validate archive entries before invoking extraction. The extraction boundary SHALL reject any archive that contains an absolute path, a `..` traversal component, a path whose standardized destination would escape the destination root, a symlink, a hardlink, a special file, an unknown entry type, or entry metadata that cannot be reliably parsed.
+The system SHALL extract user-imported ZIP and CBZ archives through a dedicated archive extraction boundary before image scanning. The extraction boundary SHALL validate archive entries before invoking extraction. The extraction boundary SHALL reject any archive that contains an absolute path, a `..` traversal component, a path whose standardized destination would escape the destination root, a symlink, a hardlink, a special file, an entry type the extractor cannot positively classify as regular file, directory, or unset (zero) Unix file-type bits, or entry metadata that cannot be reliably parsed.
 
-The system SHALL treat only regular file entries and directory entries as supported archive entry types. The system SHALL reject unsafe or unsupported entries before extracting archive contents.
+The system SHALL treat regular file entries, directory entries, and entries whose external attributes contain no Unix file-type bits (which zipinfo renders with a leading `?`) as candidates for extraction. For unset-type entries the authoritative file-type check SHALL be the post-extraction inspection of the extracted filesystem object. The system SHALL reject unsafe or unsupported entries before extracting archive contents.
 
 #### Scenario: Reject path traversal entry
 - **WHEN** a user imports a ZIP or CBZ archive containing an entry named `../escape.png`
@@ -38,8 +38,12 @@ The system SHALL treat only regular file entries and directory entries as suppor
 - **THEN** archive extraction fails before extracting archive contents
 
 #### Scenario: Reject unknown entry type
-- **WHEN** the archive entry listing contains an entry type that the extractor does not explicitly support
+- **WHEN** the archive entry listing contains an entry whose Unix file-type bits encode a value other than regular file, directory, or zero (unset)
 - **THEN** archive extraction fails before extracting archive contents
+
+#### Scenario: Accept entry with unset Unix file-type bits
+- **WHEN** the archive entry listing contains an entry whose external attributes have zero (unset) Unix file-type bits and zipinfo renders the permission string with a leading `?`
+- **THEN** the entry passes pre-extraction validation and the post-extraction filesystem inspection enforces that the resulting object is a regular file or directory
 
 ### Requirement: Enforce user archive size and count limits
 The system SHALL enforce these default limits for user-imported ZIP and CBZ archives: at most 500 regular file entries, at most 25 * 1024 * 1024 bytes declared or actual size for any single regular file, and at most 500 * 1024 * 1024 bytes declared or actual total size across all regular files.
