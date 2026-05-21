@@ -168,4 +168,45 @@ struct KeychainServiceTests {
         #expect(service.retrieve(for: .openAI) == "key-to-keep",
                 "Cache must be preserved when Keychain delete fails to maintain consistency")
     }
+
+    // MARK: - Bounded concurrent cache access
+
+    @Test("Bounded concurrent retrieve/store/delete does not race")
+    func boundedConcurrentRetrieveStoreDeleteDoesNotRace() async {
+        let engines: [TranslationEngine] = [.openAI, .deepL, .google]
+        let operations = (0..<60).flatMap { index in
+            engines.map { engine in (engine, "bounded-\(engine.rawValue)-\(index)") }
+        }
+
+        for batchStart in stride(from: operations.startIndex, to: operations.endIndex, by: 3) {
+            let batchEnd = min(batchStart + 3, operations.endIndex)
+            await withTaskGroup(of: Void.self) { group in
+                for operation in operations[batchStart..<batchEnd] {
+                    group.addTask {
+                        var service = KeychainService()
+                        service.secItemAdd = { _, _ in errSecSuccess }
+                        service.secItemUpdate = { _, _ in errSecSuccess }
+                        service.secItemDelete = { _ in errSecSuccess }
+                        service.secItemCopyMatching = { _, _ in errSecItemNotFound }
+
+                        service.store(operation.1, for: operation.0)
+                        #expect(service.retrieve(for: operation.0) == operation.1)
+                        #expect(service.hasKey(for: operation.0))
+                        service.delete(for: operation.0)
+                    }
+                }
+            }
+        }
+
+        for engine in engines {
+            let finalValue = "final-\(engine.rawValue)"
+            var service = KeychainService()
+            service.secItemAdd = { _, _ in errSecSuccess }
+            service.secItemUpdate = { _, _ in errSecSuccess }
+
+            service.store(finalValue, for: engine)
+            #expect(service.retrieve(for: engine) == finalValue,
+                    "Final deterministic store must win after bounded concurrent cache access")
+        }
+    }
 }

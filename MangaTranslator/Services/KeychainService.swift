@@ -7,6 +7,7 @@ struct KeychainService {
     // In-memory cache shared across all instances within a session.
     // Reduces Keychain access after the initial authorization prompt.
     private static var cache: [String: String] = [:]
+    private static let cacheLock = NSLock()
 
     // Injectable for testing; nil means use the real Security API.
     var secItemAdd: ((CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus)? = nil
@@ -29,7 +30,7 @@ struct KeychainService {
         let updateStatus = updateFn(searchQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
 
         if updateStatus == errSecSuccess {
-            Self.cache[account] = apiKey
+            Self.setCachedValue(apiKey, for: account)
             return
         }
 
@@ -43,14 +44,14 @@ struct KeychainService {
         ]
         let addFn = secItemAdd ?? Security.SecItemAdd
         if addFn(addQuery as CFDictionary, nil) == errSecSuccess {
-            Self.cache[account] = apiKey
+            Self.setCachedValue(apiKey, for: account)
         }
     }
 
     func retrieve(for engine: TranslationEngine) -> String? {
         let account = engine.rawValue
 
-        if let cached = Self.cache[account] {
+        if let cached = Self.cachedValue(for: account) {
             return cached
         }
 
@@ -69,7 +70,7 @@ struct KeychainService {
         guard status == errSecSuccess, let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else { return nil }
 
-        Self.cache[account] = value
+        Self.setCachedValue(value, for: account)
         return value
     }
 
@@ -83,7 +84,7 @@ struct KeychainService {
         let deleteFn = secItemDelete ?? Security.SecItemDelete
         let status = deleteFn(query as CFDictionary)
         if status == errSecSuccess || status == errSecItemNotFound {
-            Self.cache.removeValue(forKey: account)
+            Self.removeCachedValue(for: account)
         }
     }
 
@@ -94,6 +95,30 @@ struct KeychainService {
     // MARK: - Test support
 
     static func clearCache() {
+        clearCachedValues()
+    }
+
+    private static func cachedValue(for account: String) -> String? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cache[account]
+    }
+
+    private static func setCachedValue(_ value: String, for account: String) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        cache[account] = value
+    }
+
+    private static func removeCachedValue(for account: String) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        cache.removeValue(forKey: account)
+    }
+
+    private static func clearCachedValues() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
         cache = [:]
     }
 
