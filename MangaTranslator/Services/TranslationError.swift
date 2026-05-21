@@ -3,7 +3,7 @@ import Foundation
 enum TranslationError: LocalizedError {
     case missingAPIKey(TranslationEngine)
     case invalidResponse
-    case apiError(String)
+    case apiError(SanitizedAPIError)
     case networkError(Error)
 
     var errorDescription: String? {
@@ -12,8 +12,8 @@ enum TranslationError: LocalizedError {
             return "API key not found for \(engine.displayName). Please add it in Settings."
         case .invalidResponse:
             return "Failed to parse translation response"
-        case .apiError(let message):
-            return "API error: \(message)"
+        case .apiError(let sanitized):
+            return sanitized.localizedSummary
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
         }

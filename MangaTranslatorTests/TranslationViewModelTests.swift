@@ -224,6 +224,40 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(bubbles[0].bubble.text, "こんにちは")
     }
 
+    // MARK: - Sanitized provider API error reaches page state
+
+    func testSanitizedProviderAPIErrorReachesPageStateWithoutRawSensitiveContent() async {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let router = await makeRouter(recognizerText: "こんにちは")
+        let sanitized = SanitizedAPIError(
+            provider: "OpenAI Compatible",
+            statusCode: 401,
+            code: "invalid_api_key",
+            message: "Invalid API key for project"
+        )
+        let translationService = QueueingTranslationService(results: [
+            .failure(TranslationError.apiError(sanitized))
+        ])
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService)
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/sanitized-error.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        guard case .error(let message) = vm.pages[0].state else {
+            return XCTFail("Expected .error after sanitized provider API failure, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(message.contains("OpenAI Compatible"))
+        XCTAssertTrue(message.contains("401"))
+        XCTAssertTrue(message.contains("invalid_api_key"))
+        XCTAssertTrue(message.contains("Invalid API key for project"))
+        // Must not leak any token shapes that the sanitizer would normally strip.
+        XCTAssertFalse(message.contains("sk-"))
+        XCTAssertFalse(message.contains("Bearer "))
+        XCTAssertFalse(message.contains("@"))
+    }
+
     // MARK: - Re-translate
 
     func testRetranslateFailurePreservesPreviousTranslations() async {
@@ -231,7 +265,12 @@ final class TranslationViewModelTests: XCTestCase {
         let prefs = makePrefs(source: .ja, target: .zhHant)
         let translationService = QueueingTranslationService(results: [
             .success("你好"),
-            .failure(TranslationError.apiError("forced retranslate failure"))
+            .failure(TranslationError.apiError(SanitizedAPIError(
+                provider: "Test",
+                statusCode: 500,
+                code: nil,
+                message: "forced retranslate failure"
+            )))
         ])
         let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService)
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/retranslate-preserve.jpg"))
@@ -1064,7 +1103,12 @@ private final class OrderedContextRecorder: @unchecked Sendable, TranslationServ
         }
 
         if failingInputs.contains(inputText) {
-            throw TranslationError.apiError("forced failure for \(inputText)")
+            throw TranslationError.apiError(SanitizedAPIError(
+                provider: "Test",
+                statusCode: 500,
+                code: nil,
+                message: "forced failure for \(inputText)"
+            ))
         }
 
         if let delay = delaysByInput[inputText], delay > 0 {

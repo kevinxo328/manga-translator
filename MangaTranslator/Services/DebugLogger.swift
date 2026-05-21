@@ -224,6 +224,34 @@ final class DebugLogger: Sendable {
         log(message, level: .info, category: category, metadata: metadata, source: source)
     }
 
+    /// Logs a translation provider non-2xx response. Only accepts an already
+    /// sanitized payload — there is no overload that takes raw response data,
+    /// preserving the spec rule that raw provider response bodies are never
+    /// persisted by debug logging.
+    func logAPIError(
+        _ error: SanitizedAPIError,
+        category: DebugLogCategory,
+        model: String? = nil,
+        endpoint: String? = nil,
+        source: String = #fileID
+    ) {
+        var metadata: [String: String] = [
+            "provider": error.provider,
+            "status_code": "\(error.statusCode)"
+        ]
+        if let code = error.code { metadata["provider_code"] = code }
+        if let message = error.message { metadata["provider_message"] = message }
+        if let model { metadata["model"] = model }
+        if let endpoint { metadata["endpoint"] = sanitizeEndpoint(endpoint) }
+        log(
+            "Provider API error: \(error.localizedSummary)",
+            level: .error,
+            category: category,
+            metadata: metadata,
+            source: source
+        )
+    }
+
     /// Strips query string, fragment, and embedded credentials from a URL or path,
     /// retaining only scheme/host/path. Falls back to truncating at `?` if parsing fails.
     private func sanitizeEndpoint(_ endpoint: String) -> String {

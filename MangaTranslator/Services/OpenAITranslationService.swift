@@ -5,12 +5,19 @@ struct OpenAITranslationService: TranslationService {
     private let keychainService: KeychainService
     private let model: String
     private let baseURL: String
+    private let urlSession: URLSession
     private let maxRetries = 2
 
-    init(model: String, baseURL: String, keychainService: KeychainService = KeychainService()) {
+    init(
+        model: String,
+        baseURL: String,
+        keychainService: KeychainService = KeychainService(),
+        urlSession: URLSession = .shared
+    ) {
         self.model = model
         self.baseURL = baseURL
         self.keychainService = keychainService
+        self.urlSession = urlSession
     }
 
     func translate(
@@ -80,16 +87,23 @@ struct OpenAITranslationService: TranslationService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            DebugLogger.shared.logAPIDiagnostic(
-                "API call failed: statusCode=\(statusCode)",
-                category: .translationOpenAI, statusCode: statusCode, model: sanitizedModel
+            let sanitized = APIErrorSanitizer.sanitize(
+                provider: .openAI,
+                providerDisplayName: TranslationEngine.openAI.displayName,
+                statusCode: statusCode,
+                responseData: data
             )
-            let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw TranslationError.apiError(errorText)
+            DebugLogger.shared.logAPIError(
+                sanitized,
+                category: .translationOpenAI,
+                model: sanitizedModel,
+                endpoint: sanitizedBaseURL
+            )
+            throw TranslationError.apiError(sanitized)
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]

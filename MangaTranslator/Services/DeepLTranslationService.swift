@@ -3,9 +3,14 @@ import Foundation
 struct DeepLTranslationService: TranslationService {
     let engine = TranslationEngine.deepL
     private let keychainService: KeychainService
+    private let urlSession: URLSession
 
-    init(keychainService: KeychainService = KeychainService()) {
+    init(
+        keychainService: KeychainService = KeychainService(),
+        urlSession: URLSession = .shared
+    ) {
         self.keychainService = keychainService
+        self.urlSession = urlSession
     }
 
     func translate(
@@ -66,16 +71,22 @@ struct DeepLTranslationService: TranslationService {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            DebugLogger.shared.logAPIDiagnostic(
-                "API call failed: statusCode=\(statusCode)",
-                category: .translationDeepL, statusCode: statusCode
+            let sanitized = APIErrorSanitizer.sanitize(
+                provider: .deepL,
+                providerDisplayName: TranslationEngine.deepL.displayName,
+                statusCode: statusCode,
+                responseData: data
             )
-            let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw TranslationError.apiError(errorText)
+            DebugLogger.shared.logAPIError(
+                sanitized,
+                category: .translationDeepL,
+                endpoint: url.absoluteString
+            )
+            throw TranslationError.apiError(sanitized)
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]

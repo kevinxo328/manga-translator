@@ -36,6 +36,12 @@
 		A10000010000000000000024 /* GlossarySubstitution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000064 /* GlossarySubstitution.swift */; };
 		A10000010000000000000025 /* OCRError.swift in Sources */ = {isa = PBXBuildFile; fileRef = CL20000010000000000000002 /* OCRError.swift */; };
 		A10000010000000000000026 /* BaseURLValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000065 /* BaseURLValidator.swift */; };
+		AS10000010000000000000001 /* APIErrorSanitizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000001 /* APIErrorSanitizer.swift */; };
+		AS10000010000000000000002 /* APIErrorSanitizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000002 /* APIErrorSanitizerTests.swift */; };
+		AS10000010000000000000003 /* ProviderHTTPMockURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000003 /* ProviderHTTPMockURLProtocol.swift */; };
+		AS10000010000000000000004 /* DeepLTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000004 /* DeepLTranslationServiceTests.swift */; };
+		AS10000010000000000000005 /* GoogleTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000005 /* GoogleTranslationServiceTests.swift */; };
+		AS10000010000000000000006 /* DebugLoggerAPIErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AS20000010000000000000006 /* DebugLoggerAPIErrorTests.swift */; };
 		BK10000010000000000000001 /* IoUCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000002 /* IoUCalculator.swift */; };
 		BK10000010000000000000002 /* ImageScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000003 /* ImageScanner.swift */; };
 		BK10000010000000000000003 /* BenchmarkReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BK20000010000000000000004 /* BenchmarkReporter.swift */; };
@@ -198,6 +204,12 @@
 		A20000010000000000000063 /* GlossaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryView.swift; sourceTree = "<group>"; };
 		A20000010000000000000064 /* GlossarySubstitution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossarySubstitution.swift; sourceTree = "<group>"; };
 		A20000010000000000000065 /* BaseURLValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseURLValidator.swift; sourceTree = "<group>"; };
+		AS20000010000000000000001 /* APIErrorSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIErrorSanitizer.swift; sourceTree = "<group>"; };
+		AS20000010000000000000002 /* APIErrorSanitizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIErrorSanitizerTests.swift; sourceTree = "<group>"; };
+		AS20000010000000000000003 /* ProviderHTTPMockURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderHTTPMockURLProtocol.swift; sourceTree = "<group>"; };
+		AS20000010000000000000004 /* DeepLTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLTranslationServiceTests.swift; sourceTree = "<group>"; };
+		AS20000010000000000000005 /* GoogleTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleTranslationServiceTests.swift; sourceTree = "<group>"; };
+		AS20000010000000000000006 /* DebugLoggerAPIErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLoggerAPIErrorTests.swift; sourceTree = "<group>"; };
 		BK20000010000000000000001 /* OCRBenchmarkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OCRBenchmarkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BK20000010000000000000002 /* IoUCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoUCalculator.swift; sourceTree = "<group>"; };
 		BK20000010000000000000003 /* ImageScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageScanner.swift; sourceTree = "<group>"; };
@@ -382,6 +394,7 @@
 				A20000010000000000000032 /* ReadingOrderSorter.swift */,
 				A20000010000000000000033 /* LLMPrompt.swift */,
 				A20000010000000000000034 /* TranslationError.swift */,
+				AS20000010000000000000001 /* APIErrorSanitizer.swift */,
 				A20000010000000000000035 /* DeepLTranslationService.swift */,
 				A20000010000000000000036 /* GoogleTranslationService.swift */,
 				A20000010000000000000037 /* OpenAITranslationService.swift */,
@@ -495,6 +508,11 @@
 				T2000001000000000000000C /* ProjectStructureTests.swift */,
 				T2000001000000000000000D /* BaseURLValidatorTests.swift */,
 				T2000001000000000000000E /* OpenAITranslationServiceTests.swift */,
+				AS20000010000000000000002 /* APIErrorSanitizerTests.swift */,
+				AS20000010000000000000003 /* ProviderHTTPMockURLProtocol.swift */,
+				AS20000010000000000000004 /* DeepLTranslationServiceTests.swift */,
+				AS20000010000000000000005 /* GoogleTranslationServiceTests.swift */,
+				AS20000010000000000000006 /* DebugLoggerAPIErrorTests.swift */,
 				DL20000010000000000000004 /* DebugLogStoreTests.swift */,
 				DL20000010000000000000005 /* DebugLogGuardTests.swift */,
 				DL20000010000000000000006 /* DebugLogViewTests.swift */,
@@ -729,6 +747,7 @@
 				A10000010000000000000008 /* ReadingOrderSorter.swift in Sources */,
 				A10000010000000000000009 /* LLMPrompt.swift in Sources */,
 				A10000010000000000000010 /* TranslationError.swift in Sources */,
+				AS10000010000000000000001 /* APIErrorSanitizer.swift in Sources */,
 				A10000010000000000000011 /* DeepLTranslationService.swift in Sources */,
 				A10000010000000000000012 /* GoogleTranslationService.swift in Sources */,
 				A10000010000000000000013 /* OpenAITranslationService.swift in Sources */,
@@ -817,6 +836,11 @@
 				T1000001000000000000000C /* ProjectStructureTests.swift in Sources */,
 				T1000001000000000000000D /* BaseURLValidatorTests.swift in Sources */,
 				T1000001000000000000000E /* OpenAITranslationServiceTests.swift in Sources */,
+				AS10000010000000000000002 /* APIErrorSanitizerTests.swift in Sources */,
+				AS10000010000000000000003 /* ProviderHTTPMockURLProtocol.swift in Sources */,
+				AS10000010000000000000004 /* DeepLTranslationServiceTests.swift in Sources */,
+				AS10000010000000000000005 /* GoogleTranslationServiceTests.swift in Sources */,
+				AS10000010000000000000006 /* DebugLoggerAPIErrorTests.swift in Sources */,
 				DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */,
 				DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */,
 				DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */,
