@@ -1355,22 +1355,20 @@ private final class OrderedContextRecorder: @unchecked Sendable, TranslationServ
         let inputText = bubbles.first?.text ?? ""
         let observerCount = ocrObserver?.observedTextsInOrder.count
 
-        lock.lock()
-        if _ocrCountAtFirstTranslate == nil {
-            _ocrCountAtFirstTranslate = observerCount
+        lock.withLock {
+            if _ocrCountAtFirstTranslate == nil {
+                _ocrCountAtFirstTranslate = observerCount
+            }
+            _callOrderInputs.append(inputText)
+            _calls.append((input: inputText, context: context))
+            _currentConcurrent += 1
+            if _currentConcurrent > _maxConcurrent {
+                _maxConcurrent = _currentConcurrent
+            }
         }
-        _callOrderInputs.append(inputText)
-        _calls.append((input: inputText, context: context))
-        _currentConcurrent += 1
-        if _currentConcurrent > _maxConcurrent {
-            _maxConcurrent = _currentConcurrent
-        }
-        lock.unlock()
 
         defer {
-            lock.lock()
-            _currentConcurrent -= 1
-            lock.unlock()
+            lock.withLock { _currentConcurrent -= 1 }
         }
 
         if failingInputs.contains(inputText) {

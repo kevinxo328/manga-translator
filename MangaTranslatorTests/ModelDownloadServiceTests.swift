@@ -358,7 +358,7 @@ struct ModelDownloadServiceTests {
     @Test("Download transitions state to .downloaded on success")
     @MainActor
     func successfulDownloadState() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         let fileData = Data("model-binary".utf8)
         let tmpFile = try makeTempFile(content: fileData)
@@ -374,7 +374,7 @@ struct ModelDownloadServiceTests {
     @Test("Download writes file to model directory")
     @MainActor
     func successfulDownloadWritesFile() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         let fileData = Data("model-binary".utf8)
         let tmpFile = try makeTempFile(content: fileData)
@@ -448,7 +448,7 @@ struct ModelDownloadServiceTests {
     @Test("SHA256 mismatch: state transitions to .failed and file is deleted")
     @MainActor
     func sha256MismatchDeletesFileAndFails() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         let fileData = Data("model-binary".utf8)
         let tmpFile = try makeTempFile(content: fileData)
@@ -526,7 +526,7 @@ struct ModelDownloadServiceTests {
         async let first: Void = service.download()
         await first
 
-        let state1 = service.state
+        _ = service.state
         await service.download() // second call after first completes — should still be .downloaded
         let state2 = service.state
 
@@ -576,7 +576,7 @@ struct ModelDownloadServiceTests {
     @Test("verify() returns true when file present and SHA256 matches")
     @MainActor
     func verifyReturnsTrueWhenValid() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         let fileData = Data("model-binary".utf8)
         let tmpFile = try makeTempFile(content: fileData)
@@ -906,7 +906,7 @@ struct ModelDownloadServiceTests {
     @Test("delete() waits for active inference before removing files")
     @MainActor
     func deleteWaitsForActiveInference() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         let fileData = Data("model-binary".utf8)
         let tmpFile = try makeTempFile(content: fileData)
@@ -966,7 +966,7 @@ struct ModelDownloadServiceTests {
     @Test("Failed install does not overwrite prior valid model directory")
     @MainActor
     func failedInstallPreservesPriorModel() async throws {
-        let (service, downloader, dir, defaults) = makeService()
+        let (service, downloader, dir, _) = makeService()
 
         // First successful download
         let fileData = Data("model-binary".utf8)
