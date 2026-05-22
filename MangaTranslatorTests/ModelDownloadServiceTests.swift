@@ -2161,3 +2161,189 @@ struct ProductionModelSearchRootsTests {
         #expect(resolved == sandboxContainer.appendingPathComponent("PaddleOCR-VL.current"))
     }
 }
+
+// MARK: - Task 8: Lifecycle coordination
+
+/// Thread-safe collector for `ModelLifecycleEvent` values emitted by the
+/// lifecycle actor's observer hook. The observer closure runs inside the
+/// actor's isolated context, so the recorder must be safe under concurrent
+/// appends from background tests.
+private final class LifecycleEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [ModelLifecycleEvent] = []
+
+    func append(_ event: ModelLifecycleEvent) {
+        lock.lock(); defer { lock.unlock() }
+        events.append(event)
+    }
+
+    func snapshot() -> [ModelLifecycleEvent] {
+        lock.lock(); defer { lock.unlock() }
+        return events
+    }
+}
+
+@Suite("ModelDownloadService.lifecycleCoordination")
+struct LifecycleCoordinationTests {
+
+    /// Seed a `.current` model and bind a `ModelDownloadService` configured to
+    /// treat that container as the legacy root's parent. Returns the service,
+    /// container, and defaults so each test can drive lifecycle calls and
+    /// assert filesystem effects in isolation.
+    @MainActor
+    private static func makeServiceWithCurrentModel(
+    ) throws -> (ModelDownloadService, URL, UserDefaults) {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        try makeValidModelDir(at: container.appendingPathComponent("PaddleOCR-VL.current"))
+
+        let legacyRoot = container.appendingPathComponent("PaddleOCR-VL")
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set("any-checksum", forKey: "paddleocr.model.checksum")
+        defaults.set(Date().timeIntervalSince1970, forKey: "paddleocr.model.lastVerified")
+        defaults.set(true, forKey: "paddleocr.enabled")
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: legacyRoot,
+            userDefaults: defaults,
+            downloader: MockDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+        return (service, container, defaults)
+    }
+
+    @Test("delete() suspends on a continuation while inference is active and resumes via a single wakeup")
+    @MainActor
+    func deleteWaitsForActiveInferenceWithoutBusyYield() async throws {
+        let (service, container, _) = try Self.makeServiceWithCurrentModel()
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let recorder = LifecycleEventRecorder()
+        await service.setLifecycleObserver { event in
+            recorder.append(event)
+        }
+
+        await service.beginInference()
+
+        let deleteTask = Task { try await service.delete() }
+
+        // Give delete() enough turns to enter the section and queue itself on
+        // the inference wait continuation.
+        for _ in 0..<10 { await Task.yield() }
+
+        let midEvents = recorder.snapshot()
+        #expect(midEvents.contains(.sectionEntered("delete")),
+                "delete() must enter the lifecycle section before waiting")
+        #expect(midEvents.contains(.waitForInferencesBegan),
+                "delete() must record waitForInferencesBegan while inference is active")
+        #expect(!midEvents.contains(.waitForInferencesResumed),
+                "delete() must remain suspended until endInference() fires")
+
+        await service.endInference()
+        try await deleteTask.value
+
+        let finalEvents = recorder.snapshot()
+        // Continuation-based wait: exactly one .waitForInferencesBegan and one
+        // .waitForInferencesResumed. A busy-yield loop would either skip the
+        // begin/resume pair entirely or emit a stream of polling events.
+        let beganCount = finalEvents.filter { $0 == .waitForInferencesBegan }.count
+        let resumedCount = finalEvents.filter { $0 == .waitForInferencesResumed }.count
+        #expect(beganCount == 1, "waitForInferencesBegan must fire exactly once; got \(beganCount)")
+        #expect(resumedCount == 1, "waitForInferencesResumed must fire exactly once; got \(resumedCount)")
+        #expect(finalEvents.contains(.sectionExited("delete")),
+                "delete() must record sectionExited(\"delete\") on completion")
+        #expect(service.state == .notDownloaded)
+    }
+
+    @Test("delete() and verifyOnLaunch() sections never overlap when run concurrently")
+    @MainActor
+    func deleteVerifySectionsAreMutuallyExclusiveViaObserver() async throws {
+        let archivePayload = Data("current-archive-for-mutex-test".utf8)
+        let checksum = sha256Hex(of: archivePayload)
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        let current = try makeValidModelDir(at: container.appendingPathComponent("PaddleOCR-VL.current"))
+        try archivePayload.write(to: current.appendingPathComponent("model.zip"))
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let legacyRoot = container.appendingPathComponent("PaddleOCR-VL")
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set(checksum, forKey: "paddleocr.model.checksum")
+        // Stale evidence forces verifyOnLaunch onto the full SHA256 path so its
+        // section holds the lock long enough to overlap delete().
+        defaults.set(0.0, forKey: "paddleocr.model.lastVerified")
+        defaults.set(true, forKey: "paddleocr.enabled")
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: legacyRoot,
+            userDefaults: defaults,
+            downloader: MockDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+
+        let recorder = LifecycleEventRecorder()
+        await service.setLifecycleObserver { event in
+            recorder.append(event)
+        }
+
+        async let verifyTask: Void = service.verifyOnLaunch()
+        try await service.delete()
+        await verifyTask
+
+        // Keep only the section enter/exit events so the assertion is robust
+        // even if the actor emits other lifecycle events in the future.
+        let sectionEvents = recorder.snapshot().filter { event in
+            switch event {
+            case .sectionEntered, .sectionExited: return true
+            default: return false
+            }
+        }
+
+        // Verify strict serialization: every enter must be immediately followed
+        // by the matching exit before any other section enters.
+        var currentSection: String?
+        for event in sectionEvents {
+            switch event {
+            case .sectionEntered(let name):
+                #expect(currentSection == nil,
+                        "Section \"\(name)\" entered while \"\(currentSection ?? "?")\" still held the lock")
+                currentSection = name
+            case .sectionExited(let name):
+                #expect(currentSection == name,
+                        "Section exit \"\(name)\" did not match the active section \"\(currentSection ?? "?")\"")
+                currentSection = nil
+            default:
+                break
+            }
+        }
+        #expect(currentSection == nil, "All entered sections must exit before observation ends")
+        #expect(service.state == .notDownloaded)
+    }
+
+    @Test("Lifecycle section exit is observable before delete() returns")
+    @MainActor
+    func lifecycleSectionExitIsObservableBeforeReturn() async throws {
+        let (service, container, _) = try Self.makeServiceWithCurrentModel()
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let recorder = LifecycleEventRecorder()
+        await service.setLifecycleObserver { event in
+            recorder.append(event)
+        }
+
+        try await service.delete()
+
+        // Snapshot the recorder synchronously after delete() returns. With
+        // inline `await endLifecycleMutation`, the exit event is already
+        // recorded. A deferred-Task release would leave the exit event
+        // unrecorded at this point because the detached Task has not yet
+        // been scheduled onto the actor.
+        let events = recorder.snapshot()
+        #expect(events.last == .sectionExited("delete"),
+                "Last observed event must be sectionExited(\"delete\") when control returns; got \(events)")
+    }
+}

@@ -10,6 +10,16 @@ protocol ModelDownloading: Sendable {
     func fetchString(from url: URL) async throws -> String
 }
 
+// MARK: - Inference coordination seam
+
+/// Lets the OCR routing layer register active inference so lifecycle mutations
+/// (delete, reinstall) wait for in-flight model work. `ModelDownloadService`
+/// satisfies this via its lifecycle actor; tests can inject recording fakes.
+protocol ModelInferenceCoordinating: Sendable {
+    func beginInference() async
+    func endInference() async
+}
+
 // MARK: - Archive extraction seam
 
 /// Extracts a verified zip archive into a previously-empty staging candidate.
@@ -264,48 +274,50 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     }
 
     func delete() async throws {
-        await lifecycleActor.beginLifecycleMutation()
-        defer {
-            Task {
-                await lifecycleActor.endLifecycleMutation()
+        await lifecycleActor.beginLifecycleMutation(section: "delete")
+        do {
+            // Task 11.2 — wait for any active inference before mutating model artifacts.
+            await lifecycleActor.waitForActiveInferences()
+
+            let fm = FileManager.default
+            let legacyRoot = config.modelDirectory
+            let container = Self.modelContainer(forLegacyRoot: legacyRoot)
+            let currentDir = container.appendingPathComponent("PaddleOCR-VL.current")
+            let installingRoot = container.appendingPathComponent(".installing")
+
+            // Task 11.1 — remove `.current`, legacy root, `.installing`, and any backup directories.
+            // Task 11.3 — idempotent: only attempt removal when the target path exists.
+            if fm.fileExists(atPath: currentDir.path) {
+                try fm.removeItem(at: currentDir)
             }
-        }
-
-        // Task 11.2 — wait for any active inference before mutating model artifacts.
-        await lifecycleActor.waitForActiveInferences()
-
-        let fm = FileManager.default
-        let legacyRoot = config.modelDirectory
-        let container = Self.modelContainer(forLegacyRoot: legacyRoot)
-        let currentDir = container.appendingPathComponent("PaddleOCR-VL.current")
-        let installingRoot = container.appendingPathComponent(".installing")
-
-        // Task 11.1 — remove `.current`, legacy root, `.installing`, and any backup directories.
-        // Task 11.3 — idempotent: only attempt removal when the target path exists.
-        if fm.fileExists(atPath: currentDir.path) {
-            try fm.removeItem(at: currentDir)
-        }
-        if fm.fileExists(atPath: legacyRoot.path) {
-            try fm.removeItem(at: legacyRoot)
-        }
-        if fm.fileExists(atPath: installingRoot.path) {
-            try fm.removeItem(at: installingRoot)
-        }
-        if let kids = try? fm.contentsOfDirectory(at: container, includingPropertiesForKeys: nil) {
-            for kid in kids where kid.lastPathComponent.hasPrefix("PaddleOCR-VL.backup") {
-                try? fm.removeItem(at: kid)
+            if fm.fileExists(atPath: legacyRoot.path) {
+                try fm.removeItem(at: legacyRoot)
             }
-        }
+            if fm.fileExists(atPath: installingRoot.path) {
+                try fm.removeItem(at: installingRoot)
+            }
+            if let kids = try? fm.contentsOfDirectory(at: container, includingPropertiesForKeys: nil) {
+                for kid in kids where kid.lastPathComponent.hasPrefix("PaddleOCR-VL.backup") {
+                    try? fm.removeItem(at: kid)
+                }
+            }
 
-        config.userDefaults.removeObject(forKey: DefaultsKey.downloaded)
-        config.userDefaults.removeObject(forKey: DefaultsKey.checksum)
-        config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
-        config.userDefaults.set(false, forKey: DefaultsKey.enabled)
-        paddleOCREnabled = false
-        // Task 11.4 — `delete()` always settles to `.notDownloaded`; concurrent
-        // `verifyOnLaunch` either runs before delete clears artifacts (resolving
-        // the now-absent model and resetting state) or after (no-op fast path).
-        state = .notDownloaded
+            config.userDefaults.removeObject(forKey: DefaultsKey.downloaded)
+            config.userDefaults.removeObject(forKey: DefaultsKey.checksum)
+            config.userDefaults.removeObject(forKey: DefaultsKey.lastVerified)
+            config.userDefaults.set(false, forKey: DefaultsKey.enabled)
+            paddleOCREnabled = false
+            // Task 11.4 — `delete()` always settles to `.notDownloaded`; concurrent
+            // `verifyOnLaunch` either runs before delete clears artifacts (resolving
+            // the now-absent model and resetting state) or after (no-op fast path).
+            state = .notDownloaded
+        } catch {
+            // Release the lifecycle section inline so a subsequent caller does
+            // not race against a detached release Task.
+            await lifecycleActor.endLifecycleMutation(section: "delete")
+            throw error
+        }
+        await lifecycleActor.endLifecycleMutation(section: "delete")
     }
 
     func verify() async -> Bool {
@@ -327,12 +339,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     func verifyOnLaunch() async {
         guard config.userDefaults.bool(forKey: DefaultsKey.downloaded) else { return }
 
-        await lifecycleActor.beginLifecycleMutation()
-        defer {
-            Task {
-                await lifecycleActor.endLifecycleMutation()
-            }
-        }
+        await lifecycleActor.beginLifecycleMutation(section: "verify")
 
         let fm = FileManager.default
         let container = Self.modelContainer(forLegacyRoot: config.modelDirectory)
@@ -340,6 +347,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         // Task 9.1 — resolve the active model directory before choosing the archive path.
         guard let activeDir = Self.resolvedActiveModelDirectory(inContainer: container, fileManager: fm) else {
             resetDownloadState()
+            await lifecycleActor.endLifecycleMutation(section: "verify")
             return
         }
         let archivePath = activeDir.appendingPathComponent("model.zip")
@@ -347,12 +355,14 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         // Task 9.3 — clear state when the archive itself is missing.
         guard fm.fileExists(atPath: archivePath.path) else {
             resetDownloadState()
+            await lifecycleActor.endLifecycleMutation(section: "verify")
             return
         }
 
         let storedChecksum = config.userDefaults.string(forKey: DefaultsKey.checksum) ?? ""
         if storedChecksum.isEmpty {
             resetDownloadState()
+            await lifecycleActor.endLifecycleMutation(section: "verify")
             return
         }
 
@@ -362,6 +372,7 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         let isFresh = (now - lastVerified) < (86400 * 7)
         if isFresh {
             state = .downloaded
+            await lifecycleActor.endLifecycleMutation(section: "verify")
             return
         }
 
@@ -377,6 +388,15 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
         } else {
             state = .downloaded
         }
+        await lifecycleActor.endLifecycleMutation(section: "verify")
+    }
+
+    // MARK: - Test-only lifecycle observation
+
+    /// Attaches an observer to the lifecycle actor for test introspection.
+    /// Production code does not call this; the default observer is `nil`.
+    func setLifecycleObserver(_ observer: (@Sendable (ModelLifecycleEvent) -> Void)?) async {
+        await lifecycleActor.setObserver(observer)
     }
 
     // MARK: - Inference coordination
@@ -729,11 +749,34 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     }
 }
 
+// MARK: - Inference coordination conformance
+
+extension ModelDownloadService: ModelInferenceCoordinating {}
+
 // MARK: - Lifecycle Actor
+
+/// Observer events emitted by `ModelLifecycleActor` for test-only
+/// introspection of lifecycle coordination. Production code does not attach
+/// an observer.
+enum ModelLifecycleEvent: Sendable, Equatable {
+    case sectionEntered(String)
+    case sectionExited(String)
+    case waitForInferencesBegan
+    case waitForInferencesResumed
+}
 
 actor ModelLifecycleActor {
     private var activeInferenceCount = 0
+    private var inferenceWaiters: [CheckedContinuation<Void, Never>] = []
+
     private var lifecycleMutationActive = false
+    private var mutationWaiters: [CheckedContinuation<Void, Never>] = []
+
+    private var observer: (@Sendable (ModelLifecycleEvent) -> Void)?
+
+    func setObserver(_ observer: (@Sendable (ModelLifecycleEvent) -> Void)?) {
+        self.observer = observer
+    }
 
     func beginInference() {
         activeInferenceCount += 1
@@ -741,23 +784,52 @@ actor ModelLifecycleActor {
 
     func endInference() {
         activeInferenceCount = max(0, activeInferenceCount - 1)
+        guard activeInferenceCount == 0 else { return }
+        let waiters = inferenceWaiters
+        inferenceWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     func waitForActiveInferences() async {
-        while activeInferenceCount > 0 {
-            await Task.yield()
+        guard activeInferenceCount > 0 else { return }
+        observer?(.waitForInferencesBegan)
+        await withCheckedContinuation { continuation in
+            inferenceWaiters.append(continuation)
+        }
+        observer?(.waitForInferencesResumed)
+    }
+
+    func beginLifecycleMutation(section: String = "") async {
+        if lifecycleMutationActive {
+            // Wait for the current owner to hand the lock over via
+            // `endLifecycleMutation`. The handoff keeps `lifecycleMutationActive`
+            // true across resume so a fresh caller cannot jump the queue.
+            await withCheckedContinuation { continuation in
+                mutationWaiters.append(continuation)
+            }
+        } else {
+            lifecycleMutationActive = true
+        }
+        if !section.isEmpty {
+            observer?(.sectionEntered(section))
         }
     }
 
-    func beginLifecycleMutation() async {
-        while lifecycleMutationActive {
-            await Task.yield()
+    func endLifecycleMutation(section: String = "") {
+        if !section.isEmpty {
+            observer?(.sectionExited(section))
         }
-        lifecycleMutationActive = true
-    }
-
-    func endLifecycleMutation() {
-        lifecycleMutationActive = false
+        if !mutationWaiters.isEmpty {
+            let next = mutationWaiters.removeFirst()
+            // Leave `lifecycleMutationActive` as true: ownership transfers
+            // directly to the resumed waiter instead of going through a
+            // released-then-reacquired window.
+            next.resume()
+        } else {
+            lifecycleMutationActive = false
+        }
     }
 }
 

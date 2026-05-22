@@ -470,6 +470,150 @@ final class OCRRouterTests: XCTestCase {
             // other errors
         }
     }
+
+    // MARK: - Task 8 follow-up: production-path lifecycle inference coordination
+
+    // Verifies the production OCR path registers active inference with the
+    // lifecycle actor so `ModelDownloadService.delete()` waits for in-flight
+    // PaddleOCR work. Without the OCRRouter wiring, `delete()` would proceed
+    // immediately and `.waitForInferencesBegan` would never fire, even though
+    // `local-model-lifecycle/spec.md` requires deletion to wait for inference.
+    func testPaddleOCRRouteRegistersInferenceSoDeleteWaitsForCompletion() async throws {
+        // Seed a real ModelDownloadService against a temp container so its
+        // lifecycle actor backs delete() and there are artifacts for delete()
+        // to remove.
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        let currentDir = container.appendingPathComponent("PaddleOCR-VL.current")
+        try FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        try Data("weights".utf8).write(to: currentDir.appendingPathComponent("weights.npz"))
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let legacyRoot = container.appendingPathComponent("PaddleOCR-VL")
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        defaults.set(true, forKey: "paddleocr.model.downloaded")
+        defaults.set("any-checksum", forKey: "paddleocr.model.checksum")
+        defaults.set(true, forKey: "paddleocr.enabled")
+        let config = ModelDownloadConfiguration(
+            modelURL: URL(string: "https://example.com/model.zip")!,
+            checksumURL: URL(string: "https://example.com/checksum")!,
+            modelDirectory: legacyRoot,
+            userDefaults: defaults,
+            downloader: NoopModelDownloader()
+        )
+        let service = ModelDownloadService(configuration: config)
+
+        // SlowMockOCRRecognizer.recognizeText sleeps for ~0.5s on the
+        // background queue MangaOCRService uses, giving delete() a wide
+        // window to race and observe the lifecycle wait.
+        let slowRecognizer = SlowMockOCRRecognizer()
+        let mangaOCRService = MangaOCRService(detector: MockComicTextDetector())
+
+        let router = OCRRouter(
+            mangaOCRService: mangaOCRService,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: service,
+            paddleOCRFactory: { slowRecognizer },
+            inferenceCoordinator: service
+        )
+
+        let recorder = LifecycleEventRecorderForRouterTests()
+        await service.setLifecycleObserver { event in
+            recorder.append(event)
+        }
+
+        let ocrTask = Task { @MainActor in
+            _ = try? await router.processPage(
+                image: makeTestImage(width: 100, height: 100),
+                sourceLanguage: .ja
+            )
+        }
+
+        // Let the production OCR path start and call beginInference before
+        // we kick off delete(). Without this slack, delete() may grab the
+        // lock first and skip the inference wait.
+        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        try await service.delete()
+        await ocrTask.value
+
+        let events = recorder.snapshot()
+        XCTAssertTrue(events.contains(.waitForInferencesBegan),
+                      "Production PaddleOCR route must register active inference so delete() suspends; events=\(events)")
+        XCTAssertTrue(events.contains(.waitForInferencesResumed),
+                      "delete() must resume only after PaddleOCR inference ends; events=\(events)")
+        XCTAssertEqual(service.state, .notDownloaded)
+    }
+
+    // MARK: - Inference coordinator resolution precedence
+    //
+    // Pin the documented precedence used by `OCRRouter.makeProductionRouter`
+    // and any future caller of the resolver helper: an explicit coordinator
+    // beats everything; otherwise a `downloadManager` that also conforms to
+    // `ModelInferenceCoordinating` wins so routing state and inference
+    // bookkeeping stay on the same instance; otherwise the supplied fallback
+    // is used. Earlier wiring used a plain `?? fallback`, which silently sent
+    // inference bookkeeping to the shared service even when the caller had
+    // injected a custom dual-conforming manager.
+
+    func testResolveCoordinatorPrefersExplicitOverEverything() {
+        let dual = DualConformanceMock()
+        let explicit = CoordinatorOnlyMock()
+        let fallback = CoordinatorOnlyMock()
+
+        let resolved = OCRRouter.resolveInferenceCoordinator(
+            downloadManager: dual,
+            inferenceCoordinator: explicit,
+            fallback: fallback
+        )
+
+        XCTAssertIdentical(resolved as AnyObject, explicit,
+                           "Explicit inferenceCoordinator must win over a dual-conforming downloadManager")
+    }
+
+    func testResolveCoordinatorUsesDownloadManagerWhenItAlsoConforms() {
+        let dual = DualConformanceMock()
+        let fallback = CoordinatorOnlyMock()
+
+        let resolved = OCRRouter.resolveInferenceCoordinator(
+            downloadManager: dual,
+            inferenceCoordinator: nil,
+            fallback: fallback
+        )
+
+        XCTAssertIdentical(resolved as AnyObject, dual,
+                           "A dual-conforming downloadManager must coordinate inference instead of the fallback")
+        XCTAssertNotIdentical(resolved as AnyObject, fallback,
+                              "Resolver must not silently route inference to the fallback when the downloadManager can coordinate")
+    }
+
+    func testResolveCoordinatorFallsBackWhenDownloadManagerDoesNotConform() {
+        let managerOnly = MockDownloadManager(state: .downloaded, enabled: true)
+        let fallback = CoordinatorOnlyMock()
+
+        let resolved = OCRRouter.resolveInferenceCoordinator(
+            downloadManager: managerOnly,
+            inferenceCoordinator: nil,
+            fallback: fallback
+        )
+
+        XCTAssertIdentical(resolved as AnyObject, fallback,
+                           "Resolver must fall back when downloadManager does not also coordinate inference")
+    }
+
+    func testResolveCoordinatorFallsBackWhenDownloadManagerIsNil() {
+        let fallback = CoordinatorOnlyMock()
+
+        let resolved = OCRRouter.resolveInferenceCoordinator(
+            downloadManager: nil,
+            inferenceCoordinator: nil,
+            fallback: fallback
+        )
+
+        XCTAssertIdentical(resolved as AnyObject, fallback,
+                           "Resolver must fall back when no downloadManager is provided")
+    }
 }
 
 // MARK: - Mock Types
@@ -504,6 +648,27 @@ private final class MockDownloadManager: ModelDownloadManaging {
         self.enabled = enabled
     }
     var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
+}
+
+// Conforms to both protocols so resolver tests can assert that a
+// dual-conforming downloadManager is preferred over the supplied fallback.
+@MainActor
+private final class DualConformanceMock: ModelDownloadManaging, ModelInferenceCoordinating {
+    let state: ModelDownloadState
+    let isPaddleOCREnabled: Bool
+    init(state: ModelDownloadState = .downloaded, enabled: Bool = true) {
+        self.state = state
+        self.isPaddleOCREnabled = state == .downloaded && enabled
+    }
+    nonisolated func beginInference() async {}
+    nonisolated func endInference() async {}
+}
+
+// Conforms only to the coordinator protocol so the resolver tests can
+// distinguish a coordinator from a downloadManager and verify fallback wiring.
+private final class CoordinatorOnlyMock: ModelInferenceCoordinating, @unchecked Sendable {
+    func beginInference() async {}
+    func endInference() async {}
 }
 
 private final class MockOCRRecognizer: OCRRecognizing {
@@ -545,6 +710,31 @@ private final class MockTranslationService: TranslationService {
     func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
         let translated = bubbles.map { TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index) }
         return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+}
+
+// Minimal ModelDownloading stand-in for tests that only need a service whose
+// download path is never exercised. Throws if invoked so accidental calls fail
+// loudly instead of returning bogus data.
+private struct NoopModelDownloader: ModelDownloading {
+    func download(from url: URL, progressHandler: @Sendable @escaping (Double) -> Void) async throws -> URL {
+        throw PaddleOCRError.downloadFailed("noop downloader invoked in test")
+    }
+    func fetchString(from url: URL) async throws -> String { "" }
+}
+
+private final class LifecycleEventRecorderForRouterTests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [ModelLifecycleEvent] = []
+
+    func append(_ event: ModelLifecycleEvent) {
+        lock.lock(); defer { lock.unlock() }
+        events.append(event)
+    }
+
+    func snapshot() -> [ModelLifecycleEvent] {
+        lock.lock(); defer { lock.unlock() }
+        return events
     }
 }
 
