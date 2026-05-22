@@ -291,6 +291,228 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(preservedBubbles.first?.translatedText, "你好")
     }
 
+    // MARK: - 3. Cache failure routing (harden-cache-service-error-reporting)
+
+    // 3.1 clearAll failure → no page state changes, no textPixelMask cleared.
+    func testViewModelDoesNotResetPagesWhenCacheClearFails() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let mockCache = MockCacheService()
+        mockCache.clearAllError = CacheError.unavailable
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache
+        )
+        var translatedPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/preserve-1.jpg"))
+        translatedPage.state = .translated([
+            TranslatedBubble(
+                bubble: BubbleCluster(boundingBox: .zero, text: "old", observations: []),
+                translatedText: "舊",
+                index: 0
+            )
+        ])
+        translatedPage.textPixelMask = makeTestCGImage()
+        var errorPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/preserve-2.jpg"))
+        errorPage.state = .error("frozen error")
+        errorPage.textPixelMask = makeTestCGImage()
+        vm.pages = [translatedPage, errorPage]
+
+        vm.clearCacheAndResetPages()
+
+        guard case .translated(let preservedBubbles) = vm.pages[0].state else {
+            return XCTFail("Expected page 0 state preserved as .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(preservedBubbles.first?.translatedText, "舊")
+        XCTAssertNotNil(vm.pages[0].textPixelMask)
+        guard case .error(let preservedMessage) = vm.pages[1].state else {
+            return XCTFail("Expected page 1 state preserved as .error, got \(vm.pages[1].state)")
+        }
+        XCTAssertEqual(preservedMessage, "frozen error")
+        XCTAssertNotNil(vm.pages[1].textPixelMask)
+    }
+
+    // 3.2 Generic error message set when clearAll fails.
+    func testViewModelSetsGenericErrorMessageWhenCacheClearFails() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let mockCache = MockCacheService()
+        mockCache.clearAllError = CacheError.unavailable
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache
+        )
+        vm.pages = [MangaPage(imageURL: URL(fileURLWithPath: "/tmp/error-message.jpg"))]
+
+        vm.clearCacheAndResetPages()
+
+        XCTAssertEqual(
+            vm.errorMessage,
+            "Failed to clear cache. Translations may still be cached. Please restart the app if the problem persists."
+        )
+    }
+
+    // 3.3 SQLite message must NOT leak into errorMessage.
+    func testViewModelDoesNotLeakSqliteMessageToErrorMessage() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let mockCache = MockCacheService()
+        mockCache.clearAllError = CacheError.sqlite(
+            code: 5,
+            message: "database is locked",
+            operation: "CacheService.clearAll"
+        )
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache
+        )
+        vm.pages = [MangaPage(imageURL: URL(fileURLWithPath: "/tmp/leak-check.jpg"))]
+
+        vm.clearCacheAndResetPages()
+
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertFalse(vm.errorMessage?.contains("database is locked") == true,
+                       "errorMessage must not contain raw SQLite text, got: \(vm.errorMessage ?? "nil")")
+    }
+
+    // 3.4 SQLite message must be routed to DebugLogger.
+    func testViewModelRoutesSqliteMessageToDebugLogger() async {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let mockCache = MockCacheService()
+        mockCache.clearAllError = CacheError.sqlite(
+            code: 5,
+            message: "database is locked",
+            operation: "CacheService.clearAll"
+        )
+        let logFixture = makeDebugLogFixture()
+        defer { logFixture.cleanup() }
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache,
+            pipelineLogger: logFixture.logger
+        )
+        vm.pages = [MangaPage(imageURL: URL(fileURLWithPath: "/tmp/log-route.jpg"))]
+
+        vm.clearCacheAndResetPages()
+        await logFixture.logger.flush()
+
+        var filter = DebugLogFilter()
+        filter.category = .cache
+        filter.sessionIDFilter = .session(logFixture.logger.sessionID)
+        let entries = await logFixture.store.queryAll(filter: filter)
+        let match = entries.first { entry in
+            entry.message.contains("CacheService.clearAll") && entry.message.contains("database is locked")
+        }
+        XCTAssertNotNil(match, "DebugLogger must record the operation identifier and SQLite text")
+    }
+
+    // 3.5 Regression guard: clearAll success still resets pages.
+    func testViewModelResetsPagesWhenCacheClearSucceeds() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let mockCache = MockCacheService()
+        // No errors configured — clearAll succeeds.
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache
+        )
+        var translatedPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/reset-1.jpg"))
+        translatedPage.state = .translated([
+            TranslatedBubble(
+                bubble: BubbleCluster(boundingBox: .zero, text: "old", observations: []),
+                translatedText: "舊",
+                index: 0
+            )
+        ])
+        translatedPage.textPixelMask = makeTestCGImage()
+        var errorPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/reset-2.jpg"))
+        errorPage.state = .error("old error")
+        errorPage.textPixelMask = makeTestCGImage()
+        vm.pages = [translatedPage, errorPage]
+
+        vm.clearCacheAndResetPages()
+
+        for page in vm.pages {
+            guard case .pending = page.state else {
+                return XCTFail("Expected every page reset to .pending, got \(page.state)")
+            }
+            XCTAssertNil(page.textPixelMask)
+        }
+    }
+
+    // 3.6 Translation pipeline continues when store throws.
+    func testTranslationPipelineContinuesWhenStoreThrows() async {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let router = await makeRouter(recognizerText: "こんにちは")
+        let mockCache = MockCacheService()
+        mockCache.storeError = CacheError.sqlite(
+            code: 8,
+            message: "attempt to write a readonly database",
+            operation: "CacheService.store"
+        )
+        let logFixture = makeDebugLogFixture()
+        defer { logFixture.cleanup() }
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache,
+            pipelineLogger: logFixture.logger
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/store-throws.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+        await logFixture.logger.flush()
+
+        guard case .translated = vm.pages[0].state else {
+            return XCTFail("Expected page .translated despite store failure, got \(vm.pages[0].state)")
+        }
+        var filter = DebugLogFilter()
+        filter.category = .cache
+        filter.sessionIDFilter = .session(logFixture.logger.sessionID)
+        let entries = await logFixture.store.queryAll(filter: filter)
+        XCTAssertTrue(
+            entries.contains { $0.message.contains("CacheService.store") },
+            "DebugLogger must record the store failure"
+        )
+    }
+
+    // 3.7 Archive-load path continues when addHistory throws.
+    func testLoadFilesContinuesWhenAddHistoryThrows() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeTestPNG(at: root.appendingPathComponent("page_1.png"))
+        try writeTestPNG(at: root.appendingPathComponent("page_2.png"))
+
+        let mockCache = MockCacheService()
+        mockCache.addHistoryError = CacheError.sqlite(
+            code: 5,
+            message: "database is locked",
+            operation: "CacheService.addHistory"
+        )
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let router = await makeSingleRegionRouterSequential(texts: ["page"])
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: TrackingTranslationService(),
+            cacheService: mockCache
+        )
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(vm.pages.count, 2)
+        XCTAssertNil(vm.errorMessage, "addHistory failure must not present an alert")
+    }
+
     // MARK: - Cache management
 
     func testClearCacheAndResetPagesMarksLoadedPagesPendingWithoutRetranslating() {
@@ -327,10 +549,11 @@ final class TranslationViewModelTests: XCTestCase {
         let router = await makeRouter(recognizerText: "太郎")
         let prefs = makePrefs(source: .ja, target: .zhHant)
         let translationService = CapturingTranslationService()
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService)
-        let glossary = vm.glossaryServiceForView.createGlossary(name: "Names")
+        let cache = makeTempCache()
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService, cacheService: cache)
+        let glossary = try? vm.glossaryServiceForView.createGlossary(name: "Names")
         XCTAssertNotNil(glossary)
-        _ = vm.glossaryServiceForView.insertTerm(
+        _ = try? vm.glossaryServiceForView.addTerm(
             glossaryID: glossary!.id,
             sourceTerm: "太郎",
             targetTerm: "太郎",
@@ -506,9 +729,9 @@ final class TranslationViewModelTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         _ = recognizer
 
-        let glossary = vm.glossaryServiceForView.createGlossary(name: "BatchNonLLM")
+        let glossary = try? vm.glossaryServiceForView.createGlossary(name: "BatchNonLLM")
         XCTAssertNotNil(glossary)
-        _ = vm.glossaryServiceForView.insertTerm(
+        _ = try? vm.glossaryServiceForView.addTerm(
             glossaryID: glossary!.id,
             sourceTerm: "q1",
             targetTerm: "Q1",
@@ -938,6 +1161,54 @@ private actor ConcurrencyCounter {
     }
 }
 
+// CacheServiceProtocol double used by 3.x tests. Each mutation may be
+// configured to throw a specific CacheError; reads always degrade.
+private final class MockCacheService: CacheServiceProtocol {
+    var isAvailable: Bool = true
+    var storeError: Error?
+    var addHistoryError: Error?
+    var clearAllError: Error?
+    private(set) var storeCallCount = 0
+    private(set) var addHistoryCallCount = 0
+    private(set) var clearAllCallCount = 0
+    let glossaryService: GlossaryService
+
+    init() {
+        // No backing database; glossary reads/writes degrade naturally.
+        self.glossaryService = GlossaryService(db: nil, isAvailable: false)
+    }
+
+    func lookup(
+        imageHash: String, source: Language, target: Language, engine: TranslationEngine
+    ) -> CacheService.CachedTranslationResult? {
+        return nil
+    }
+
+    func translationCacheSize() -> Int64 { 0 }
+
+    func store(
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine,
+        bubbles: [TranslatedBubble],
+        textPixelMask: CGImage?
+    ) throws {
+        storeCallCount += 1
+        if let storeError { throw storeError }
+    }
+
+    func addHistory(path: String, pageCount: Int?) throws {
+        addHistoryCallCount += 1
+        if let addHistoryError { throw addHistoryError }
+    }
+
+    func clearAll() throws {
+        clearAllCallCount += 1
+        if let clearAllError { throw clearAllError }
+    }
+}
+
 private final class MockCapabilityChecker: DeviceCapabilityChecking {
     private let capability: PaddleOCRCapability
     init(_ capability: PaddleOCRCapability) { self.capability = capability }
@@ -1159,8 +1430,13 @@ private func makeBatchOrderingFixture(
     let vm = TranslationViewModel(
         preferences: makePrefs(source: .ja, target: .zhHant),
         ocrRouter: router,
-        translationService: translationService
+        translationService: translationService,
+        cacheService: makeTempCache()
     )
     vm.clearCacheAndResetPages()
     return (root, recognizer, translationService, vm)
+}
+
+private func makeTempCache() -> CacheService {
+    CacheService(databasePath: NSTemporaryDirectory() + "vm-test-\(UUID().uuidString).sqlite")
 }

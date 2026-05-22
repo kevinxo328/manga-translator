@@ -59,7 +59,7 @@ final class TranslationViewModel: ObservableObject {
     #else
     var ocrRouter: OCRRouter
     #endif
-    private let cacheService = CacheService()
+    private let cacheService: any CacheServiceProtocol
     private let keychainService = KeychainService()
     private var cancellables = Set<AnyCancellable>()
     private let translationServiceOverride: (any TranslationService)?
@@ -73,17 +73,19 @@ final class TranslationViewModel: ObservableObject {
         preferences: PreferencesService,
         ocrRouter: OCRRouter? = nil,
         translationService: (any TranslationService)? = nil,
+        cacheService: (any CacheServiceProtocol)? = nil,
         pipelineLogger: any PipelineLogging = DebugLogger.shared
     ) {
         self.preferences = preferences
         self.translationServiceOverride = translationService
         self.pipelineLogger = pipelineLogger
+        self.cacheService = cacheService ?? CacheService()
         #if arch(arm64)
         self.ocrRouter = ocrRouter ?? OCRRouter.makeProductionRouter()
         #else
         self.ocrRouter = ocrRouter ?? OCRRouter()
         #endif
-        glossaries = cacheService.glossaryService.listGlossaries()
+        glossaries = self.cacheService.glossaryService.listGlossaries()
         preferences.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -226,7 +228,11 @@ final class TranslationViewModel: ObservableObject {
         }
         resetRecentContext()
         currentPageIndex = 0
-        cacheService.addHistory(path: url.path, pageCount: pages.count)
+        do {
+            try cacheService.addHistory(path: url.path, pageCount: pages.count)
+        } catch {
+            logCacheMutationFailure(error, operation: "CacheService.addHistory")
+        }
         await translateBatch()
     }
 
@@ -454,14 +460,18 @@ final class TranslationViewModel: ObservableObject {
         case .noMeaningfulBubbles(let textPixelMask, let imageHash):
             pages[index].textPixelMask = textPixelMask
             pages[index].state = .translated([])
-            cacheService.store(
-                imageHash: imageHash,
-                source: preferences.sourceLanguage,
-                target: preferences.targetLanguage,
-                engine: preferences.translationEngine,
-                bubbles: [],
-                textPixelMask: textPixelMask
-            )
+            do {
+                try cacheService.store(
+                    imageHash: imageHash,
+                    source: preferences.sourceLanguage,
+                    target: preferences.targetLanguage,
+                    engine: preferences.translationEngine,
+                    bubbles: [],
+                    textPixelMask: textPixelMask
+                )
+            } catch {
+                logCacheMutationFailure(error, operation: "CacheService.store")
+            }
             appendToRecentContextIfNeeded([], usesRecentContext: usesRecentContext)
 
         case .ready(let meaningful, let textPixelMask, let imageHash, let restoreFrom):
@@ -474,18 +484,26 @@ final class TranslationViewModel: ObservableObject {
                     context: context
                 )
                 if let glossaryID = activeGlossaryID, !output.detectedTerms.isEmpty {
-                    glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
-                    glossaries = glossaryService.listGlossaries()
+                    do {
+                        try glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
+                        glossaries = glossaryService.listGlossaries()
+                    } catch {
+                        logCacheMutationFailure(error, operation: "GlossaryService.insertDetectedTerms")
+                    }
                 }
                 let translated = output.bubbles.sorted { $0.index < $1.index }
-                cacheService.store(
-                    imageHash: imageHash,
-                    source: preferences.sourceLanguage,
-                    target: preferences.targetLanguage,
-                    engine: preferences.translationEngine,
-                    bubbles: translated,
-                    textPixelMask: textPixelMask
-                )
+                do {
+                    try cacheService.store(
+                        imageHash: imageHash,
+                        source: preferences.sourceLanguage,
+                        target: preferences.targetLanguage,
+                        engine: preferences.translationEngine,
+                        bubbles: translated,
+                        textPixelMask: textPixelMask
+                    )
+                } catch {
+                    logCacheMutationFailure(error, operation: "CacheService.store")
+                }
                 pages[index].textPixelMask = textPixelMask
                 pages[index].state = .translated(translated)
                 appendToRecentContextIfNeeded(translated, usesRecentContext: usesRecentContext)
@@ -509,10 +527,61 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func clearCacheAndResetPages() {
-        cacheService.clearAll()
-        for i in pages.indices {
-            pages[i].state = .pending
-            pages[i].textPixelMask = nil
+        do {
+            try cacheService.clearAll()
+            for i in pages.indices {
+                pages[i].state = .pending
+                pages[i].textPixelMask = nil
+            }
+        } catch {
+            errorMessage = "Failed to clear cache. Translations may still be cached. Please restart the app if the problem persists."
+            logCacheMutationFailure(error, operation: "CacheService.clearAll")
+        }
+    }
+
+    // Centralises the SQLite-message → DebugLogger routing so UI surfaces never
+    // see raw database internals. Mutation callers that must keep working (e.g.
+    // store/addHistory during translation) call this with try/catch and never
+    // alter the page state machine.
+    private func logCacheMutationFailure(_ error: Error, operation: String) {
+        if let cacheError = error as? CacheError {
+            switch cacheError {
+            case .unavailable:
+                pipelineLogger.log(
+                    "\(operation): cache unavailable",
+                    level: .error,
+                    category: .cache,
+                    kind: .operational,
+                    metadata: ["operation": operation, "reason": "unavailable"],
+                    filePath: nil,
+                    source: #fileID
+                )
+            case .sqlite(let code, let message, let op):
+                pipelineLogger.log(
+                    "\(operation): SQLite error in \(op): \(message)",
+                    level: .error,
+                    category: .cache,
+                    kind: .operational,
+                    metadata: [
+                        "operation": operation,
+                        "sqlite_operation": op,
+                        "sqlite_code": "\(code)",
+                        "sqlite_message": message
+                    ],
+                    filePath: nil,
+                    source: #fileID
+                )
+            }
+        } else {
+            pipelineLogger.log(
+                "\(operation): \(error.localizedDescription)",
+                level: .error,
+                category: .cache,
+                kind: .operational,
+                metadata: ["operation": operation],
+                filePath: nil,
+                source: #fileID
+            )
         }
     }
 

@@ -96,7 +96,11 @@ struct GlossaryView: View {
                     }
                     .onDelete { offsets in
                         for index in offsets {
-                            glossaryService.deleteTerm(id: terms[index].id)
+                            do {
+                                try glossaryService.deleteTerm(id: terms[index].id)
+                            } catch {
+                                handleGlossaryFailure(error, operation: "GlossaryView.deleteTerm")
+                            }
                         }
                         reloadTerms()
                     }
@@ -129,10 +133,14 @@ struct GlossaryView: View {
         .alert("Delete Glossary", isPresented: $showDeleteGlossaryAlert) {
             Button("Delete", role: .destructive) {
                 if let id = viewModel.activeGlossaryID {
-                    glossaryService.deleteGlossary(id: id)
-                    viewModel.activeGlossaryID = nil
-                    viewModel.loadGlossaries()
-                    terms = []
+                    do {
+                        try glossaryService.deleteGlossary(id: id)
+                        viewModel.activeGlossaryID = nil
+                        viewModel.loadGlossaries()
+                        terms = []
+                    } catch {
+                        handleGlossaryFailure(error, operation: "GlossaryView.deleteGlossary")
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -200,10 +208,13 @@ struct GlossaryView: View {
                 Button("Create") {
                     let name = newGlossaryName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
-                    if let g = glossaryService.createGlossary(name: name) {
+                    do {
+                        let g = try glossaryService.createGlossary(name: name)
                         viewModel.loadGlossaries()
                         viewModel.activeGlossaryID = g.id
                         reloadTerms()
+                    } catch {
+                        handleGlossaryFailure(error, operation: "GlossaryView.createGlossary")
                     }
                     showNewGlossarySheet = false
                 }
@@ -236,15 +247,19 @@ struct GlossaryView: View {
                     let src = editSourceTerm.trimmingCharacters(in: .whitespacesAndNewlines)
                     let tgt = editTargetTerm.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !src.isEmpty, !tgt.isEmpty else { return }
-                    if let existing = editingTerm {
-                        glossaryService.updateTerm(id: existing.id, sourceTerm: src, targetTerm: tgt)
-                    } else if let glossaryID = viewModel.activeGlossaryID {
-                        _ = glossaryService.insertTerm(
-                            glossaryID: glossaryID,
-                            sourceTerm: src,
-                            targetTerm: tgt,
-                            autoDetected: false
-                        )
+                    do {
+                        if let existing = editingTerm {
+                            try glossaryService.updateTerm(id: existing.id, sourceTerm: src, targetTerm: tgt)
+                        } else if let glossaryID = viewModel.activeGlossaryID {
+                            _ = try glossaryService.addTerm(
+                                glossaryID: glossaryID,
+                                sourceTerm: src,
+                                targetTerm: tgt,
+                                autoDetected: false
+                            )
+                        }
+                    } catch {
+                        handleGlossaryFailure(error, operation: "GlossaryView.saveTerm")
                     }
                     reloadTerms()
                     showAddTermSheet = false
@@ -266,5 +281,34 @@ struct GlossaryView: View {
             return
         }
         terms = glossaryService.listTerms(glossaryID: id)
+    }
+
+    // Surfaces glossary mutation failures via the existing errorMessage modal,
+    // and routes the underlying SQLite text to DebugLogger so the UI stays
+    // free of database-internal strings.
+    private func handleGlossaryFailure(_ error: Error, operation: String) {
+        viewModel.errorMessage = "Failed to update glossary. Please try again, or restart the app if the problem persists."
+        if let cacheError = error as? CacheError {
+            switch cacheError {
+            case .unavailable:
+                DebugLogger.shared.log(
+                    "\(operation): cache unavailable",
+                    level: .error,
+                    category: .cache
+                )
+            case .sqlite(let code, let message, let op):
+                DebugLogger.shared.log(
+                    "\(operation): SQLite error (code \(code)) in \(op): \(message)",
+                    level: .error,
+                    category: .cache
+                )
+            }
+        } else {
+            DebugLogger.shared.log(
+                "\(operation): \(error.localizedDescription)",
+                level: .error,
+                category: .cache
+            )
+        }
     }
 }

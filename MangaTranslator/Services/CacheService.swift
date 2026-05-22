@@ -3,29 +3,107 @@ import AppKit
 import SQLite3
 import CryptoKit
 
-final class CacheService {
-    private var db: OpaquePointer?
-    private(set) lazy var glossaryService: GlossaryService = GlossaryService(db: db)
+// Errors thrown by CacheService and GlossaryService when the underlying SQLite
+// database is unusable or rejects a mutation. UI surfaces only generic strings;
+// the structured payload is for DebugLogger consumption.
+enum CacheError: Error, Equatable {
+    case unavailable
+    case sqlite(code: Int32, message: String, operation: String)
+}
 
-    init() {
-        openDatabase()
+// Abstraction injected into TranslationViewModel so tests can substitute a
+// double whose mutations throw. Production always uses CacheService.
+protocol CacheServiceProtocol: AnyObject {
+    var isAvailable: Bool { get }
+    var glossaryService: GlossaryService { get }
+
+    func lookup(
+        imageHash: String, source: Language, target: Language, engine: TranslationEngine
+    ) -> CacheService.CachedTranslationResult?
+
+    func translationCacheSize() -> Int64
+
+    func store(
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine,
+        bubbles: [TranslatedBubble],
+        textPixelMask: CGImage?
+    ) throws
+
+    func addHistory(path: String, pageCount: Int?) throws
+
+    func clearAll() throws
+}
+
+final class CacheService: CacheServiceProtocol {
+    private var db: OpaquePointer?
+    let isAvailable: Bool
+    private(set) lazy var glossaryService: GlossaryService = GlossaryService(
+        db: db,
+        isAvailable: isAvailable
+    )
+
+    convenience init() {
+        self.init(databasePath: nil, pragmaResultOverride: nil)
+    }
+
+    // Test-friendly initializer. `databasePath == nil` uses the production
+    // Application Support path. `pragmaResultOverride` lets tests force the
+    // `PRAGMA foreign_keys = ON` result code, which is the only way to
+    // reproduce the PRAGMA-failure branch deterministically.
+    init(databasePath: String?, pragmaResultOverride: Int32? = nil) {
+        let resolvedPath: String
+        if let databasePath {
+            resolvedPath = databasePath
+        } else {
+            let containerURL = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first!.appendingPathComponent("MangaTranslator")
+            try? FileManager.default.createDirectory(at: containerURL, withIntermediateDirectories: true)
+            resolvedPath = containerURL.appendingPathComponent("cache.sqlite").path
+        }
+
+        var handle: OpaquePointer?
+        let openFlags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+        let openResult = sqlite3_open_v2(resolvedPath, &handle, openFlags, nil)
+        if openResult != SQLITE_OK {
+            if handle != nil {
+                sqlite3_close(handle)
+            }
+            self.db = nil
+            self.isAvailable = false
+            DebugLogger.shared.log(
+                "Failed to open cache database (code \(openResult)) at \(resolvedPath)",
+                level: .error,
+                category: .cache
+            )
+            return
+        }
+
+        let pragmaResult = pragmaResultOverride
+            ?? sqlite3_exec(handle, "PRAGMA foreign_keys = ON", nil, nil, nil)
+        if pragmaResult != SQLITE_OK {
+            sqlite3_close(handle)
+            self.db = nil
+            self.isAvailable = false
+            DebugLogger.shared.log(
+                "PRAGMA foreign_keys = ON failed (code \(pragmaResult)); closing handle",
+                level: .error,
+                category: .cache
+            )
+            return
+        }
+
+        self.db = handle
+        self.isAvailable = true
         createTables()
     }
 
     deinit {
-        sqlite3_close(db)
-    }
-
-    private func openDatabase() {
-        let containerURL = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first!.appendingPathComponent("MangaTranslator")
-
-        try? FileManager.default.createDirectory(at: containerURL, withIntermediateDirectories: true)
-
-        let dbPath = containerURL.appendingPathComponent("cache.sqlite").path
-        if sqlite3_open(dbPath, &db) != SQLITE_OK {
-            DebugLogger.shared.log("Failed to open cache database at \(dbPath)", level: .error, category: .cache)
+        if db != nil {
+            sqlite3_close(db)
         }
     }
 
@@ -86,6 +164,7 @@ final class CacheService {
     func lookup(
         imageHash: String, source: Language, target: Language, engine: TranslationEngine
     ) -> CachedTranslationResult? {
+        guard isAvailable, let db else { return nil }
         let sql = """
         SELECT bubbles_json, text_pixel_mask_png FROM translation_cache
         WHERE image_hash = ? AND source_lang = ? AND target_lang = ? AND engine = ?
@@ -95,10 +174,10 @@ final class CacheService {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, imageHash, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-        sqlite3_bind_text(stmt, 2, source.rawValue, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-        sqlite3_bind_text(stmt, 3, target.rawValue, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        sqlite3_bind_text(stmt, 1, imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
 
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
 
@@ -127,8 +206,11 @@ final class CacheService {
         engine: TranslationEngine,
         bubbles: [TranslatedBubble],
         textPixelMask: CGImage?
-    ) {
-        guard let jsonString = encodeBubbles(bubbles) else { return }
+    ) throws {
+        guard isAvailable, let db else { throw CacheError.unavailable }
+        guard let jsonString = encodeBubbles(bubbles) else {
+            throw CacheError.sqlite(code: SQLITE_ERROR, message: "Failed to encode bubbles to JSON", operation: "CacheService.store")
+        }
 
         let sql = """
         INSERT OR REPLACE INTO translation_cache
@@ -137,36 +219,46 @@ final class CacheService {
         """
 
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+        if prepareResult != SQLITE_OK {
+            throw CacheService.makeError(db: db, operation: "CacheService.store.prepare")
+        }
         defer { sqlite3_finalize(stmt) }
 
-        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(stmt, 1, imageHash, -1, transient)
-        sqlite3_bind_text(stmt, 2, source.rawValue, -1, transient)
-        sqlite3_bind_text(stmt, 3, target.rawValue, -1, transient)
-        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, transient)
-        sqlite3_bind_text(stmt, 5, jsonString, -1, transient)
+        sqlite3_bind_text(stmt, 1, imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 5, jsonString, -1, CacheService.sqliteTransient)
         if let maskData = encodeMask(textPixelMask) {
             maskData.withUnsafeBytes { bytes in
                 guard let baseAddress = bytes.baseAddress else {
                     sqlite3_bind_null(stmt, 6)
                     return
                 }
-                sqlite3_bind_blob(stmt, 6, baseAddress, Int32(maskData.count), transient)
+                sqlite3_bind_blob(stmt, 6, baseAddress, Int32(maskData.count), CacheService.sqliteTransient)
             }
         } else {
             sqlite3_bind_null(stmt, 6)
         }
         sqlite3_bind_double(stmt, 7, Date().timeIntervalSince1970)
 
-        sqlite3_step(stmt)
+        let stepResult = sqlite3_step(stmt)
+        if stepResult != SQLITE_DONE {
+            throw CacheService.makeError(db: db, operation: "CacheService.store")
+        }
     }
 
-    func clearAll() {
-        sqlite3_exec(db, "DELETE FROM translation_cache", nil, nil, nil)
+    func clearAll() throws {
+        guard isAvailable, let db else { throw CacheError.unavailable }
+        let result = sqlite3_exec(db, "DELETE FROM translation_cache", nil, nil, nil)
+        if result != SQLITE_OK {
+            throw CacheService.makeError(db: db, operation: "CacheService.clearAll")
+        }
     }
 
     func translationCacheSize() -> Int64 {
+        guard isAvailable, let db else { return 0 }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT SUM(LENGTH(bubbles_json)) FROM translation_cache", -1, &stmt, nil) == SQLITE_OK else { return 0 }
         defer { sqlite3_finalize(stmt) }
@@ -174,18 +266,21 @@ final class CacheService {
         return sqlite3_column_int64(stmt, 0)
     }
 
-    func addHistory(path: String, pageCount: Int?) {
+    func addHistory(path: String, pageCount: Int?) throws {
+        guard isAvailable, let db else { throw CacheError.unavailable }
         let sql = """
         INSERT OR REPLACE INTO history (file_path, page_count, last_opened)
         VALUES (?, ?, ?)
         """
 
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+        if prepareResult != SQLITE_OK {
+            throw CacheService.makeError(db: db, operation: "CacheService.addHistory.prepare")
+        }
         defer { sqlite3_finalize(stmt) }
 
-        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(stmt, 1, path, -1, transient)
+        sqlite3_bind_text(stmt, 1, path, -1, CacheService.sqliteTransient)
         if let pageCount {
             sqlite3_bind_int(stmt, 2, Int32(pageCount))
         } else {
@@ -193,7 +288,50 @@ final class CacheService {
         }
         sqlite3_bind_double(stmt, 3, Date().timeIntervalSince1970)
 
-        sqlite3_step(stmt)
+        let stepResult = sqlite3_step(stmt)
+        if stepResult != SQLITE_DONE {
+            throw CacheService.makeError(db: db, operation: "CacheService.addHistory")
+        }
+    }
+
+    // MARK: - SQLite error helpers
+
+    // Reused SQLITE_TRANSIENT marker pointer. SQLite's headers do not expose it
+    // as a Swift constant, so we synthesise it via unsafeBitCast(-1, ...).
+    static let sqliteTransient: sqlite3_destructor_type = unsafeBitCast(
+        OpaquePointer(bitPattern: -1),
+        to: sqlite3_destructor_type.self
+    )
+
+    static func makeError(db: OpaquePointer, operation: String) -> CacheError {
+        let code = sqlite3_errcode(db)
+        let message: String
+        if let cMessage = sqlite3_errmsg(db) {
+            message = String(cString: cMessage)
+        } else {
+            message = "Unknown SQLite error"
+        }
+        return .sqlite(code: code, message: message, operation: operation)
+    }
+
+    // MARK: - Test introspection
+
+    // Test-only helper to verify PRAGMA foreign_keys is enabled on the live
+    // connection. Returns nil when the cache is unavailable.
+    func _foreignKeysSetting() -> Int? {
+        guard isAvailable, let db else { return nil }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA foreign_keys", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int(stmt, 0))
+    }
+
+    // Test-only helper to execute arbitrary SQL on the live connection.
+    // Used by tests to install triggers that force mutation failures.
+    func _executeSQL(_ sql: String) -> Int32 {
+        guard isAvailable, let db else { return SQLITE_MISUSE }
+        return sqlite3_exec(db, sql, nil, nil, nil)
     }
 
     // MARK: - JSON encoding/decoding for cached bubbles
