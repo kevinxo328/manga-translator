@@ -6,7 +6,7 @@ Since the v1.4.6 → main change `fix-batch-recent-context-order`, the batch tra
 
 - Add a multi-page LLM batching path in `TranslationViewModel.runBatchPipeline`'s Phase B for context-consuming engines. Up to 5 consecutive miss pages whose total bubble count is at most 45 are grouped into a single LLM API request.
 - Add `translateBatch(pageInputs:from:to:priorContext:)` to the `TranslationService` protocol. The default implementation falls back to calling per-page `translate(...)` sequentially so engines that do not implement the batch path retain today's behavior.
-- Implement the batch method on `CopilotTranslationService` and `OpenAITranslationService` using a structured JSON page schema (request: ordered array of pages each with a stable id and their bubbles; response: same array shape, mapped back by page id).
+- Implement the batch method on `CopilotTranslationService` and `OpenAITranslationService` using a dedicated multi-page JSON schema (request: ordered array of pages each with a stable id and their bubbles; response: `{"pages":[{"page_id":"...","bubbles":[...],"detected_terms":[...]}]}` mapped back by page id).
 - Extend `LLMPrompt` to build a multi-page user prompt that lists pages in page-index order, and inject the rolling `Recent context` summary once per batch (covering up to 3 successful pages whose index is strictly less than the batch's first page).
 - Extend `LLMResponseParser` to parse a multi-page response and validate that every requested page id appears in the response; missing or malformed pages trigger the documented fallback.
 - On batch failure (HTTP non-2xx, transport error, parse failure, missing page in response), retry the same batch exactly once with exponential backoff, then fall back to the existing per-page serial finalize loop for the same set of pages. Per-page fallback runs the same per-page `translate(...)` calls that today's pipeline uses.
@@ -29,7 +29,7 @@ None.
 ## Impact
 
 - `MangaTranslator/ViewModels/TranslationViewModel.swift`: new batch scheduler in `runBatchPipeline`'s context-consuming branch; new helper for grouping consecutive miss pages by bubble count; cancel propagation into in-flight batch task.
-- `MangaTranslator/Services/TranslationService.swift`: add `translateBatch(pageInputs:from:to:priorContext:)` with a default extension method that loops to the existing per-page `translate(...)`.
+- `MangaTranslator/Models/Models.swift` or an adjacent service-model file: add `translateBatch(pageInputs:from:to:priorContext:)` with a default extension method that loops to the existing per-page `translate(...)`.
 - `MangaTranslator/Services/CopilotTranslationService.swift`: implement `translateBatch` using the structured JSON page schema with the Copilot integration headers already in use.
 - `MangaTranslator/Services/OpenAITranslationService.swift`: implement `translateBatch` using the same schema.
 - `MangaTranslator/Services/LLMPrompt.swift`: add multi-page user-prompt builder and a single-shot recent-context block that the batch caller passes in.

@@ -14,7 +14,7 @@ Concurrency baseline: `TranslationViewModel` is `@MainActor`. Phase A uses `with
 
 - For batch translation runs (`translateBatch()` and `retranslateAllPages()`) on `githubCopilot` and `openAICompatible` engines, group up to 5 consecutive miss pages with at most 45 total bubbles into one `translateBatch` LLM call.
 - Preserve every existing `contextual-translation` invariant that is not explicitly relaxed by the spec delta: page-index ordering across batches, the 3-page rolling window cap, cache-hit contribution, failed-page exclusion, glossary context for DeepL/Google.
-- Make the new path a strict throughput win in the happy path (single API call per N pages) and never worse than today in the failure path (retry once, then run today's per-page serial loop).
+- Make the new path a strict throughput win in the happy path (single API call per N pages) and preserve today's correctness in the failure path (retry once, then run today's per-page serial loop). Failure latency may be worse than today because the system spends one failed batch attempt and one retry before falling back.
 - Keep the per-page `TranslationService.translate(...)` contract unchanged. The new `translateBatch` method ships with a default implementation that delegates to the per-page method so non-LLM engines and tests that only implement the per-page contract keep working.
 - Keep mid-batch cancel deterministic: pages in the in-flight batch return to `.pending`, no later batches start, no partial results from the batch are persisted to UI or cache.
 
@@ -32,6 +32,43 @@ Concurrency baseline: `TranslationViewModel` is `@MainActor`. Phase A uses `with
 ### Decision 1: Multi-page batching over producer/consumer pipeline
 
 We add a `translateBatch(pageInputs:from:to:priorContext:)` method to `TranslationService` that takes an ordered array of page inputs and returns an ordered array of page outputs in one API call. The batch scheduler in `TranslationViewModel` groups consecutive miss pages from the prepared batch and calls this method instead of looping per-page `translate(...)`.
+
+The batch method uses a dedicated prompt contract, separate from the existing per-page prompt contract:
+
+Request user prompt:
+
+```json
+{
+  "pages": [
+    {
+      "page_id": "1",
+      "bubbles": [
+        {"index": 0, "x": 120, "y": 40, "width": 80, "height": 50, "text": "..."}
+      ]
+    }
+  ]
+}
+```
+
+Response body:
+
+```json
+{
+  "pages": [
+    {
+      "page_id": "1",
+      "bubbles": [
+        {"index": 0, "translation": "translated text here"}
+      ],
+      "detected_terms": [
+        {"source": "original proper noun", "target": "translated proper noun"}
+      ]
+    }
+  ]
+}
+```
+
+The batch system prompt must instruct the LLM to return only this object shape. The existing per-page `LLMPrompt.systemPrompt(...)` response instruction remains unchanged for `translate(...)`.
 
 Why this over producer/consumer:
 
@@ -93,13 +130,16 @@ When a batch call fails for any of the following reasons, the batch is retried e
 - Transport-level error (timeout, connection failure)
 - Response JSON parse failure
 - Valid JSON but missing one or more requested page ids
+- Valid JSON but containing one or more unexpected page ids
 
-If the retry also fails for any of the same reasons, the scheduler falls back to calling the per-page `translate(...)` method for each page in the failed batch group, in page-index order, exactly as today's Phase B does. Per-page fallback uses the existing per-page retry inside each service (`maxRetries = 2` already in `CopilotTranslationService`).
+User-initiated cancellation is not a batch failure. `CancellationError`, `URLError.cancelled`, and any service-level cancellation wrapper must propagate to the scheduler without retry, sanitization, or per-page fallback.
+
+If the retry also fails for any of the same non-cancellation reasons, the scheduler falls back to calling the per-page `translate(...)` method for each page in the failed batch group, in page-index order, exactly as today's Phase B does. Per-page fallback uses the existing per-page retry inside each service (`maxRetries = 2` already in `CopilotTranslationService`).
 
 Why:
 
 - The retry catches transient transport and rate-limit errors without taking the per-page latency hit.
-- The per-page fallback guarantees that the worst-case behavior of this change is no worse than today's pipeline. Token-budget overruns, model "forgot a page" errors, and provider safety filter trips that strike a batch but not a single page all converge through this safety net.
+- The per-page fallback guarantees that correctness is no worse than today's pipeline. Token-budget overruns, model "forgot a page" errors, and provider safety filter trips that strike a batch but not a single page all converge through this safety net. Latency is worse than today's pipeline when batch failure is common, so fallback events must be logged and monitored.
 - No split/binary retry is introduced. Modern LLM context windows make token-overrun-of-3-page batches with our 45-bubble cap rare in practice; the per-page fallback handles even those without extra code paths.
 
 Alternatives considered:

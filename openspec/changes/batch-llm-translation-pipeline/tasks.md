@@ -1,6 +1,6 @@
 ## 1. Protocol surface and shared models
 
-- [ ] 1.1 Add `struct BatchPageInput { let pageId: String; let bubbles: [BubbleCluster] }` to `MangaTranslator/Services/TranslationService.swift` (or adjacent file). `pageId` is the stable identifier used to map request pages to response pages; production callers use `String(pageIndex)`.
+- [ ] 1.1 Add `struct BatchPageInput { let pageId: String; let bubbles: [BubbleCluster] }` to `MangaTranslator/Models/Models.swift` (where `TranslationService` currently lives) or an adjacent service-model file. `pageId` is the stable identifier used to map request pages to response pages; production callers use `String(pageIndex)`.
 - [ ] 1.2 Add `struct BatchPageOutput { let pageId: String; let bubbles: [TranslatedBubble]; let detectedTerms: [DetectedGlossaryTerm] }` to the same file.
 - [ ] 1.3 Add `func translateBatch(pageInputs: [BatchPageInput], from source: Language, to target: Language, priorContext: TranslationContext) async throws -> [BatchPageOutput]` to the `TranslationService` protocol.
 - [ ] 1.4 Add a default `extension TranslationService` implementation of `translateBatch` that loops over `pageInputs` in order, calls the existing per-page `translate(...)` for each, returns the assembled outputs, and propagates any thrown error from the first failing call.
@@ -9,8 +9,8 @@
 ## 2. Multi-page prompt and parser tests first
 
 - [ ] 2.1 Add `testMultiPageUserPromptListsPagesInIndexOrder` to `MangaTranslatorTests/LLMPromptTests.swift` (create file if needed). Given three `BatchPageInput` with page ids "1", "2", "3", assert the user-prompt string contains each page id as a section marker in ascending order and no other page id between them.
-- [ ] 2.2 Add `testMultiPageSystemPromptIncludesRecentContextOnceWhenPriorPagesExist`. Given `priorContext` with two recent page summaries, assert the system prompt contains exactly one `## Recent context` block and that block lists the two prior pages in ascending page-index order.
-- [ ] 2.3 Add `testMultiPageSystemPromptOmitsRecentContextWhenPriorPagesEmpty`. Given empty `priorContext.recentPageSummaries`, assert the system prompt does not contain `## Recent context`.
+- [ ] 2.2 Add `testMultiPageSystemPromptIncludesRecentContextOnceWhenPriorPagesExist`. Given `priorContext` with two recent page summaries, assert the batch system prompt contains exactly one `## Recent context` block, that block lists the two prior pages in ascending page-index order, and the prompt instructs the model to return the multi-page `{"pages":[...]}` response object.
+- [ ] 2.3 Add `testMultiPageSystemPromptOmitsRecentContextWhenPriorPagesEmpty`. Given empty `priorContext.recentPageSummaries`, assert the batch system prompt does not contain `## Recent context`.
 - [ ] 2.4 Add `testMultiPageUserPromptDoesNotInjectRecentContextForBatchInternalPages`. Given three batched pages, assert the user prompt does not contain `## Recent context` for any of the three.
 - [ ] 2.5 Add `testMultiPageResponseParserMapsByPageId` to `MangaTranslatorTests/LLMResponseParserTests.swift` (create if needed). Given a synthetic response with pages "1", "2", "3" in shuffled order, assert the parser returns `[BatchPageOutput]` in the requested page-id order (or whatever ordering the parser contract specifies — see task 3.4).
 - [ ] 2.6 Add `testMultiPageResponseParserRejectsMissingPageId`. Given a synthetic response missing page "2" of a requested set ("1", "2", "3"), assert the parser throws an error type that the scheduler recognizes as "trigger fallback".
@@ -19,8 +19,8 @@
 
 ## 3. Multi-page prompt and parser implementation
 
-- [ ] 3.1 Add `LLMPrompt.multiPageUserPrompt(pageInputs: [BatchPageInput]) -> String` that lists each page as a `## Page <pageId>` block followed by the bubbles JSON for that page.
-- [ ] 3.2 Reuse the existing `LLMPrompt.systemPrompt(from:to:context:)` signature for the batch path; the batch caller passes `TranslationContext` whose `recentPageSummaries` is the rolling window sampled before the batch. No new system-prompt builder is needed.
+- [ ] 3.1 Add `LLMPrompt.multiPageUserPrompt(pageInputs: [BatchPageInput]) -> String` that emits the dedicated multi-page request JSON object `{"pages":[{"page_id":"...","bubbles":[...]}]}` with pages in requested order.
+- [ ] 3.2 Add `LLMPrompt.multiPageSystemPrompt(from:to:context:) -> String` for the batch path. It may share common rule text with the per-page prompt, but its response instruction must require only the multi-page `{"pages":[...]}` response object and must not reuse the per-page flat-array response instruction.
 - [ ] 3.3 Add `LLMResponseParser.parseMultiPage(_ responseText: String, requestedPageIds: [String]) throws -> [(pageId: String, bubbles: [TranslatedBubble], detectedTerms: [DetectedGlossaryTerm])]` that:
   - Parses the response body as JSON with the multi-page schema.
   - Validates that every `requestedPageIds` element appears in the response and no other page ids appear.
@@ -35,16 +35,18 @@
 - [ ] 4.3 Add `testCopilotTranslateBatchRetriesOnceOnHTTP500`. Stub the first response as HTTP 500 and the second as HTTP 200 with a valid body; assert the method returns successfully and the stub recorded exactly 2 requests.
 - [ ] 4.4 Add `testCopilotTranslateBatchThrowsAfterSecondHTTP500`. Stub both responses as HTTP 500; assert the method throws and the stub recorded exactly 2 requests. The thrown error must be one the scheduler can detect as "fallback trigger".
 - [ ] 4.5 Add `testCopilotTranslateBatchThrowsOnMissingPageId`. Stub HTTP 200 with a response missing one requested page id (both attempts); assert the thrown error is the parser's missing-page error and the stub recorded exactly 2 requests.
-- [ ] 4.6 Mirror tasks 4.1–4.5 for `OpenAITranslationServiceTests` (`testOpenAITranslateBatch*`).
-- [ ] 4.7 Run the suite, confirm all 4.x tests are red.
+- [ ] 4.6 Add `testCopilotTranslateBatchDoesNotRetryOrFallbackOnCancellation`. Stub or fake a cancellation error (`CancellationError` or `URLError.cancelled`) and assert the method propagates cancellation after exactly 1 request with no retry.
+- [ ] 4.7 Mirror tasks 4.1–4.6 for `OpenAITranslationServiceTests` (`testOpenAITranslateBatch*`).
+- [ ] 4.8 Run the suite, confirm all 4.x tests are red.
 
 ## 5. Provider batch implementation
 
 - [ ] 5.1 Implement `CopilotTranslationService.translateBatch(pageInputs:from:to:priorContext:)`:
-  - Build system prompt via `LLMPrompt.systemPrompt(from:to:context: priorContext)`.
+  - Build system prompt via `LLMPrompt.multiPageSystemPrompt(from:to:context: priorContext)`.
   - Build user prompt via `LLMPrompt.multiPageUserPrompt(pageInputs:)`.
   - Issue one POST to `<baseURL>/chat/completions` with existing headers (`Authorization`, `Copilot-Integration-Id: copilot-developer-cli`, `Content-Type`).
-  - On HTTP 5xx, transport error, parse error, or `MultiPageParseError`, wait per the exponential backoff schedule (500ms, 2x multiplier on retry) and retry exactly once.
+  - On HTTP 5xx, non-cancellation transport error, parse error, or `MultiPageParseError`, wait per the exponential backoff schedule (500ms, 2x multiplier on retry) and retry exactly once.
+  - On user cancellation (`CancellationError`, `URLError.cancelled`, or a service-level cancellation wrapper), propagate cancellation immediately without retry, sanitization, or per-page fallback.
   - On second failure, throw a sanitized error (use the existing `APIErrorSanitizer` machinery).
   - On success, parse via `LLMResponseParser.parseMultiPage` and return `[BatchPageOutput]`.
 - [ ] 5.2 Implement `OpenAITranslationService.translateBatch(...)` with the same structure but with OpenAI-compatible headers and endpoint resolution.
@@ -61,9 +63,10 @@
 - [ ] 6.7 Add `testRunBatchPipelineBatchFailureFallsBackToPerPageInPageIndexOrder`. Fake service throws on `translateBatch` for the group [3,4,5]; assert the scheduler then calls per-page `translate` for pages 3, 4, 5 in that order.
 - [ ] 6.8 Add `testRunBatchPipelineBatchFailureFallbackPreservesRecentContext`. Build on 6.7. After fallback, assert page 4's per-page request observed pages [1,2,3] in `recentPageSummaries`, and page 5's request observed [2,3,4].
 - [ ] 6.9 Add `testRunBatchPipelineCancelDuringBatchReturnsBatchPagesToPending`. Start a batch run, cancel via the existing cancel pathway while the fake service is suspended inside `translateBatch`; assert pages in the in-flight batch return to `.pending`, no later batch is invoked, and pages already finalized before the cancel keep their state.
-- [ ] 6.10 Add `testRunBatchPipelineDeepLEngineSkipsBatchPath`. Configure the view model with a DeepL engine; assert the scheduler never calls `translateBatch` and uses the existing per-page parallel path.
-- [ ] 6.11 Add `testTranslatePageSinglePageEntrySkipsBatchPath`. Call `translatePage(at:bypassCache:)` for one page; assert the scheduler does not enter the batch grouping code and the per-page `translate` is called directly.
-- [ ] 6.12 Run the suite, confirm all 6.x tests are red.
+- [ ] 6.10 Add `testRunBatchPipelineCancelDuringBatchDoesNotFallbackToPerPage`. Start a batch run, cancel while the fake service is suspended inside `translateBatch`, and assert no per-page `translate` calls are made for the cancelled group.
+- [ ] 6.11 Add `testRunBatchPipelineDeepLEngineSkipsBatchPath`. Configure the view model with a DeepL engine; assert the scheduler never calls `translateBatch` and uses the existing per-page parallel path.
+- [ ] 6.12 Add `testTranslatePageSinglePageEntrySkipsBatchPath`. Call `translatePage(at:bypassCache:)` for one page; assert the scheduler does not enter the batch grouping code and the per-page `translate` is called directly.
+- [ ] 6.13 Run the suite, confirm all 6.x tests are red.
 
 ## 7. View-model batch scheduler implementation
 
@@ -81,8 +84,8 @@
   - Build `priorContext: TranslationContext` from the current rolling window (must use the same builder the per-page path uses to derive `recentPageSummaries`).
   - Call `service.translateBatch(pageInputs:from:to:priorContext:)`.
   - On success, for each `BatchPageOutput`, route through the existing `finalizePage` success arm (write to pages array, append to rolling window via the same helper, write to cache). Use the page-id to look up the original page index.
-  - On thrown error from `translateBatch`, log via `DebugLogger` with a `batchFallback` category, then run the existing per-page serial finalize loop for the group's pages exactly as today's `runBatchPipeline` did for those pages.
-- [ ] 7.4 Wire cancellation: the existing `runBatchPipeline`'s `Task` cancellation propagates naturally to `service.translateBatch` via Swift Concurrency. When `translateBatch` throws a cancellation error, the scheduler resets the group's pages to `.pending` and exits without starting later batches.
+  - On non-cancellation error from `translateBatch`, log via `DebugLogger` with a `batchFallback` category, then run the existing per-page serial finalize loop for the group's pages exactly as today's `runBatchPipeline` did for those pages.
+- [ ] 7.4 Wire cancellation: the existing `runBatchPipeline`'s `Task` cancellation propagates naturally to `service.translateBatch` via Swift Concurrency. When `translateBatch` throws `CancellationError`, `URLError.cancelled`, or a service-level cancellation wrapper, the scheduler resets the group's pages to `.pending` and exits without retry, per-page fallback, or starting later batches.
 - [ ] 7.5 Confirm `translatePage(at:bypassCache:)` remains unchanged; it does not call into the batch scheduler.
 - [ ] 7.6 Confirm the DeepL/Google branch of `runBatchPipeline` (the `else` branch) is unchanged.
 - [ ] 7.7 Run section 6 tests, confirm all green.

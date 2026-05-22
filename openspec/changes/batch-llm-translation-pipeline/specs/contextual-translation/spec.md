@@ -72,11 +72,11 @@ Pages that fail during image loading, OCR, cache lookup, translation, or cache s
 - **AND** the second batch's `## Recent context` section is sampled from pages whose index is lower than 4, including page 3's cached translated bubbles in ascending page-index order
 - **AND** page 3 itself is never sent in an LLM batch request
 
-#### Scenario: Batch failure fallback preserves recent-context invariants
+#### Scenario: Batch failure fallback preserves per-page serial context invariants
 - **WHEN** user batch-translates pages 1 through 5 with a context-consuming LLM engine
 - **AND** the batch request grouping pages 3, 4, 5 fails twice (one initial attempt plus one retry)
 - **THEN** the system finalizes pages 3, 4, and 5 by calling the per-page translation service in page-index order
-- **AND** each of pages 3, 4, 5 observes the same rolling-window contents that it would have observed if the batch had succeeded
+- **AND** fallback uses the same rolling-window update rules as today's per-page serial finalize loop
 - **AND** page 4's per-page request sees pages 1, 2, and 3 in `## Recent context` after page 3 finishes
 - **AND** page 5's per-page request sees pages 2, 3, 4 in `## Recent context` after page 4 finishes
 
@@ -93,7 +93,7 @@ The system SHALL include the rolling context window in the LLM system prompt whe
 
 For a per-page LLM request that targets page N, the `## Recent context` section SHALL summarize the rolling window observed immediately before the request, which contains pages whose index is lower than N according to the rolling window requirement.
 
-For a multi-page LLM batch request that contains pages F through L, the `## Recent context` section SHALL appear at most once in the system prompt and SHALL summarize the rolling window observed immediately before the batch, which contains pages whose index is lower than F. The user prompt SHALL list the requested pages F through L in ascending page-index order, each page identified by a stable page identifier in both request and response. The system SHALL NOT include any additional `## Recent context` block describing pages F through L themselves inside the same batch's user prompt.
+For a multi-page LLM batch request that contains pages F through L, the `## Recent context` section SHALL appear at most once in the system prompt and SHALL summarize the rolling window observed immediately before the batch, which contains pages whose index is lower than F. The user prompt SHALL list the requested pages F through L in ascending page-index order, each page identified by a stable page identifier in both request and response. The batch prompt SHALL use a dedicated multi-page JSON contract whose response root object is `{"pages":[...]}` and whose page objects contain `page_id`, `bubbles`, and optional `detected_terms`. The system SHALL NOT include any additional `## Recent context` block describing pages F through L themselves inside the same batch's user prompt.
 
 DeepL and Google Translate SHALL NOT receive recent-page summaries and SHALL NOT read from or write to the rolling recent-page context window. This restriction applies to both single-page translation and batch translation. DeepL and Google Translate SHALL still receive active glossary terms through `TranslationContext.glossaryTerms` when an active glossary exists.
 
@@ -184,10 +184,13 @@ A batch request is considered failed when any of the following occurs:
 - A transport-level error occurs (timeout, connection failure, request cancellation by the OS not initiated by user cancel).
 - The response body fails to parse as the expected multi-page response schema.
 - The response parses as valid JSON but does not contain a translation for every requested page identifier.
+- The response parses as valid JSON but contains one or more page identifiers that were not requested.
+
+User-initiated cancellation SHALL NOT be treated as a failed batch request. Cancellation errors from Swift concurrency, `URLSession`, or service wrappers SHALL propagate to the scheduler without retry, error sanitization, or per-page fallback.
 
 On the first failure, the system SHALL retry the same batch request after an exponential backoff delay starting at 500ms with a 2x multiplier on the first retry.
 
-If the retry also fails for any of the same reasons, the system SHALL finalize each page in the failed batch group by calling the per-page translation service method in page-index order. The per-page fallback path SHALL use the same per-page service method, recent-context window, and per-page retry semantics that the per-page translation entry point uses.
+If the retry also fails for any of the same non-cancellation reasons, the system SHALL finalize each page in the failed batch group by calling the per-page translation service method in page-index order. The per-page fallback path SHALL use the same per-page service method, recent-context window, and per-page retry semantics that the per-page translation entry point uses.
 
 The system SHALL log each batch failure and each fallback transition through `DebugLogger` with a stable category so the batch-failure rate can be observed.
 
@@ -208,6 +211,18 @@ The system SHALL log each batch failure and each fallback transition through `De
 - **WHEN** a batch request for pages 1, 2, 3 returns HTTP 200 with translations for pages 1 and 2 only
 - **AND** the retry attempt also returns HTTP 200 with translations for pages 1 and 2 only
 - **THEN** the system finalizes pages 1, 2, and 3 by calling the per-page translation service for each in page-index order
+
+#### Scenario: Unexpected page identifier in response triggers retry then fallback
+- **WHEN** a batch request for pages 1, 2, 3 returns HTTP 200 with translations for pages 1, 2, 3, and 9
+- **AND** the retry attempt also returns HTTP 200 with translations for pages 1, 2, 3, and 9
+- **THEN** the system rejects the batch response
+- **AND** the system finalizes pages 1, 2, and 3 by calling the per-page translation service for each in page-index order
+
+#### Scenario: User cancellation skips retry and fallback
+- **WHEN** a batch request is in flight
+- **AND** the user cancels the batch translation run
+- **THEN** the batch request is cancelled without retry
+- **AND** no per-page fallback is triggered for that cancelled batch
 
 #### Scenario: Per-page fallback observes the same rolling-window contents
 - **WHEN** a batch request for pages 3, 4, 5 fails and falls back to per-page
