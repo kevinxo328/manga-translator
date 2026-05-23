@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.4.7 (2026-05-23)
+
+### New Features
+
+- **Multi-Page Translation** — Translate consecutive pages together in batches. This makes translation dramatically faster and allows the translator to maintain context between pages for much more cohesive and accurate storytelling.
+
+### Bug Fixes
+
+- Fixed an issue where the available GitHub Copilot models would fail to load or be missing from the model selection dropdown.
+- Fixed an issue where a network disruption or unexpected quit during model downloading could result in a corrupted model installation; downloads are now handled transactionally with automatic recovery.
+- Fixed silent translation or saving failures by adding structured error feedback in the interface, while keeping your privacy safe by automatically filtering sensitive API keys and tokens from error messages and logs.
+
+### Improvements
+
+- Added support for recognizing text in inverted speech bubbles (white text on a dark background), improving accuracy during action-heavy or highly-styled scenes.
+
 ## v1.4.6 (2026-05-15)
 
 ### New Features
