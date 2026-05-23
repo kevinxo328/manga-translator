@@ -696,8 +696,10 @@ final class TranslationViewModelTests: XCTestCase {
     // MARK: - Batch recent-context ordering (fix-batch-recent-context-order)
 
     func testLLMBatchTranslationBuildsRecentContextInPageOrder() async throws {
-        let widths = [111, 112, 113, 114]
-        let texts = ["p1", "p2", "p3", "p4"]
+        // Six pages span two LLM batches (maxPages=5). The within-batch priorContext is
+        // sampled once at the batch boundary; pages internal to a batch share that context.
+        let widths = [111, 112, 113, 114, 115, 116]
+        let texts = ["p1", "p2", "p3", "p4", "p5", "p6"]
         let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
         let (root, recognizer, translationService, vm) = try await makeBatchOrderingFixture(
             widths: widths,
@@ -710,11 +712,22 @@ final class TranslationViewModelTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(translationService.callCount, 4)
-        XCTAssertEqual(translationService.context(forInput: "p1")?.recentPageSummaries, [])
-        XCTAssertEqual(translationService.context(forInput: "p2")?.recentPageSummaries, ["T:p1"])
-        XCTAssertEqual(translationService.context(forInput: "p3")?.recentPageSummaries, ["T:p1", "T:p2"])
-        XCTAssertEqual(translationService.context(forInput: "p4")?.recentPageSummaries, ["T:p1", "T:p2", "T:p3"])
+        XCTAssertEqual(translationService.callCount, 6)
+        // Batch 1 (pages 1..5): priorContext is empty (no successful page with index < 1).
+        // The default TranslationService.translateBatch extension delegates to per-page
+        // translate(...) so each recorded call observes the same batch-level priorContext.
+        for text in ["p1", "p2", "p3", "p4", "p5"] {
+            XCTAssertEqual(
+                translationService.context(forInput: text)?.recentPageSummaries,
+                [],
+                "Within-batch pages share the batch-level priorContext (\(text))"
+            )
+        }
+        // Batch 2 (page 6): rolling window after batch 1 finalized is trimmed to last 3.
+        XCTAssertEqual(
+            translationService.context(forInput: "p6")?.recentPageSummaries,
+            ["T:p3", "T:p4", "T:p5"]
+        )
     }
 
     func testNonContextualEnginesDoNotReceiveRecentPageContext() async throws {
@@ -860,8 +873,10 @@ final class TranslationViewModelTests: XCTestCase {
     }
 
     func testRetranslateAllPagesUsesPageOrderedRecentContextForLLMEngines() async throws {
-        let widths = [161, 162, 163, 164]
-        let texts = ["u1", "u2", "u3", "u4"]
+        // Six pages so retranslate-all spans two batches and exercises the batch-level
+        // priorContext rule (Decision 2) for both the initial load and the retranslate.
+        let widths = [161, 162, 163, 164, 165, 166]
+        let texts = ["u1", "u2", "u3", "u4", "u5", "u6"]
         let textByWidth = Dictionary(uniqueKeysWithValues: zip(widths, texts))
         let (root, _, translationService, vm) = try await makeBatchOrderingFixture(
             widths: widths,
@@ -873,17 +888,19 @@ final class TranslationViewModelTests: XCTestCase {
 
         // Initial load to populate pages and cache.
         await vm.loadFolder(root)
-        XCTAssertEqual(translationService.callCount, 4)
+        XCTAssertEqual(translationService.callCount, 6)
 
-        // Retranslate all pages bypasses cache and must apply the same page-ordered context rules.
+        // Retranslate all pages bypasses cache and applies the same per-batch context rules.
         await vm.retranslateAllPages()
 
-        XCTAssertEqual(translationService.callCount, 8)
+        XCTAssertEqual(translationService.callCount, 12)
         let retranslate = translationService.contextsForRetranslateBatch(inputs: texts)
-        XCTAssertEqual(retranslate["u1"], [])
-        XCTAssertEqual(retranslate["u2"], ["T:u1"])
-        XCTAssertEqual(retranslate["u3"], ["T:u1", "T:u2"])
-        XCTAssertEqual(retranslate["u4"], ["T:u1", "T:u2", "T:u3"])
+        // Batch 1 (u1..u5): all share an empty priorContext.
+        for text in ["u1", "u2", "u3", "u4", "u5"] {
+            XCTAssertEqual(retranslate[text], [], "Within-batch \(text)")
+        }
+        // Batch 2 (u6): priorContext is the rolling window after batch 1 trimmed to last 3.
+        XCTAssertEqual(retranslate["u6"], ["T:u3", "T:u4", "T:u5"])
     }
 }
 
@@ -1437,4 +1454,445 @@ private func makeBatchOrderingFixture(
 
 private func makeTempCache() -> CacheService {
     CacheService(databasePath: NSTemporaryDirectory() + "vm-test-\(UUID().uuidString).sqlite")
+}
+
+// MARK: - Batch scheduler test infrastructure (batch-llm-translation-pipeline)
+
+// Detector that emits a configurable number of regions per page, keyed by image width.
+// The page image must be created with a distinct width per page so each page can declare
+// its own bubble count.
+private struct FixedRegionCountDetector: ComicTextDetecting {
+    let countByWidth: [Int: Int]
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        let count = countByWidth[cgImage.width] ?? 0
+        let regions: [DetectedTextRegion] = (0..<count).map { i in
+            DetectedTextRegion(
+                boundingBox: CGRect(x: 10, y: i * 12, width: 20, height: 12),
+                confidence: 1.0,
+                classIndex: 0
+            )
+        }
+        return ComicTextDetectorResult(regions: regions, textPixelMask: nil, lowConfidenceRegionCount: 0)
+    }
+}
+
+// Returns a unique non-empty text per region so the meaningful-bubble filter never drops it.
+private final class UniqueTextRecognizer: @unchecked Sendable, OCRRecognizing {
+    private let lock = NSLock()
+    private var counters: [Int: Int] = [:]
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        let width = cgImage.width
+        let idx: Int = lock.withLock {
+            let next = counters[width, default: 0]
+            counters[width] = next + 1
+            return next
+        }
+        return ("w\(width)b\(idx)", 1.0)
+    }
+}
+
+// Records every translateBatch and translate(...) invocation for assertions and supports
+// failure injection (failBatchForPageIds) and a cancel-aware suspension (suspendUntilCancel).
+private final class RecordingBatchTranslationService: @unchecked Sendable, TranslationService {
+    private let engineKind: TranslationEngine
+    var engine: TranslationEngine { engineKind }
+
+    private let lock = NSLock()
+    private var _batchCalls: [(pageIds: [String], summaries: [String])] = []
+    private var _perPageCalls: [(input: String, summaries: [String])] = []
+    var failBatchForPageIds: Set<String> = []
+    var suspendBatchUntilCancel: Bool = false
+    // Optional hook fired after translateBatch has produced outputs but before returning.
+    // Used to simulate cancellation that arrives between the API completing and the
+    // view-model persisting the batch outputs.
+    var onBatchSuccessBeforeReturn: (@Sendable () async -> Void)?
+
+    init(engine: TranslationEngine = .githubCopilot) {
+        self.engineKind = engine
+    }
+
+    var batchCalls: [(pageIds: [String], summaries: [String])] {
+        lock.lock(); defer { lock.unlock() }
+        return _batchCalls
+    }
+    var perPageCalls: [(input: String, summaries: [String])] {
+        lock.lock(); defer { lock.unlock() }
+        return _perPageCalls
+    }
+
+    func translate(
+        bubbles: [BubbleCluster],
+        from source: Language,
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
+        let input = bubbles.first?.text ?? ""
+        lock.withLock { _perPageCalls.append((input: input, summaries: context.recentPageSummaries)) }
+        let translated = bubbles.map {
+            TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
+        }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput] {
+        let pageIds = pageInputs.map { $0.pageId }
+        lock.withLock { _batchCalls.append((pageIds: pageIds, summaries: priorContext.recentPageSummaries)) }
+
+        if suspendBatchUntilCancel {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000)
+            }
+            throw CancellationError()
+        }
+
+        if !failBatchForPageIds.isDisjoint(with: Set(pageIds)) {
+            throw TranslationError.apiError(SanitizedAPIError(
+                provider: "Test", statusCode: 500, code: nil, message: "forced batch failure"
+            ))
+        }
+
+        let outputs = pageInputs.map { input in
+            let translated = input.bubbles.map {
+                TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
+            }
+            return BatchPageOutput(pageId: input.pageId, bubbles: translated, detectedTerms: [])
+        }
+        if let hook = onBatchSuccessBeforeReturn {
+            await hook()
+        }
+        return outputs
+    }
+}
+
+// Sendable holder so a translateBatch hook can cancel the outer Task that owns it.
+private final class TaskHandleBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _task: Task<Void, Never>?
+    func set(_ t: Task<Void, Never>) { lock.withLock { _task = t } }
+    func cancel() { (lock.withLock { _task })?.cancel() }
+}
+
+@MainActor
+private func makeBatchSchedulerFixture(
+    bubbleCountsByPage: [Int],
+    engine: TranslationEngine = .githubCopilot
+) async throws -> (root: URL, service: RecordingBatchTranslationService, vm: TranslationViewModel, cache: CacheService) {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    var countByWidth: [Int: Int] = [:]
+    for (i, count) in bubbleCountsByPage.enumerated() {
+        let width = 300 + i
+        countByWidth[width] = count
+        try writeUniqueColoredPNG(at: root.appendingPathComponent("page_\(i + 1).png"), width: width)
+    }
+
+    let detector = FixedRegionCountDetector(countByWidth: countByWidth)
+    let mocService = MangaOCRService(detector: detector)
+    await mocService.setRecognizer(UniqueTextRecognizer())
+    let router = OCRRouter(
+        mangaOCRService: mocService,
+        capabilityChecker: MockCapabilityChecker(.unsupported),
+        downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+        paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+    )
+    let translationService = RecordingBatchTranslationService(engine: engine)
+    let cache = makeTempCache()
+    let prefs = makePrefs(source: .ja, target: .zhHant)
+    // Align preferences.translationEngine with the fake service's engine so cache
+    // lookups (keyed by preferences.translationEngine) match what tests store.
+    prefs.translationEngine = engine
+    let vm = TranslationViewModel(
+        preferences: prefs,
+        ocrRouter: router,
+        translationService: translationService,
+        cacheService: cache
+    )
+    vm.clearCacheAndResetPages()
+    return (root, translationService, vm, cache)
+}
+
+// MARK: - Batch scheduler tests
+
+@MainActor
+final class BatchSchedulerTests: XCTestCase {
+
+    // 6.1
+    func testRunBatchPipelineGroupsFiveLowBubblePagesIntoOneBatch() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [8, 8, 8, 8, 8]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 1)
+        XCTAssertEqual(service.batchCalls.first?.pageIds, ["0", "1", "2", "3", "4"])
+        XCTAssertEqual(service.perPageCalls.count, 0)
+    }
+
+    // 6.2 (spec-aligned: [20, 20, 20, 5, 5] yields [0,1] then [2,3,4])
+    func testRunBatchPipelineFlushesOnBubbleThreshold() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [20, 20, 20, 5, 5]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 2)
+        XCTAssertEqual(service.batchCalls[0].pageIds, ["0", "1"])
+        XCTAssertEqual(service.batchCalls[1].pageIds, ["2", "3", "4"])
+    }
+
+    // 6.3
+    func testRunBatchPipelineFlushesOnPageCap() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4, 4, 4, 4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 2)
+        XCTAssertEqual(service.batchCalls[0].pageIds, ["0", "1", "2", "3", "4"])
+        XCTAssertEqual(service.batchCalls[1].pageIds, ["5", "6", "7"])
+    }
+
+    // 6.4
+    func testRunBatchPipelineSinglePageOverBubbleThresholdRunsAlone() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [60, 10]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 2)
+        XCTAssertEqual(service.batchCalls[0].pageIds, ["0"])
+        XCTAssertEqual(service.batchCalls[1].pageIds, ["1"])
+    }
+
+    // 6.5
+    func testRunBatchPipelineCacheHitActsAsBatchBoundary() async throws {
+        let (root, service, vm, cache) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Pre-populate cache for page_3.png so its preparation is `.cacheHit` and flushes batch [0,1].
+        let page3URL = root.appendingPathComponent("page_3.png")
+        let data = try Data(contentsOf: page3URL)
+        let hash = CacheService.imageHash(data: data)
+        let cachedBubble = TranslatedBubble(
+            bubble: BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "cached-src", observations: []),
+            translatedText: "cached-T",
+            index: 0
+        )
+        try cache.store(
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .githubCopilot,
+            bubbles: [cachedBubble],
+            textPixelMask: nil
+        )
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 2)
+        XCTAssertEqual(service.batchCalls[0].pageIds, ["0", "1"])
+        XCTAssertEqual(service.batchCalls[1].pageIds, ["3", "4"])
+        XCTAssertFalse(service.batchCalls.contains { $0.pageIds.contains("2") })
+    }
+
+    // 6.6
+    func testRunBatchPipelineCachedPageContributesToNextBatchRecentContext() async throws {
+        let (root, service, vm, cache) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let page3URL = root.appendingPathComponent("page_3.png")
+        let data = try Data(contentsOf: page3URL)
+        let hash = CacheService.imageHash(data: data)
+        let cachedBubble = TranslatedBubble(
+            bubble: BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "cached-src", observations: []),
+            translatedText: "cached-text",
+            index: 0
+        )
+        try cache.store(
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .githubCopilot,
+            bubbles: [cachedBubble],
+            textPixelMask: nil
+        )
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 2)
+        // Batch 2's priorContext contains pages with index < 4 (its first page).
+        // After batch 1 (pages 0, 1) and the cache hit (page 2), the rolling window has
+        // batch1-page0, batch1-page1, page2's cached text.
+        let secondBatchSummaries = service.batchCalls[1].summaries
+        XCTAssertTrue(
+            secondBatchSummaries.contains(where: { $0.contains("cached-text") }),
+            "Second batch's priorContext must contain page 2's cached translated text — got \(secondBatchSummaries)"
+        )
+    }
+
+    // 6.7
+    func testRunBatchPipelineBatchFailureFallsBackToPerPageInPageIndexOrder() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 20, 20, 5]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 4 + 4 + 20 = 28 ≤ 45 and 4 pages ≤ 5, but adding page 3 (20) → 48 > 45 so flush.
+        // With [4,4,20,20,5]: group [0,1,2]=28, +page 3 (20) → 48 overflow → flush.
+        //   Then [3]=20, +4 (5)=25 ≤ 45, group [3,4].
+        // We want the second group's batch call to fail.
+        service.failBatchForPageIds = ["3", "4"]
+
+        await vm.loadFolder(root)
+
+        // The fallback path uses the per-page translate(...) for each page in the failed group.
+        let perPageInputs = service.perPageCalls.map { $0.input }
+        XCTAssertEqual(perPageInputs.count, 2, "Pages 3 and 4 must fall back to per-page (got \(perPageInputs))")
+        // Page-index order: page 3's bubble comes first, then page 4's.
+        // Bubble text is "w<width>b<idx>"; widths are 303 for page 3 and 304 for page 4.
+        XCTAssertTrue(perPageInputs[0].hasPrefix("w303"), "First per-page call must be for page 3 (got \(perPageInputs[0]))")
+        XCTAssertTrue(perPageInputs[1].hasPrefix("w304"), "Second per-page call must be for page 4 (got \(perPageInputs[1]))")
+    }
+
+    // 6.8
+    func testRunBatchPipelineBatchFailureFallbackPreservesRecentContext() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 20, 20, 5]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        service.failBatchForPageIds = ["3", "4"]
+
+        await vm.loadFolder(root)
+
+        // After batch 1 (pages 0..2) succeeds, the rolling window contains 3 summaries.
+        // Page 3's fallback per-page call sees those 3 summaries; page 4's call sees the
+        // window updated with page 3's translation (sliding to keep the most recent 3).
+        XCTAssertEqual(service.perPageCalls.count, 2)
+        let page3Summaries = service.perPageCalls[0].summaries
+        XCTAssertEqual(page3Summaries.count, 3, "Page 3 must see 3 prior page summaries — got \(page3Summaries)")
+        let page4Summaries = service.perPageCalls[1].summaries
+        XCTAssertEqual(page4Summaries.count, 3, "Page 4 must see 3 prior page summaries — got \(page4Summaries)")
+        // Page 4's window includes page 3's translation; page 0's summary is dropped.
+        XCTAssertNotEqual(page3Summaries, page4Summaries, "Window must shift after page 3 succeeds")
+    }
+
+    // 6.9
+    func testRunBatchPipelineCancelDuringBatchReturnsBatchPagesToPending() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        service.suspendBatchUntilCancel = true
+
+        let task = Task { await vm.loadFolder(root) }
+        // Wait for the batch to enter the suspended state. Poll perPageCalls/batchCalls.
+        for _ in 0..<200 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if service.batchCalls.count >= 1 { break }
+        }
+        task.cancel()
+        await task.value
+
+        for i in vm.pages.indices {
+            if case .pending = vm.pages[i].state { continue }
+            XCTFail("Page \(i) must return to .pending after cancel, got \(vm.pages[i].state)")
+        }
+        XCTAssertEqual(service.batchCalls.count, 1, "No later batch must be invoked after cancel")
+    }
+
+    // Cancellation that arrives between translateBatch returning successfully and the
+    // view-model persisting outputs must still revert pages to .pending and skip persist.
+    func testRunBatchPipelineCancelAfterBatchSucceedsBeforePersistRevertsPages() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let taskBox = TaskHandleBox()
+        service.onBatchSuccessBeforeReturn = { @Sendable in
+            taskBox.cancel()
+        }
+
+        let task = Task { await vm.loadFolder(root) }
+        taskBox.set(task)
+        await task.value
+
+        for i in vm.pages.indices {
+            if case .pending = vm.pages[i].state { continue }
+            XCTFail("Page \(i) must return to .pending after late-cancel, got \(vm.pages[i].state)")
+        }
+    }
+
+    // 6.10
+    func testRunBatchPipelineCancelDuringBatchDoesNotFallbackToPerPage() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        service.suspendBatchUntilCancel = true
+
+        let task = Task { await vm.loadFolder(root) }
+        for _ in 0..<200 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if service.batchCalls.count >= 1 { break }
+        }
+        task.cancel()
+        await task.value
+
+        XCTAssertEqual(service.perPageCalls.count, 0, "Cancellation must not trigger per-page fallback")
+    }
+
+    // 6.11
+    func testRunBatchPipelineDeepLEngineSkipsBatchPath() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4],
+            engine: .deepL
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 0, "DeepL must never call translateBatch")
+        XCTAssertEqual(service.perPageCalls.count, 3, "DeepL must use per-page parallel path")
+    }
+
+    // 6.12
+    func testTranslatePageSinglePageEntrySkipsBatchPath() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Manually wire one page without going through loadFolder, then call translatePage.
+        let url = root.appendingPathComponent("page_1.png")
+        var page = MangaPage(imageURL: url)
+        page.image = NSImage(contentsOf: url)
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        XCTAssertEqual(service.batchCalls.count, 0, "Single-page entry must not call translateBatch")
+        XCTAssertEqual(service.perPageCalls.count, 1, "Single-page entry must call translate exactly once")
+    }
 }

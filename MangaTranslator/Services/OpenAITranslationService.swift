@@ -68,6 +68,61 @@ struct OpenAITranslationService: TranslationService {
         return TranslationOutput(bubbles: fallback, detectedTerms: [])
     }
 
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput] {
+        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        try BaseURLValidator.validate(sanitizedBaseURL)
+
+        guard let apiKey = keychainService.retrieve(for: .openAI) else {
+            DebugLogger.shared.log("translateBatch failed: missing API key", level: .error, category: .translationOpenAI)
+            throw TranslationError.missingAPIKey(.openAI)
+        }
+
+        DebugLogger.shared.logAPIDiagnostic(
+            "translateBatch started: pages=\(pageInputs.count) \(source.rawValue)→\(target.rawValue)",
+            category: .translationOpenAI, model: model, endpoint: sanitizedBaseURL
+        )
+
+        let systemPrompt = LLMPrompt.multiPageSystemPrompt(from: source, to: target, context: priorContext)
+        let userPrompt = LLMPrompt.multiPageUserPrompt(pageInputs: pageInputs)
+
+        let maxAttempts = 2
+        var lastError: Error?
+        for attempt in 1...maxAttempts {
+            try Task.checkCancellation()
+            do {
+                let responseText = try await callAPI(
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt,
+                    apiKey: apiKey
+                )
+                let outputs = try LLMResponseParser.parseMultiPage(responseText, pageInputs: pageInputs)
+                DebugLogger.shared.logAPIDiagnostic(
+                    "translateBatch completed: pages=\(outputs.count)",
+                    category: .translationOpenAI, statusCode: 200, model: model
+                )
+                return outputs
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw urlError
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+                if attempt < maxAttempts {
+                    let nanos: UInt64 = 500_000_000 * UInt64(1 << (attempt - 1))
+                    try? await Task.sleep(nanoseconds: nanos)
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError ?? TranslationError.invalidResponse
+    }
+
     private func callAPI(systemPrompt: String, userPrompt: String, apiKey: String) async throws -> String {
         let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
         let sanitizedModel = String(model.drop(while: { $0 == "/" }))
@@ -89,7 +144,7 @@ struct OpenAITranslationService: TranslationService {
 
         let (data, response) = try await urlSession.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             let sanitized = APIErrorSanitizer.sanitize(
                 provider: .openAI,

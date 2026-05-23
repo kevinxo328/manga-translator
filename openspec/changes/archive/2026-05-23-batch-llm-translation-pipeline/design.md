@@ -126,13 +126,14 @@ Why:
 
 When a batch call fails for any of the following reasons, the batch is retried exactly once after exponential backoff (starting at 500ms with x2 multiplier):
 
-- HTTP non-2xx response from the provider
-- Transport-level error (timeout, connection failure)
+- HTTP non-2xx response from the provider (the success range is the full 200–299 band, not just 200)
+- Transport-level error other than cancellation (timeout, connection failure)
 - Response JSON parse failure
 - Valid JSON but missing one or more requested page ids
 - Valid JSON but containing one or more unexpected page ids
+- Valid JSON but repeating a page id, missing a requested bubble index for a page, or containing a bubble index for a page that was not requested
 
-User-initiated cancellation is not a batch failure. `CancellationError`, `URLError.cancelled`, and any service-level cancellation wrapper must propagate to the scheduler without retry, sanitization, or per-page fallback.
+User-initiated cancellation is not a batch failure. `CancellationError`, `URLError.cancelled`, and any service-level cancellation wrapper must propagate to the scheduler without retry, sanitization, or per-page fallback. We treat every `URLError.cancelled` as user cancellation rather than introducing a separate "OS-initiated request cancellation" branch: in this pipeline the only practical source of `URLError.cancelled` is the cooperative cancel triggered by the user's cancel action, and a misclassified retry on that error would relaunch work the user just stopped.
 
 If the retry also fails for any of the same non-cancellation reasons, the scheduler falls back to calling the per-page `translate(...)` method for each page in the failed batch group, in page-index order, exactly as today's Phase B does. Per-page fallback uses the existing per-page retry inside each service (`maxRetries = 2` already in `CopilotTranslationService`).
 

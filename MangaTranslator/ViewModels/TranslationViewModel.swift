@@ -148,6 +148,23 @@ final class TranslationViewModel: ObservableObject {
         case failed(message: String, restoreFrom: MangaPage?)
     }
 
+    // Sizing thresholds for the multi-page LLM batch scheduler. The constants are local
+    // because the algorithm does not need to publish them; they are tuned with the engine
+    // and the LLM context window in mind. See design.md Decision 3.
+    private struct BatchSizingConfig {
+        static let maxBubbles = 45
+        static let maxPages = 5
+    }
+
+    // A single `.ready` page queued to be sent as part of a multi-page LLM batch.
+    private struct BatchPlanItem {
+        let pageIndex: Int
+        let meaningful: [BubbleCluster]
+        let textPixelMask: CGImage?
+        let imageHash: String
+        let restoreFrom: MangaPage?
+    }
+
     var currentPage: MangaPage? {
         guard pages.indices.contains(currentPageIndex) else { return nil }
         return pages[currentPageIndex]
@@ -302,9 +319,46 @@ final class TranslationViewModel: ObservableObject {
                     preparations[result.0] = result.1
                 }
             }
+
+            // Phase B: iterate over prepared pages in page-index order, grouping consecutive
+            // .ready pages into multi-page LLM batches while respecting maxBubbles/maxPages.
+            // Cache hits, skips, and failures act as batch boundaries.
+            var currentGroup: [BatchPlanItem] = []
+            var currentBubbleCount = 0
+            var cancelled = false
             for i in pages.indices {
+                if cancelled { break }
                 guard let prep = preparations[i] else { continue }
-                await finalizePage(at: i, preparation: prep, service: service, usesRecentContext: true)
+                switch prep {
+                case .ready(let meaningful, let mask, let hash, let restore):
+                    let wouldExceedBubbles = currentBubbleCount + meaningful.count > BatchSizingConfig.maxBubbles
+                    let wouldExceedPages = currentGroup.count + 1 > BatchSizingConfig.maxPages
+                    if !currentGroup.isEmpty && (wouldExceedBubbles || wouldExceedPages) {
+                        cancelled = await runBatch(currentGroup, service: service)
+                        currentGroup.removeAll()
+                        currentBubbleCount = 0
+                        if cancelled { break }
+                    }
+                    currentGroup.append(BatchPlanItem(
+                        pageIndex: i,
+                        meaningful: meaningful,
+                        textPixelMask: mask,
+                        imageHash: hash,
+                        restoreFrom: restore
+                    ))
+                    currentBubbleCount += meaningful.count
+                default:
+                    if !currentGroup.isEmpty {
+                        cancelled = await runBatch(currentGroup, service: service)
+                        currentGroup.removeAll()
+                        currentBubbleCount = 0
+                        if cancelled { break }
+                    }
+                    await finalizePage(at: i, preparation: prep, service: service, usesRecentContext: true)
+                }
+            }
+            if !cancelled && !currentGroup.isEmpty {
+                _ = await runBatch(currentGroup, service: service)
             }
         } else {
             await withTaskGroup(of: Void.self) { group in
@@ -436,6 +490,118 @@ final class TranslationViewModel: ObservableObject {
             )
         } catch {
             return .failed(message: error.localizedDescription, restoreFrom: restoreFrom)
+        }
+    }
+
+    // Run one multi-page LLM batch. Returns true if the run was cancelled, signalling the
+    // caller to stop processing later batches. On non-cancellation failure, falls back to
+    // calling the per-page translate(...) for every page in the group in page-index order;
+    // per-page fallback uses the same recent-context window updates as the per-page entry.
+    private func runBatch(_ group: [BatchPlanItem], service: any TranslationService) async -> Bool {
+        guard !group.isEmpty else { return false }
+        let pageInputs = group.map {
+            BatchPageInput(pageId: String($0.pageIndex), bubbles: $0.meaningful)
+        }
+        let priorContext = buildTranslationContext(usesRecentContext: true)
+        let itemByPageId = Dictionary(uniqueKeysWithValues: group.map { (String($0.pageIndex), $0) })
+
+        do {
+            let outputs = try await service.translateBatch(
+                pageInputs: pageInputs,
+                from: preferences.sourceLanguage,
+                to: preferences.targetLanguage,
+                priorContext: priorContext
+            )
+            // Cancellation may have arrived after the API call returned but before persist;
+            // honour it so a cancelled batch never writes to pages, cache, or rolling window.
+            if Task.isCancelled {
+                revertBatchPagesToPending(group)
+                return true
+            }
+            // Apply outputs in page-index order so the rolling window accumulates correctly.
+            for output in outputs {
+                guard let item = itemByPageId[output.pageId] else { continue }
+                persistBatchOutput(output, item: item)
+            }
+            return false
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            revertBatchPagesToPending(group)
+            return true
+        } catch is CancellationError {
+            revertBatchPagesToPending(group)
+            return true
+        } catch {
+            pipelineLogger.log(
+                "Batch failed; falling back to per-page (pages=\(group.count))",
+                level: .warning,
+                category: .pipeline,
+                metadata: [
+                    "operation": "batchFallback",
+                    "page_count": "\(group.count)",
+                    "error": error.localizedDescription
+                ]
+            )
+            // Per-page fallback: call the existing finalize path for each page, which
+            // invokes service.translate(...) and updates the rolling window in order.
+            for item in group {
+                if Task.isCancelled {
+                    revertRemainingBatchPagesToPending(group, startingAt: item.pageIndex)
+                    return true
+                }
+                await finalizePage(
+                    at: item.pageIndex,
+                    preparation: .ready(
+                        meaningful: item.meaningful,
+                        textPixelMask: item.textPixelMask,
+                        imageHash: item.imageHash,
+                        restoreFrom: item.restoreFrom
+                    ),
+                    service: service,
+                    usesRecentContext: true
+                )
+            }
+            return false
+        }
+    }
+
+    private func persistBatchOutput(_ output: BatchPageOutput, item: BatchPlanItem) {
+        if let glossaryID = activeGlossaryID, !output.detectedTerms.isEmpty {
+            do {
+                try glossaryService.insertDetectedTerms(output.detectedTerms, glossaryID: glossaryID)
+                glossaries = glossaryService.listGlossaries()
+            } catch {
+                logCacheMutationFailure(error, operation: "GlossaryService.insertDetectedTerms")
+            }
+        }
+        let translated = output.bubbles.sorted { $0.index < $1.index }
+        do {
+            try cacheService.store(
+                imageHash: item.imageHash,
+                source: preferences.sourceLanguage,
+                target: preferences.targetLanguage,
+                engine: preferences.translationEngine,
+                bubbles: translated,
+                textPixelMask: item.textPixelMask
+            )
+        } catch {
+            logCacheMutationFailure(error, operation: "CacheService.store")
+        }
+        pages[item.pageIndex].textPixelMask = item.textPixelMask
+        pages[item.pageIndex].state = .translated(translated)
+        appendToRecentContextIfNeeded(translated, usesRecentContext: true)
+    }
+
+    private func revertBatchPagesToPending(_ group: [BatchPlanItem]) {
+        for item in group where pages.indices.contains(item.pageIndex) {
+            pages[item.pageIndex].state = .pending
+            pages[item.pageIndex].textPixelMask = nil
+        }
+    }
+
+    private func revertRemainingBatchPagesToPending(_ group: [BatchPlanItem], startingAt index: Int) {
+        for item in group where item.pageIndex >= index && pages.indices.contains(item.pageIndex) {
+            pages[item.pageIndex].state = .pending
+            pages[item.pageIndex].textPixelMask = nil
         }
     }
 

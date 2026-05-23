@@ -151,6 +151,17 @@ extension [TranslatedBubble] {
     }
 }
 
+struct BatchPageInput {
+    let pageId: String
+    let bubbles: [BubbleCluster]
+}
+
+struct BatchPageOutput {
+    let pageId: String
+    let bubbles: [TranslatedBubble]
+    let detectedTerms: [GlossaryTerm]
+}
+
 protocol TranslationService {
     var engine: TranslationEngine { get }
     func translate(
@@ -159,4 +170,40 @@ protocol TranslationService {
         to target: Language,
         context: TranslationContext
     ) async throws -> TranslationOutput
+
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput]
+}
+
+extension TranslationService {
+    // Default fallback used by engines that have not opted in to true multi-page batching
+    // (DeepL, Google) and by test fakes that only implement the per-page method. The batch
+    // scheduler may still route through this path; behaviour matches today's per-page loop.
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput] {
+        var outputs: [BatchPageOutput] = []
+        outputs.reserveCapacity(pageInputs.count)
+        for input in pageInputs {
+            let output = try await translate(
+                bubbles: input.bubbles,
+                from: source,
+                to: target,
+                context: priorContext
+            )
+            outputs.append(BatchPageOutput(
+                pageId: input.pageId,
+                bubbles: output.bubbles,
+                detectedTerms: output.detectedTerms
+            ))
+        }
+        return outputs
+    }
 }

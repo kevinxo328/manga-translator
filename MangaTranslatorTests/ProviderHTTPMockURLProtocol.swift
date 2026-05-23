@@ -12,16 +12,23 @@ import Foundation
 final class ProviderHTTPMockURLProtocol: URLProtocol {
 
     typealias Handler = (URLRequest) -> (HTTPURLResponse, Data)
+    typealias ResultHandler = (URLRequest) -> Result<(HTTPURLResponse, Data), URLError>
 
     static let sessionHeaderName = "X-Provider-Mock-Session-ID"
 
     private static let lock = NSLock()
-    private static var handlers: [String: Handler] = [:]
+    private static var handlers: [String: ResultHandler] = [:]
 
     /// Creates a `URLSession` whose every request will be served by `handler`.
     /// The returned session owns its handler entry until the caller invokes
     /// ``releaseSession(_:)``.
     static func makeSession(handler: @escaping Handler) -> URLSession {
+        return makeSession { request in .success(handler(request)) }
+    }
+
+    /// Variant accepting a Result-returning handler so tests can inject
+    /// transport-level failures such as `URLError(.cancelled)`.
+    static func makeSession(handler: @escaping ResultHandler) -> URLSession {
         let id = UUID().uuidString
         lock.lock()
         handlers[id] = handler
@@ -61,13 +68,38 @@ final class ProviderHTTPMockURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
         }
-        let (response, data) = handler(request)
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data)
-        client?.urlProtocolDidFinishLoading(self)
+        switch handler(request) {
+        case .success(let (response, data)):
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        case .failure(let urlError):
+            client?.urlProtocol(self, didFailWithError: urlError)
+        }
     }
 
     override func stopLoading() {}
+}
+
+// URLSession converts `httpBody` into `httpBodyStream` before handing requests
+// to a custom `URLProtocol`. Tests that need to inspect the outgoing body must
+// drain the stream.
+extension URLRequest {
+    func readMockBody() -> Data {
+        if let body = httpBody { return body }
+        guard let stream = httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let read = stream.read(buffer, maxLength: bufferSize)
+            if read > 0 { data.append(buffer, count: read) } else { break }
+        }
+        return data
+    }
 }
 
 // MARK: - KeychainService test factory

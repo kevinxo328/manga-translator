@@ -181,12 +181,13 @@ The system SHALL retry a failed multi-page LLM batch request exactly once before
 A batch request is considered failed when any of the following occurs:
 
 - The HTTP response status is not in the 200–299 range.
-- A transport-level error occurs (timeout, connection failure, request cancellation by the OS not initiated by user cancel).
+- A transport-level error occurs (timeout, connection failure, or any other non-cancellation `URLError`).
 - The response body fails to parse as the expected multi-page response schema.
 - The response parses as valid JSON but does not contain a translation for every requested page identifier.
 - The response parses as valid JSON but contains one or more page identifiers that were not requested.
+- The response parses as valid JSON but repeats the same page identifier, omits a requested bubble index for a page, or contains a bubble index for a page that was not requested.
 
-User-initiated cancellation SHALL NOT be treated as a failed batch request. Cancellation errors from Swift concurrency, `URLSession`, or service wrappers SHALL propagate to the scheduler without retry, error sanitization, or per-page fallback.
+User-initiated cancellation SHALL NOT be treated as a failed batch request. Cancellation errors from Swift concurrency (`CancellationError`), `URLSession` (`URLError.cancelled`), or service wrappers SHALL propagate to the scheduler without retry, error sanitization, or per-page fallback. The system SHALL treat every `URLError.cancelled` as a user-cancellation signal; it SHALL NOT attempt to distinguish OS-initiated request cancellation from user-initiated cancel, because in practice the only path that produces `URLError.cancelled` inside this pipeline is the cooperative cancellation triggered by the user's cancel action.
 
 On the first failure, the system SHALL retry the same batch request after an exponential backoff delay starting at 500ms with a 2x multiplier on the first retry.
 
