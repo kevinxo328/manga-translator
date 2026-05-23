@@ -43,3 +43,6 @@ scripts/convert_model/.env
 test_images/
 examples/*
 !examples/.gitkeep
+
+# Antigravity
+.antigravitycli/*.json
