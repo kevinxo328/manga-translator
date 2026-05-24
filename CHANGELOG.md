@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.8 (2026-05-24)
+
+### Improvements
+
+- Improved the settings interface with a dedicated glossary management tab and support for active renaming, so you can easily review and update your custom term translations.
+
 ## v1.4.7 (2026-05-23)
 
 ### New Features
