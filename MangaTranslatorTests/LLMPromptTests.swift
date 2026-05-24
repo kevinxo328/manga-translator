@@ -456,8 +456,10 @@ struct LLMPromptMultiPageTests {
 
         let recentBlocks = ranges(of: "## Recent context", in: prompt)
         #expect(recentBlocks.count == 1)
-        let a = try? #require(prompt.range(of: "page-A-summary"))
-        let b = try? #require(prompt.range(of: "page-B-summary"))
+        let a = prompt.range(of: "page-A-summary")
+        let b = prompt.range(of: "page-B-summary")
+        #expect(a != nil, "Expected 'page-A-summary' in prompt")
+        #expect(b != nil, "Expected 'page-B-summary' in prompt")
         if let a, let b {
             #expect(a.lowerBound < b.lowerBound)
         }
