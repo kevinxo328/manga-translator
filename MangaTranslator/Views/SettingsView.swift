@@ -1,8 +1,8 @@
 import SwiftUI
 import Sparkle
 
-private enum SettingsTab: Hashable, CaseIterable {
-    case apiKeys, preferences, debug, about
+enum SettingsTab: Hashable, CaseIterable {
+    case apiKeys, preferences, glossary, debug, about
 
     var label: String {
         switch self {
@@ -10,6 +10,7 @@ private enum SettingsTab: Hashable, CaseIterable {
         case .preferences: return "Preferences"
         case .debug: return "Debug"
         case .about: return "About"
+        case .glossary: return "Glossary"
         }
     }
 
@@ -19,12 +20,46 @@ private enum SettingsTab: Hashable, CaseIterable {
         case .preferences: return "gearshape"
         case .debug: return "ant"
         case .about: return "info.circle"
+        case .glossary: return "text.book.closed"
+        }
+    }
+
+    // Maps a string identifier to a SettingsTab. Unknown identifiers fall back to .apiKeys.
+    static func from(identifier: String) -> SettingsTab {
+        switch identifier {
+        case "apiKeys": return .apiKeys
+        case "preferences": return .preferences
+        case "debug": return .debug
+        case "about": return .about
+        case "glossary": return .glossary
+        default: return .apiKeys
+        }
+    }
+
+    // The canonical string identifier for this tab (written back to activeTabIdentifier).
+    var identifier: String {
+        switch self {
+        case .apiKeys: return "apiKeys"
+        case .preferences: return "preferences"
+        case .debug: return "debug"
+        case .about: return "about"
+        case .glossary: return "glossary"
+        }
+    }
+
+    // Writes the canonical identifier back to preferences when the stored value is unknown.
+    // Extracted as a static helper so unit tests can verify the write-back without a live view.
+    static func normalizeIdentifier(in preferences: PreferencesService) {
+        let tab = from(identifier: preferences.activeTabIdentifier)
+        if tab.identifier != preferences.activeTabIdentifier {
+            preferences.activeTabIdentifier = tab.identifier
         }
     }
 }
 
 struct SettingsView: View {
     @ObservedObject var preferences: PreferencesService
+    @ObservedObject var viewModel: TranslationViewModel
     private let keychainService = KeychainService()
     var onClearCache: (() -> Void)?
     var onFetchCacheSize: (() -> Int64)?
@@ -49,18 +84,36 @@ struct SettingsView: View {
     }()
     #endif
 
-    init(preferences: PreferencesService, onClearCache: (() -> Void)? = nil, onFetchCacheSize: (() -> Int64)? = nil, updater: SPUUpdater? = nil) {
+    init(
+        preferences: PreferencesService,
+        viewModel: TranslationViewModel,
+        onClearCache: (() -> Void)? = nil,
+        onFetchCacheSize: (() -> Int64)? = nil,
+        updater: SPUUpdater? = nil
+    ) {
         self.preferences = preferences
+        self.viewModel = viewModel
         self.onClearCache = onClearCache
         self.onFetchCacheSize = onFetchCacheSize
         self.updater = updater
     }
 
-    @State private var selectedTab: SettingsTab = .apiKeys
+    // Derived from preferences.activeTabIdentifier; unknown identifiers fall back to .apiKeys.
+    // Manual tab selection writes the canonical identifier back to preferences so routing stays in sync.
+    private var selectedTabBinding: Binding<SettingsTab> {
+        Binding(
+            get: {
+                SettingsTab.from(identifier: preferences.activeTabIdentifier)
+            },
+            set: { newTab in
+                preferences.activeTabIdentifier = newTab.identifier
+            }
+        )
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedTab) {
+            List(selection: selectedTabBinding) {
                 ForEach(SettingsTab.allCases, id: \.self) { tab in
                     Label(tab.label, systemImage: tab.systemImage)
                         .tag(tab)
@@ -69,19 +122,26 @@ struct SettingsView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
         } detail: {
             Group {
-                switch selectedTab {
+                switch selectedTabBinding.wrappedValue {
                 case .apiKeys: apiKeysTab
                 case .preferences: preferencesTab
                 case .debug: debugTab
                 case .about: aboutTab
+                case .glossary: GlossaryView(viewModel: viewModel, isEmbedded: true)
                 }
             }
-            .navigationTitle(selectedTab.label)
+            .navigationTitle(selectedTabBinding.wrappedValue.label)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: ViewLayout.Settings.width, minHeight: ViewLayout.Settings.height)
-        .onAppear { loadKeys() }
+        .onAppear {
+            loadKeys()
+            normalizeActiveTabIdentifier()
+        }
+        .onChange(of: preferences.activeTabIdentifier) { _, _ in
+            normalizeActiveTabIdentifier()
+        }
         .task {
             copilotAvailability = CopilotEnvironment.check()
             if !copilotAvailability.isAvailable && preferences.translationEngine == .githubCopilot {
@@ -282,6 +342,10 @@ struct SettingsView: View {
     private var aboutTab: some View {
         AboutView()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func normalizeActiveTabIdentifier() {
+        SettingsTab.normalizeIdentifier(in: preferences)
     }
 
     private func loadKeys() {

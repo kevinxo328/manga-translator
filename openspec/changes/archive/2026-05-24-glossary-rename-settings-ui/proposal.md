@@ -6,7 +6,7 @@ Currently, translation glossaries in MangaTranslator cannot be renamed once crea
 
 - **Add Glossary Renaming**: Introduce `renameGlossary` in `GlossaryService`. Glossary names are trimmed before validation, empty or whitespace-only names throw a validation error, and names longer than 20 characters are truncated to 20 characters before persistence.
 - **Settings UI Integration**: Add a dedicated **Glossary** tab to `SettingsView` with a beautiful `.formStyle(.grouped)` form matching other preference panes.
-- **Direct Inline Editing**: Allow renaming the active glossary inline in the Settings panel with `@FocusState` focus-management (pressing Enter or losing focus commits the rename).
+- **Sheet-based Rename**: Allow renaming the active glossary via a pre-filled sheet in the Settings panel. The ✏️ button opens the sheet; the Rename button commits and closes it; Cancel leaves the existing name unchanged.
 - **Embedded Style Alignment**: Refactor `GlossaryView` with an `isEmbedded` parameter to seamlessly render as native grouped form rows (Source -> Target) with hover edit/delete actions and a clean term-adding row.
 - **Toolbar Deep-linking**: Update the main window's `Manage Glossaries...` toolbar menu action to deep-link straight to the settings' Glossary tab using an in-memory `activeTabIdentifier` in `PreferencesService`.
 

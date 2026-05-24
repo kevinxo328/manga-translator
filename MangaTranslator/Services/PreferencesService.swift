@@ -38,6 +38,11 @@ final class PreferencesService: ObservableObject {
         didSet { defaults.set(showPathBar, forKey: "showPathBar") }
     }
 
+    // In-memory only: drives Settings tab deep-linking. Never persisted to UserDefaults.
+    // Supported values: "apiKeys", "preferences", "debug", "about", "glossary".
+    // Resets to "apiKeys" on every fresh app launch.
+    @Published var activeTabIdentifier: String = "apiKeys"
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 

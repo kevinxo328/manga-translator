@@ -419,6 +419,76 @@ final class CacheServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - 3. GlossaryService name normalization & rename
+
+    // 3.1 createGlossary trims leading/trailing whitespace before saving.
+    func testCreateGlossaryTrimsWhitespace() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "  Trimmed  ")
+        XCTAssertEqual(glossary.name, "Trimmed")
+        let fetched = service.listGlossaries().first { $0.id == glossary.id }
+        XCTAssertEqual(fetched?.name, "Trimmed")
+    }
+
+    // 3.2 createGlossary with empty/whitespace-only name throws emptyName before SQL.
+    func testCreateGlossaryEmptyNameThrowsValidationError() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let countBefore = service.listGlossaries().count
+
+        XCTAssertThrowsError(try service.createGlossary(name: "   ")) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .emptyName)
+        }
+        // SQL must not have been executed
+        XCTAssertEqual(service.listGlossaries().count, countBefore)
+    }
+
+    // 3.3 createGlossary truncates names longer than 20 characters.
+    func testCreateGlossaryTruncatesNameOver20Chars() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" // 26 chars
+        let glossary = try service.createGlossary(name: longName)
+        XCTAssertEqual(glossary.name.count, 20)
+        XCTAssertEqual(glossary.name, "ABCDEFGHIJKLMNOPQRST")
+    }
+
+    // 3.4 renameGlossary updates the name in the database.
+    func testRenameGlossarySuccess() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "Original")
+        try service.renameGlossary(id: glossary.id, newName: "Renamed")
+        let fetched = service.listGlossaries().first { $0.id == glossary.id }
+        XCTAssertEqual(fetched?.name, "Renamed")
+    }
+
+    // 3.5 renameGlossary with empty name throws emptyName before SQL.
+    func testRenameGlossaryEmptyNameThrowsValidationError() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "Original")
+
+        XCTAssertThrowsError(try service.renameGlossary(id: glossary.id, newName: "  ")) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .emptyName)
+        }
+        // Existing name must be preserved
+        let fetched = service.listGlossaries().first { $0.id == glossary.id }
+        XCTAssertEqual(fetched?.name, "Original")
+    }
+
+    // 3.6 renameGlossary truncates names longer than 20 characters.
+    func testRenameGlossaryTruncatesNameOver20Chars() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "Original")
+        let longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" // 26 chars
+        try service.renameGlossary(id: glossary.id, newName: longName)
+        let fetched = service.listGlossaries().first { $0.id == glossary.id }
+        XCTAssertEqual(fetched?.name, "ABCDEFGHIJKLMNOPQRST")
+    }
+
     // MARK: - Helpers
 
     private func makeCache() -> CacheService {

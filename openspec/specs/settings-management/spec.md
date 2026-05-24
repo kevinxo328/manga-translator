@@ -23,17 +23,40 @@ The system SHALL store translation service API keys (DeepL, Google, OpenAI) in t
 - **THEN** the system retrieves the DeepL API key from Keychain
 
 ### Requirement: Settings UI
-The system SHALL provide a settings view accessible via Cmd+,. The settings window SHALL use a tabbed structure. Each tab's content is owned by the corresponding capability (`auto-update` for the Updates section, `copilot-model-management` for the GitHub Copilot section, `openai-compatible-config` for the OpenAI Compatible section, `local-model-lifecycle` for the High-Accuracy OCR section, `debug-log-management` for the Debug tab). All language selection pickers SHALL display languages using flag emoji and full English names (e.g., `"🇯🇵 Japanese"`, `"🇺🇸 English"`, `"🇹🇼 Traditional Chinese"`).
+The system SHALL provide a settings view accessible via Cmd+,. The settings window SHALL use a tabbed sidebar structure with tabs in the following fixed order: **API Keys → Preferences → Glossary → Debug → About**. Each tab's content is owned by the corresponding capability (`auto-update` for the Updates section within Preferences, `copilot-model-management` for the GitHub Copilot section, `openai-compatible-config` for the OpenAI Compatible section, `local-model-lifecycle` for the High-Accuracy OCR section, `debug-log-management` for the Debug tab, `glossary-management` for the Glossary tab). All language selection pickers SHALL display languages using flag emoji and full English names (e.g., `"🇯🇵 Japanese"`, `"🇺🇸 English"`, `"🇹🇼 Traditional Chinese"`).
 
 #### Scenario: Open settings
 - **WHEN** user presses Cmd+,
-- **THEN** the settings window opens
+- **THEN** the settings window opens and displays the API Keys tab on a fresh app launch, unless an in-memory deep-link has already selected another tab
 
 #### Scenario: Language picker display codes
 - **WHEN** user opens the source language picker in settings or the toolbar
 - **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"` and `"🇺🇸 English"` only
 - **WHEN** user opens the target language picker in settings or the toolbar
 - **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"`, `"🇺🇸 English"`, and `"🇹🇼 Traditional Chinese"`
+
+### Requirement: Programmatic tab deep-linking
+The system SHALL support navigating to a specific Settings tab from outside the Settings window without persisting the destination to UserDefaults. `PreferencesService` SHALL expose an in-memory `@Published var activeTabIdentifier: String` that defaults to `"apiKeys"` on every fresh app launch and is never written to UserDefaults. The Settings window SHALL bind its visible tab to this identifier. The supported identifier values are `"apiKeys"`, `"preferences"`, `"glossary"`, `"debug"`, and `"about"`. An unsupported identifier value SHALL cause the Settings window to display the API Keys tab and normalize `activeTabIdentifier` back to `"apiKeys"`. Manual tab selection inside the Settings window SHALL update `activeTabIdentifier` to the canonical identifier of the selected tab.
+
+#### Scenario: Main window deep-links to Glossary settings tab
+- **WHEN** the user selects "Manage Glossaries..." from the main window toolbar glossary menu
+- **THEN** the system sets `PreferencesService.activeTabIdentifier` to `"glossary"` and opens (or focuses) the Settings window
+- **AND** the Settings window displays the Glossary tab
+
+#### Scenario: Manual settings tab selection updates routing state
+- **WHEN** the user manually selects a settings tab
+- **THEN** `PreferencesService.activeTabIdentifier` is updated to that tab's canonical identifier
+- **AND** the identifier is not written to UserDefaults
+
+#### Scenario: Unknown active tab identifier falls back to API Keys
+- **WHEN** `PreferencesService.activeTabIdentifier` is set to an unsupported string
+- **THEN** the Settings window displays the API Keys tab
+- **AND** `PreferencesService.activeTabIdentifier` is normalized back to `"apiKeys"`
+
+#### Scenario: activeTabIdentifier resets on app launch
+- **WHEN** the app launches fresh (no in-memory state carried over)
+- **THEN** `PreferencesService.activeTabIdentifier` is `"apiKeys"`
+- **AND** the Settings window opens to the API Keys tab
 
 ### Requirement: Validate API key presence before translation
 The system SHALL check that the required API key exists before attempting translation. If the key is missing, the system SHALL prompt the user to enter it in settings.
@@ -52,4 +75,3 @@ The system SHALL use a single shared `PreferencesService` instance across the Se
 #### Scenario: Engine change applies to next translation
 - **WHEN** user changes the translation engine in Settings
 - **THEN** the next translation run uses the updated engine
-

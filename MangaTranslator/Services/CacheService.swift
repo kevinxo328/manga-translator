@@ -11,6 +11,12 @@ enum CacheError: Error, Equatable {
     case sqlite(code: Int32, message: String, operation: String)
 }
 
+// Validation errors thrown before any SQL is executed. These identify invalid
+// caller input and are distinct from database-level failures.
+enum GlossaryValidationError: Error, Equatable {
+    case emptyName
+}
+
 // Abstraction injected into TranslationViewModel so tests can substitute a
 // double whose mutations throw. Production always uses CacheService.
 protocol CacheServiceProtocol: AnyObject {

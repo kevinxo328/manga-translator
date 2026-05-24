@@ -110,7 +110,7 @@ struct MangaTranslatorApp: App {
         }
 
         Window("Settings", id: "settings") {
-            SettingsView(preferences: preferences, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater)
+            SettingsView(preferences: preferences, viewModel: viewModel, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater)
         }
         .defaultSize(width: ViewLayout.Settings.width, height: ViewLayout.Settings.height)
         .windowResizability(.contentMinSize)

@@ -110,6 +110,7 @@
 		T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000F /* BubblePolarityClassifierTests.swift */; };
 		T10000010000000000000010 /* ComicTextDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000011 /* ComicTextDetectorTests.swift */; };
 		T10000010000000000000012 /* CacheServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000012 /* CacheServiceTests.swift */; };
+		T10000010000000000000013 /* SettingsTabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000013 /* SettingsTabTests.swift */; };
 		TH1000000100000000000001 /* OCRRecognizingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH2000000100000000000001 /* OCRRecognizingTests.swift */; };
 		TH1000000100000000000002 /* OCRRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH2000000100000000000002 /* OCRRouterTests.swift */; };
 		TH1000000100000000000003 /* PaddleOCRSettingsSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */; };
@@ -276,6 +277,7 @@
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		T20000010000000000000011 /* ComicTextDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000012 /* CacheServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheServiceTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000013 /* SettingsTabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTabTests.swift; sourceTree = "<group>"; };
 		TH2000000100000000000001 /* OCRRecognizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRecognizingTests.swift; sourceTree = "<group>"; };
 		TH2000000100000000000002 /* OCRRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRouterTests.swift; sourceTree = "<group>"; };
 		TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRSettingsSectionTests.swift; sourceTree = "<group>"; };
@@ -520,6 +522,7 @@
 				T2000001000000000000000F /* BubblePolarityClassifierTests.swift */,
 				T20000010000000000000011 /* ComicTextDetectorTests.swift */,
 				T20000010000000000000012 /* CacheServiceTests.swift */,
+				T20000010000000000000013 /* SettingsTabTests.swift */,
 				AE20000010000000000000002 /* ArchiveExtractorTests.swift */,
 				MD20000010000000000000001 /* ModelDownloadServiceTests.swift */,
 			);
@@ -848,6 +851,7 @@
 				T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */,
 				T10000010000000000000010 /* ComicTextDetectorTests.swift in Sources */,
 				T10000010000000000000012 /* CacheServiceTests.swift in Sources */,
+				T10000010000000000000013 /* SettingsTabTests.swift in Sources */,
 				AE10000010000000000000002 /* ArchiveExtractorTests.swift in Sources */,
 				MD10000010000000000000001 /* ModelDownloadServiceTests.swift in Sources */,
 			);

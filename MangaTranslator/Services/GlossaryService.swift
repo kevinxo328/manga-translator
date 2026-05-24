@@ -14,10 +14,24 @@ final class GlossaryService {
         CacheService.sqliteTransient
     }
 
+    // MARK: - Name normalization
+
+    // Trims whitespace/newlines, rejects empty strings, and truncates to 20 Swift
+    // Characters. Callers must use this before any SQL interaction.
+    private func normalizeGlossaryName(_ name: String) throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw GlossaryValidationError.emptyName }
+        if trimmed.count > 20 {
+            return String(trimmed.prefix(20))
+        }
+        return trimmed
+    }
+
     // MARK: - Glossary CRUD
 
     func createGlossary(name: String) throws -> Glossary {
         guard isAvailable, let db else { throw CacheError.unavailable }
+        let normalized = try normalizeGlossaryName(name)
         let id = UUID().uuidString
         let sql = """
         INSERT INTO glossaries (id, name, source_lang, target_lang, created_at) VALUES (?, ?, '', '', ?)
@@ -30,13 +44,31 @@ final class GlossaryService {
         defer { sqlite3_finalize(stmt) }
 
         sqlite3_bind_text(stmt, 1, id, -1, transient)
-        sqlite3_bind_text(stmt, 2, name, -1, transient)
+        sqlite3_bind_text(stmt, 2, normalized, -1, transient)
         sqlite3_bind_double(stmt, 3, Date().timeIntervalSince1970)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             throw CacheService.makeError(db: db, operation: "GlossaryService.createGlossary")
         }
-        return Glossary(id: id, name: name)
+        return Glossary(id: id, name: normalized)
+    }
+
+    func renameGlossary(id: String, newName: String) throws {
+        guard isAvailable, let db else { throw CacheError.unavailable }
+        let normalized = try normalizeGlossaryName(newName)
+        let sql = "UPDATE glossaries SET name = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+        if prepareResult != SQLITE_OK {
+            throw CacheService.makeError(db: db, operation: "GlossaryService.renameGlossary.prepare")
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, normalized, -1, transient)
+        sqlite3_bind_text(stmt, 2, id, -1, transient)
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            throw CacheService.makeError(db: db, operation: "GlossaryService.renameGlossary")
+        }
     }
 
     func listGlossaries() -> [Glossary] {
@@ -183,7 +215,7 @@ final class GlossaryService {
         guard isAvailable, let db else { return [] }
         let sql = """
         SELECT id, source_term, target_term, auto_detected
-        FROM glossary_terms WHERE glossary_id = ? ORDER BY created_at
+        FROM glossary_terms WHERE glossary_id = ? ORDER BY created_at DESC
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }

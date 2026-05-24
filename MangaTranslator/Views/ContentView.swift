@@ -3,7 +3,6 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
-    @State private var showGlossarySheet = false
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -56,6 +55,7 @@ struct ContentView: View {
         }
         .alert("Missing API Key", isPresented: $viewModel.showMissingKeyAlert) {
             Button("Open Settings") {
+                viewModel.preferences.activeTabIdentifier = "apiKeys"
                 openWindow(id: "settings")
             }
             Button("Cancel", role: .cancel) {}
@@ -76,9 +76,6 @@ struct ContentView: View {
         }
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { providers in
             handlePaste(providers)
-        }
-        .sheet(isPresented: $showGlossarySheet) {
-            GlossaryView(viewModel: viewModel)
         }
         // Bubble Navigation Shortcuts
         .background(
@@ -283,14 +280,15 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // Glossary picker
             Menu {
-                Button("None") { viewModel.activeGlossaryID = nil }
+                Button("No Glossary") { viewModel.activeGlossaryID = nil }
                 Divider()
                 ForEach(viewModel.glossaries) { glossary in
                     Button(glossary.name) { viewModel.activeGlossaryID = glossary.id }
                 }
                 Divider()
                 Button {
-                    showGlossarySheet = true
+                    viewModel.preferences.activeTabIdentifier = "glossary"
+                    openWindow(id: "settings")
                 } label: {
                     Label("Manage Glossaries...", systemImage: "text.book.closed")
                 }

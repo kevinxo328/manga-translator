@@ -112,4 +112,37 @@ struct PreferencesServiceTests {
         #expect(reloaded.openAIBaseURL == "https://api.openai.com/v1",
                 "UserDefaults must retain last valid URL when a URL with a query string is set")
     }
+
+    // MARK: - activeTabIdentifier is not persisted
+
+    @Test("activeTabIdentifier defaults to 'apiKeys' on fresh init")
+    func activeTabIdentifierDefaultsToApiKeys() {
+        let preferences = PreferencesService(defaults: defaults)
+        #expect(preferences.activeTabIdentifier == "apiKeys")
+    }
+
+    @Test("activeTabIdentifier mutation is not written to UserDefaults")
+    func activeTabIdentifierNotWrittenToUserDefaults() {
+        let preferences = PreferencesService(defaults: defaults)
+        preferences.activeTabIdentifier = "glossary"
+
+        // A fresh instance from the same defaults must still read the default value,
+        // proving that the mutation was never persisted.
+        let reloaded = PreferencesService(defaults: defaults)
+        #expect(reloaded.activeTabIdentifier == "apiKeys",
+                "activeTabIdentifier must not be persisted; reloaded instance must start at 'apiKeys'")
+    }
+
+    @Test("activeTabIdentifier is not present in UserDefaults after mutation")
+    func activeTabIdentifierAbsentFromUserDefaultsAfterMutation() {
+        let suiteName2 = "\(suiteName).tabKey"
+        let defaults2 = UserDefaults(suiteName: suiteName2)!
+        defaults2.removePersistentDomain(forName: suiteName2)
+
+        let preferences = PreferencesService(defaults: defaults2)
+        preferences.activeTabIdentifier = "debug"
+
+        #expect(defaults2.object(forKey: "activeTabIdentifier") == nil,
+                "UserDefaults must contain no 'activeTabIdentifier' key at all")
+    }
 }

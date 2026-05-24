@@ -66,7 +66,7 @@ The system SHALL make every `GlossaryService` mutation (`createGlossary`, `renam
 ## ADDED Requirements
 
 ### Requirement: Glossary management settings tab
-The system SHALL provide a unified Glossary tab in the Settings window for managing glossaries. The Glossary tab SHALL display in `.formStyle(.grouped)` matching the visual style of other Settings tabs. It SHALL list all glossaries via a picker, allow switching the active glossary, support inline renaming with focus management, and provide full CRUD for both glossaries and their terms. Inline rename SHALL mirror the glossary-name normalization rules: input is kept to at most 20 characters for immediate feedback, empty trimmed input cannot be committed, and submitting or losing focus commits a changed normalized value. Each term SHALL display its source text, target text, and whether it was auto-detected in a native form section row layout with edit/delete actions.
+The system SHALL provide a unified Glossary tab in the Settings window for managing glossaries. The Glossary tab SHALL display in `.formStyle(.grouped)` matching the visual style of other Settings tabs. It SHALL list all glossaries via a picker, allow switching the active glossary, support sheet-based renaming pre-filled with the current name, and provide full CRUD for both glossaries and their terms. The rename sheet SHALL mirror the glossary-name normalization rules: input is kept to at most 20 characters for immediate feedback, and the confirm button is disabled when the trimmed input is empty. Each term SHALL display its source text, target text, and whether it was auto-detected in a native form section row layout with edit/delete actions. Terms SHALL be displayed ordered by creation time, newest first (`ORDER BY created_at DESC`).
 
 #### Scenario: View and edit terms in settings
 - **WHEN** user opens the Glossary tab in settings and selects a glossary
@@ -74,10 +74,10 @@ The system SHALL provide a unified Glossary tab in the Settings window for manag
 - **AND** manually created and auto-detected terms are visually distinguished
 - **AND** each row supports editing or deleting the term directly
 
-#### Scenario: Inline rename commits once
-- **WHEN** user edits the active glossary name and presses Enter
-- **AND** the field later loses focus without further changes
-- **THEN** the system persists the normalized name at most once
+#### Scenario: Sheet rename commits the new name
+- **WHEN** user taps the ✏️ rename button and enters a valid new name in the sheet
+- **AND** user taps Rename to confirm
+- **THEN** the system persists the normalized name
 - **AND** the active glossary picker reflects the renamed glossary
 
 ## REMOVED Requirements

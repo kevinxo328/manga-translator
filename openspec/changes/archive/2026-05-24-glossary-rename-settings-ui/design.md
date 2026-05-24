@@ -10,7 +10,7 @@ However, there is no way to rename an existing glossary. To provide a premium ma
 - Enforce a deterministic glossary-name normalization contract: trim leading/trailing whitespace, reject empty or whitespace-only names, and truncate names longer than 20 characters before saving.
 - Update `SettingsView` with a dedicated **Glossary** tab styled natively in a grouped `.formStyle(.grouped)` layout.
 - Bind the selected settings tab to a shared in-memory identifier in `PreferencesService` to enable toolbar deep-linking.
-- Implement inline renaming (Option B) with `@FocusState` management directly in the settings panel.
+- Implement sheet-based renaming directly in the settings panel: the ✏️ button opens a pre-filled rename sheet; the confirm button is disabled when the trimmed input is empty; input is truncated to 20 characters for immediate feedback.
 
 **Non-Goals:**
 - Restructuring the database schema (no migration needed; `name` field in `glossaries` is already a variable-length text field).
@@ -55,7 +55,5 @@ The main toolbar Glossary control remains a picker/menu for quickly choosing the
 
 - **[Risk] Multiple Settings window instances**
   - *Mitigation*: SwiftUI's `openWindow(id:)` is natively idempotent on macOS. Invoking it multiple times with the same ID automatically focuses and brings the existing settings window to the foreground without spawning duplicates.
-- **[Risk] Input commit timing on rename**
-  - *Mitigation*: Re-commit the rename both on Enter submission (`onSubmit`) and when the text field loses focus (`.onChange(of: isNameFieldFocused)`). This ensures any edits are safely stored when clicking away.
-- **[Risk] Duplicate rename commits**
-  - *Mitigation*: The commit helper should compare the normalized input to the current active glossary name and no-op when unchanged. This prevents Enter and focus loss from issuing duplicate `UPDATE`s.
+- **[Risk] Rename commit on unintended close**
+  - *Mitigation*: The rename sheet has explicit Cancel and Rename buttons. The rename is only committed when the user taps Rename; dismissing or tapping Cancel leaves the existing name unchanged.
