@@ -1,0 +1,1 @@
+/Users/chunweiliu/Repos/manga-translator/CLAUDE.md
