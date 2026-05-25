@@ -1,6 +1,7 @@
 # Xcode
 #
 # git ignores many of these files by default.
+tmp/
 build/
 DerivedData/
 *.xcuserstate
