@@ -13,6 +13,12 @@ MangaTranslator is a native macOS app that detects, OCRs, and translates manga s
 - **Testing**: XCTest + Swift Testing (`import Testing`), split across three schemes (see Testing).
 - **Distribution**: Signed `.dmg` produced by `scripts/build_dmg.sh`, triggered by version tags via GitHub Actions.
 
+## Specifications (OpenSpec)
+
+This repository follows a spec-driven development workflow. All capability and feature specifications are documented under the [openspec/specs](file:///Users/chunweiliu/Repos/manga-translator/openspec/specs) directory.
+
+- **Spec Location**: `openspec/specs/<feature-name>/spec.md` (e.g., [ocr-benchmark spec](file:///Users/chunweiliu/Repos/manga-translator/openspec/specs/ocr-benchmark/spec.md))
+
 ## Build & Run
 
 ```bash
