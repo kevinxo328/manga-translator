@@ -32,13 +32,21 @@ Ignore these commit types entirely — they are not user-facing:
 - `refactor:` — internal code restructuring
 - `chore:` / `ci:` / `test:` — maintenance
 
-Map the remaining commits to changelog sections:
+Map the remaining commits to changelog sections. **Do not map by commit prefix alone** — `feat:` commits often describe enhancements to existing features, which belong under Improvements, not New Features.
 
-| Commit prefix | Changelog section |
-|---------------|------------------|
-| `feat:` | New Features |
-| `fix:` | Bug Fixes |
-| `perf:` / improvements to UX | Improvements |
+Decide by user perception:
+
+- **New Features** — The user could not do this at all before. A standalone new capability you could headline in release notes. Test: can you say "you can now X" where X is genuinely new? Examples: Glossary, batch translation, update checker.
+- **Improvements** — An existing flow is now faster, more accurate, smoother, or clearer. The user was already doing this; the experience got better. Test: you can only say "X is now faster / better / clearer." Examples: OCR accuracy gains, speed-ups, shortcut tweaks, clearer error messages, layout polish.
+- **Bug Fixes** — Something was broken and now works.
+
+Quick mapping:
+
+| Commit prefix | Default section | Override when... |
+|---------------|----------------|------------------|
+| `feat:` | New Features | …it enhances an existing feature → Improvements |
+| `fix:` | Bug Fixes | — |
+| `perf:` | Improvements | — |
 
 ## Step 4: Write user-facing descriptions
 
