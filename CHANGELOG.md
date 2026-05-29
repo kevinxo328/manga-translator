@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.0 (2026-05-29)
+
+### New Features
+
+- **Manual Speech Bubble Editing** — You can now manually edit the detected text inside speech bubbles and trigger a retranslation on the spot, making it easy to fix any text recognition mistakes.
+
 ## v1.4.8 (2026-05-24)
 
 ### Improvements
