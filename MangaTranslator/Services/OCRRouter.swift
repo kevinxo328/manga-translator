@@ -102,23 +102,17 @@ final class OCRRouter {
     }
 
     func processPage(image: NSImage, sourceLanguage: Language) async throws -> MangaOCRPageResult {
-        let (downloadState, downloadEnabled) = await MainActor.run {
-            (downloadManager.state, downloadManager.isPaddleOCREnabled)
-        }
-        let capability = capabilityChecker.checkPaddleOCRCapability()
-        let shouldUsePaddleOCR = capability != .unsupported
-            && downloadState == .downloaded
-            && downloadEnabled
+        let route = currentRoute()
 
         logRoutingDecision(
             sourceLanguage: sourceLanguage,
-            capability: capability,
-            downloadState: downloadState,
-            downloadEnabled: downloadEnabled,
-            selectedEngine: shouldUsePaddleOCR ? "PaddleOCR" : "MangaOCR"
+            capability: route.capability,
+            downloadState: route.downloadState,
+            downloadEnabled: route.downloadEnabled,
+            selectedEngine: route.usesPaddleOCR ? "PaddleOCR" : "MangaOCR"
         )
 
-        if shouldUsePaddleOCR {
+        if route.usesPaddleOCR {
             return try await processWithPaddleOCR(image: image)
         }
 
@@ -172,6 +166,26 @@ final class OCRRouter {
         return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
     }
 
+    private struct OCRRoute {
+        let capability: PaddleOCRCapability
+        let downloadState: ModelDownloadState
+        let downloadEnabled: Bool
+
+        var usesPaddleOCR: Bool {
+            capability != .unsupported
+                && downloadState == .downloaded
+                && downloadEnabled
+        }
+    }
+
+    private func currentRoute() -> OCRRoute {
+        OCRRoute(
+            capability: capabilityChecker.checkPaddleOCRCapability(),
+            downloadState: downloadManager.state,
+            downloadEnabled: downloadManager.isPaddleOCREnabled
+        )
+    }
+
     private func logRoutingDecision(
         sourceLanguage: Language,
         capability: PaddleOCRCapability,
@@ -183,6 +197,93 @@ final class OCRRouter {
             "OCR route selected: \(selectedEngine) sourceLanguage=\(sourceLanguage.rawValue) capability=\(capability.logDescription) downloadState=\(downloadState.logDescription) downloadEnabled=\(downloadEnabled)",
             level: .info, category: .ocrRouter
         )
+    }
+}
+
+// Abstraction the Edit Mode commit pipeline uses to OCR newly drawn or
+// geometry-changed bubble regions. Decouples `TranslationViewModel` from
+// `OCRRouter` so tests can substitute a fake. `OCRRouter` conforms below;
+// production uses that conformance with whichever recognizer the page's
+// initial translation already loaded (PaddleOCR or MangaOCR).
+@MainActor
+protocol EditModeOCRPerforming {
+    func recognizeRegions(
+        image: NSImage,
+        bubbles: [BubbleCluster],
+        sourceLanguage: Language
+    ) async throws -> [UUID: String]
+}
+
+extension OCRRouter: EditModeOCRPerforming {
+    // Per-region OCR for the Edit Mode commit pipeline. Reuses the recognizer
+    // that was loaded by the page's initial `processPage` call — the gating
+    // rule (`Edit` button enabled only on `.translated`) guarantees one such
+    // call has already run, so the recognizer is in cache.
+    //
+    // No reading-order sort is performed here: the caller already maintains
+    // the user's chosen order in `EditSession.workingBubbles`. The result
+    // map is keyed by `BubbleCluster.id` so the caller can merge text back
+    // by identity.
+    func recognizeRegions(
+        image: NSImage,
+        bubbles: [BubbleCluster],
+        sourceLanguage: Language
+    ) async throws -> [UUID: String] {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw OCRError.invalidImage
+        }
+        let route = currentRoute()
+        logRoutingDecision(
+            sourceLanguage: sourceLanguage,
+            capability: route.capability,
+            downloadState: route.downloadState,
+            downloadEnabled: route.downloadEnabled,
+            selectedEngine: route.usesPaddleOCR ? "PaddleOCR-region" : "MangaOCR-region"
+        )
+
+        if route.usesPaddleOCR {
+            usingPaddleOCR = true
+            defer { paddleOCRCacheCleanup.clearGPUCache() }
+            await inferenceCoordinator?.beginInference()
+            do {
+                if cachedPaddleOCR == nil {
+                    cachedPaddleOCR = try paddleOCRFactory()
+                }
+                await mangaOCRService.setRecognizer(cachedPaddleOCR)
+                let results = try await recognizeRegionsWithCurrentRecognizer(cgImage: cgImage, bubbles: bubbles)
+                await inferenceCoordinator?.endInference()
+                return results
+            } catch let error as PaddleOCRError {
+                await inferenceCoordinator?.endInference()
+                DebugLogger.shared.log("PaddleOCR region OCR failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
+                throw error
+            } catch {
+                await inferenceCoordinator?.endInference()
+                DebugLogger.shared.log("PaddleOCR region OCR failed with unexpected error: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
+                throw PaddleOCRError.inferenceFailed(error.localizedDescription)
+            }
+        }
+
+        if usingPaddleOCR {
+            await mangaOCRService.resetRecognizer()
+            usingPaddleOCR = false
+        }
+        return try await recognizeRegionsWithCurrentRecognizer(cgImage: cgImage, bubbles: bubbles)
+    }
+
+    private func recognizeRegionsWithCurrentRecognizer(
+        cgImage: CGImage,
+        bubbles: [BubbleCluster]
+    ) async throws -> [UUID: String] {
+        var results: [UUID: String] = [:]
+        for bubble in bubbles {
+            let text = try await mangaOCRService.recognizeRegion(
+                in: cgImage,
+                region: bubble.boundingBox
+            )
+            results[bubble.id] = text
+        }
+        return results
     }
 }
 

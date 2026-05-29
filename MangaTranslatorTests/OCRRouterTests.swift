@@ -87,6 +87,32 @@ final class OCRRouterTests: XCTestCase {
         XCTAssertTrue(factoryCalled, "Non-Japanese route must still select PaddleOCR when available")
     }
 
+    func testRegionOCRUsesPaddleOCRWhenDownloadedAndEnabled() async throws {
+        var factoryCalled = false
+        let router = OCRRouter(
+            mangaOCRService: MangaOCRService(detector: MockComicTextDetector(returnsEmpty: true)),
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: {
+                factoryCalled = true
+                return MockOCRRecognizer(name: "paddle-region")
+            }
+        )
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "", observations: [], index: 0
+        )
+
+        let results = try await router.recognizeRegions(
+            image: makeTestImage(width: 100, height: 100),
+            bubbles: [bubble],
+            sourceLanguage: .ja
+        )
+
+        XCTAssertTrue(factoryCalled, "Edit-mode region OCR must use the active PaddleOCR route when available")
+        XCTAssertEqual(results[bubble.id], "paddle-region")
+    }
+
     func testNonJapaneseWithoutDownloadDoesNotCallFactory() async {
         var factoryCalled = false
         let router = OCRRouter(

@@ -1,5 +1,8 @@
-## ADDED Requirements
+# manual-bubble-editing Specification
 
+## Purpose
+TBD - created by archiving change manual-bubble-editing. Update Purpose after archive.
+## Requirements
 ### Requirement: Edit mode lifecycle is per-page and explicit
 
 The system SHALL expose a single per-page **Edit Mode** entered and exited only through explicit user actions surfaced in `TranslationSidebar`. An Edit Mode session SHALL be bound to exactly one page (identified by `MangaPage.id`).
@@ -230,25 +233,27 @@ On Commit, the system SHALL execute the following sequence. The terminal `(PageS
 
 1. Compute the **final working set** as `workingBubbles \ deletedBubbleIds`.
 2. Recompute `index` over the final working set so values are dense `0..<n` in the user's current order.
-3. **Empty-set short-circuit**: if the final working set is empty (the user deleted every bubble), the system SHALL skip OCR and SHALL NOT invoke `TranslationService.translate(...)`. It SHALL attempt to write `[]` to `CacheService` (best-effort, see step 10), then terminate via the **Empty** branch in the transition table below. The page SHALL NOT enter `.processing` on this branch — the operation is purely local and instantaneous from the user's perspective.
-4. Classify each non-empty final-working-set bubble using a **single deterministic rule based on final geometry vs. snapshot**: a bubble is **OCR-dirty** if and only if (a) its `id` is not present in `originalSnapshot` (newly added) OR (b) its current `boundingBox` is not equal to its snapshot `boundingBox` (`CGRect.equalTo`, no tolerance). All other non-deleted bubbles are **OCR-clean** and reuse their snapshot `text`. This rule SHALL be evaluated at commit time and SHALL be the sole source of truth for OCR classification. Any in-session bookkeeping such as `dirtyBubbleIds` is purely a UI cache for displaying dirty visuals; it SHALL NOT be consulted. In particular, when the user moves a bubble and then `Cmd+Z`s back to the original position, the bubble is classified as **OCR-clean** at commit (because its current `boundingBox` equals snapshot), regardless of any UI-side dirty tracking.
-5. Transition the page to `.processing` (only on the non-empty path).
-6. Run the active OCR service over only the OCR-dirty bubbles' boxes on `page.image`. For each OCR-clean bubble, reuse its existing `text` from the snapshot.
-7. Construct a single `[BubbleCluster]` containing every bubble in the final working set with text merged from step 6.
-8. Build a `TranslationContext` using `summariesPreceding(pageIndex:)` for context-consuming engines, or empty `recentPageSummaries` for non-context engines.
-9. Call `TranslationService.translate(bubbles:from:to:context:)` once for the page.
-10. On translator success: attempt `CacheService.store(...)` with the new bubbles (best-effort; throws are logged via `DebugLogger` and swallowed), then terminate via the **Success** branch.
-11. On OCR or translator failure (steps 6 or 9): terminate via the **Failure** branch. Cache is NOT written.
+3. **Final-state no-op short-circuit**: if the final working set has the same bubble IDs, order, and `boundingBox` values as `originalSnapshot`, the system SHALL skip `.processing`, skip OCR, skip `TranslationService.translate(...)`, skip `CacheService.store(...)`, restore `originalPageState`, and clear `editSession`. This includes sessions with no edit actions and sessions where the user changed content then restored the final state (for example move then undo, delete then unstage, add then undo, or reorder back to the original order). In-session side effects such as a sticky `isManual` flip SHALL NOT be committed on this branch.
+4. **Empty-set short-circuit**: if the final working set is empty (the user deleted every bubble), the system SHALL skip OCR and SHALL NOT invoke `TranslationService.translate(...)`. It SHALL attempt to write `[]` to `CacheService` (best-effort, see step 11), then terminate via the **Empty** branch in the transition table below. The page SHALL NOT enter `.processing` on this branch — the operation is purely local and instantaneous from the user's perspective.
+5. Classify each non-empty final-working-set bubble using a **single deterministic rule based on final geometry vs. snapshot**: a bubble is **OCR-dirty** if and only if (a) its `id` is not present in `originalSnapshot` (newly added) OR (b) its current `boundingBox` is not equal to its snapshot `boundingBox` (`CGRect.equalTo`, no tolerance). All other non-deleted bubbles are **OCR-clean** and reuse their snapshot `text`. This rule SHALL be evaluated at commit time and SHALL be the sole source of truth for OCR classification. Any in-session bookkeeping such as `dirtyBubbleIds` is purely a UI cache for displaying dirty visuals; it SHALL NOT be consulted.
+6. Transition the page to `.processing` (only on the non-empty, non-no-op path).
+7. Run the active OCR service over only the OCR-dirty bubbles' boxes on `page.image`. For each OCR-clean bubble, reuse its existing `text` from the snapshot.
+8. Construct a single `[BubbleCluster]` containing every bubble in the final working set with text merged from step 7.
+9. Build a `TranslationContext` using `summariesPreceding(pageIndex:)` for context-consuming engines, or empty `recentPageSummaries` for non-context engines.
+10. Call `TranslationService.translate(bubbles:from:to:context:)` once for the page.
+11. On translator success: attempt `CacheService.store(...)` with the new bubbles (best-effort; throws are logged via `DebugLogger` and swallowed), then terminate via the **Success** branch.
+12. On OCR or translator failure (steps 7 or 10): terminate via the **Failure** branch. Cache is NOT written.
 
 **Terminal state-transition table** — exactly one branch fires per Commit invocation:
 
 | Branch | Trigger | Final `PageState` | Final `editSession` | Cache side effect |
 |---|---|---|---|---|
-| **Empty** | Step 3 (final set empty) | `.translated([])` | `nil` | best-effort write of `[]` (logged warning on throw) |
-| **Success** | Step 9 returns non-throwing | `.translated(output.bubbles)` | `nil` | best-effort write of `output.bubbles` (logged warning on throw) |
-| **Failure** | Step 6 (OCR) or Step 9 (translator) throws | `.error(<wrapped error>)` | unchanged (session stays open) | no write |
+| **No-op** | Step 3 (final state equals original snapshot) | restored `originalPageState` | `nil` | none |
+| **Empty** | Step 4 (final set empty) | `.translated([])` | `nil` | best-effort write of `[]` (logged warning on throw) |
+| **Success** | Step 10 returns non-throwing | `.translated(output.bubbles)` | `nil` | best-effort write of `output.bubbles` (logged warning on throw) |
+| **Failure** | Step 7 (OCR) or Step 10 (translator) throws | `.error(<wrapped error>)` | unchanged (session stays open) | no write |
 
-**During the pipeline (steps 5–9)** the page is in `.processing` and `editSession` remains non-nil. These are not observable terminal states; they exist only for the duration of the in-flight async work. From the user's perspective, every Commit transitions from `(.translated, session != nil)` directly into one of the three terminal rows above.
+**During the pipeline (steps 6–10)** the page is in `.processing` and `editSession` remains non-nil. These are not observable terminal states; they exist only for the duration of the in-flight async work. From the user's perspective, every Commit transitions from `(.translated, session != nil)` directly into one of the terminal rows above.
 
 After **Failure**, the user retains the choice to:
 - Press Done again to retry the Commit pipeline (which re-enters `.processing`).
@@ -261,6 +266,14 @@ The Commit pipeline SHALL NOT issue a multi-page LLM batch request. The pipeline
 - **THEN** OCR runs on exactly those two boxes
 - **AND** translation runs over all bubbles on the page (including the new two and any pre-existing untouched ones)
 - **AND** the cache entry is overwritten
+
+#### Scenario: Commit with final state equal to original snapshot
+- **WHEN** the user enters Edit Mode and presses Done without changing the final bubble IDs, order, or bounding boxes
+- **THEN** OCR is not called
+- **AND** `TranslationService.translate(...)` is not called
+- **AND** `CacheService.store(...)` is not called
+- **AND** `page.state` is restored to `originalPageState`
+- **AND** `editSession` is cleared
 
 #### Scenario: Commit with only deletions and reorders
 - **WHEN** the user deleted one box and reordered the sidebar but made no geometry changes
@@ -280,12 +293,12 @@ The Commit pipeline SHALL NOT issue a multi-page LLM batch request. The pipeline
 - **AND** `editSession` remains non-nil with the same working copy and undo stacks
 - **AND** the Done and Cancel buttons remain available
 
-#### Scenario: Undo-back-to-original yields OCR-clean classification
+#### Scenario: Undo-back-to-original yields no-op classification
 - **WHEN** the user moves an existing auto-detected bubble, then presses `Cmd+Z` so its `boundingBox` is byte-for-byte equal to its `originalSnapshot` `boundingBox`, then presses Done
-- **THEN** the bubble is classified as OCR-clean
-- **AND** OCR is not invoked for that bubble
-- **AND** the translator receives the bubble's snapshot `text` unchanged
-- **AND** the bubble's `isManual` remains `true` (sticky semantics — separate from OCR classification)
+- **THEN** the Commit is classified as No-op
+- **AND** OCR is not invoked
+- **AND** translation is not invoked
+- **AND** the transient `isManual` flip is not committed
 
 #### Scenario: Commit with empty final set skips OCR and translator
 - **WHEN** the user deletes every bubble on the page and presses Done
@@ -416,3 +429,4 @@ The Commit-path `summariesPreceding` lookup SHALL NOT mutate the existing rollin
 #### Scenario: Edit with DeepL has empty context
 - **WHEN** the user commits an edit with DeepL as the active engine
 - **THEN** `recentPageSummaries` is empty regardless of preceding page states
+

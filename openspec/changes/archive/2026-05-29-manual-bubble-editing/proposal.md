@@ -47,4 +47,4 @@ The automatic bubble detector (`ComicTextDetectorService`) misses bubbles (small
 - **No new entitlements, no new dependencies, no new ML models.**
 - **Test surface**: pure-logic units (sorter insertion, undo stack, dirty tracking, summariesPreceding) covered by `MangaTranslatorTests`; SwiftUI gesture surface verified manually via the running app.
 - **Performance**: edit operations are local; commit re-runs OCR for ≤ all-on-page bubbles in the worst case (no worse than first-time processing).
-- **Risk**: SwiftUI gesture composition (drag-to-draw vs. drag-existing-box vs. click-to-select) needs careful `simultaneousGesture` plumbing; covered in `design.md`.
+- **Risk**: SwiftUI gesture composition (drag-to-draw vs. drag-existing-box vs. click-to-select) needs careful first-event hit-testing and cancellation handling; covered in `design.md`.

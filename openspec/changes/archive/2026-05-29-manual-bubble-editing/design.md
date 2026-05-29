@@ -174,7 +174,7 @@ After insertion, `index` fields on the whole array are recomputed `0..<n` in arr
 - Set to `true` when the bubble's geometry is **first modified** by the user (move or resize), regardless of how many subsequent edits occur.
 - **Sticky semantics — never set back to `false` by any in-session action**, including `Cmd+Z` undo of the move/resize that first flipped it. The flag records "the user has touched this bubble's geometry at some point", not "the current geometry differs from the auto-detected original". Implementation consequence: the inverse of a `move` / `resize` action only restores `boundingBox`, never `isManual`.
 - The flag *can* effectively "reset" only through a session-level **Cancel**, because Cancel restores the entire pre-session snapshot byte-for-byte — including each bubble's `isManual` value as it stood before the session opened. This is restoration of the snapshot, not flag mutation.
-- Re-running the detector on a page with manual boxes is a future-work concern (today's "re-detect" flow does not exist as a user-facing button); when it lands, it can decide to preserve `isManual == true` boxes.
+- The user-facing Re-translate button preserves manual boxes by skipping OCR detection entirely whenever the page has a committed bubble set. See the MODIFIED `retranslate` requirement: Re-translate's "fresh OCR" branch only fires for pages with no committed bubble set (first translation, post-error reset, post-same-language skip). With a committed set in hand, Re-translate just re-runs the translator over those bubbles — drawn bubbles, edited geometry, and `isManual` flags all survive. This is intentional behaviour, not a future-work item.
 
 Cache JSON: add `"isManual": Bool` with **explicit decoder default of `false`** so old cache rows decode without error.
 
@@ -204,13 +204,13 @@ Within edit mode, `TranslationCard` gains three optional decorations:
 
 ### D8: Drawing gesture composition
 
-Edit mode adds three gesture layers to the image canvas (`ImageViewer`):
+Edit mode routes three gesture intents on the image canvas (`ImageViewer`):
 
 1. **Empty-canvas drag** → draw new box. Hit-test: cursor must start outside every existing box's display rect.
 2. **Box-body drag** → move existing box. Hit-test: cursor starts inside a box but outside handle zones (16 pt squares at corners / 8 pt strips along edges).
 3. **Handle drag** → resize. Hit-test: cursor starts inside a handle zone.
 
-Implemented with three separate SwiftUI `DragGesture`s combined via `.simultaneousGesture(...)`, each gated by an `if` on the hit-test result of `onChanged`'s first event. Tap (zero-distance gesture) handles selection (`Shift`/`Cmd` for multi-select).
+Implemented with one SwiftUI `DragGesture(minimumDistance: 0)` and a small state machine. The first `onChanged` event hit-tests the start point and locks the gesture into exactly one mode: draw, move, or resize. This replaces the earlier three-gesture `.simultaneousGesture(...)` sketch because the unified state machine keeps Esc cancellation and click-vs-drag routing in one place while preserving the same user-visible behaviour. Tap (zero-distance gesture) handles selection (`Shift`/`Cmd` for multi-select).
 
 `Esc` during an in-flight gesture cancels that gesture without committing the action (no `EditAction` recorded).
 
@@ -239,14 +239,23 @@ commit():
   let s = editSession; precondition(s != nil)
   let workingOrdered = recomputeIndices(s.workingBubbles - s.deletedBubbleIds)
 
-  // Step 0: empty-set short-circuit. If the user deleted every bubble, never invoke
+  // Step 0a: final-state no-op short-circuit. If final IDs, order, and geometry
+  // equal the session snapshot, only close Edit Mode. Do not commit transient
+  // in-session side effects such as a sticky isManual flip from a reverted move.
+  if matchesOriginalEditSnapshot(workingOrdered, s.originalSnapshot) {
+      page.state = s.originalPageState
+      editSession = nil
+      return
+  }
+
+  // Step 0b: empty-set short-circuit. If the user deleted every bubble, never invoke
   // OCR or the translator (which can fail on missing API key / no network), and
   // skip the .processing transition entirely — there is no async work to wait on.
   if workingOrdered.isEmpty {
       do {
           try cacheService.store(..., bubbles: [])
       } catch {
-          DebugLogger.warning("cache store failed during empty-set commit", error)
+          // Log a warning through DebugLogger.
       }
       page.state = .translated([])           // direct transition, no .processing
       editSession = nil
@@ -281,7 +290,7 @@ commit():
   do {
       try cacheService.store(..., bubbles: output.bubbles)  // throws on disk / sqlite failure
   } catch {
-      DebugLogger.warning("cache store failed during edit commit", error)
+      // Log a warning through DebugLogger.
       // Cache is a best-effort optimization; non-fatal. Continue with the atomic swap.
   }
 

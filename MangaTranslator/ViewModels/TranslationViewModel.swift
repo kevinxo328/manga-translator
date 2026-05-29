@@ -64,6 +64,7 @@ final class TranslationViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let translationServiceOverride: (any TranslationService)?
     private let pipelineLogger: any PipelineLogging
+    private let editModeOCROverride: (any EditModeOCRPerforming)?
 
     private var glossaryService: GlossaryService { cacheService.glossaryService }
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
@@ -74,12 +75,14 @@ final class TranslationViewModel: ObservableObject {
         ocrRouter: OCRRouter? = nil,
         translationService: (any TranslationService)? = nil,
         cacheService: (any CacheServiceProtocol)? = nil,
-        pipelineLogger: any PipelineLogging = DebugLogger.shared
+        pipelineLogger: any PipelineLogging = DebugLogger.shared,
+        editModeOCR: (any EditModeOCRPerforming)? = nil
     ) {
         self.preferences = preferences
         self.translationServiceOverride = translationService
         self.pipelineLogger = pipelineLogger
         self.cacheService = cacheService ?? CacheService()
+        self.editModeOCROverride = editModeOCR
         #if arch(arm64)
         self.ocrRouter = ocrRouter ?? OCRRouter.makeProductionRouter()
         #else
@@ -89,6 +92,14 @@ final class TranslationViewModel: ObservableObject {
         preferences.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+    }
+
+    // The Edit Mode commit pipeline's per-region OCR provider. Defaults to
+    // the live OCRRouter (which conforms to `EditModeOCRPerforming`) so
+    // production reuses whichever recognizer the page's initial translation
+    // already loaded. Tests override via the `editModeOCR:` init parameter.
+    private var editModeOCR: any EditModeOCRPerforming {
+        editModeOCROverride ?? ocrRouter
     }
 
     func loadGlossaries() {
@@ -109,14 +120,58 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
-    private func buildTranslationContext(usesRecentContext: Bool) -> TranslationContext {
+    // Returns up to `count` summaries from translated pages whose index is
+    // strictly less than `pageIndex`, in ascending page-index order. Pages
+    // not in `.translated` are skipped (`.error`, `.pending`, `.processing`),
+    // yielding fewer than `count` entries when not enough preceding pages
+    // qualify. A page's summary is the concatenation of its
+    // `TranslatedBubble.translatedText`s in `index` order joined by " ".
+    //
+    // Used by the Edit Mode Commit path so re-translation of page N sees
+    // pages [N-3..<N] as its context — not the rolling-window buffer that
+    // drives initial / batch translation. See
+    // `openspec/changes/manual-bubble-editing/specs/contextual-translation/spec.md`.
+    func summariesPreceding(pageIndex: Int, count: Int = 3) -> [String] {
+        guard pageIndex > 0 else { return [] }
+        let cap = min(pageIndex, pages.count)
+        var qualifying: [String] = []
+        for i in 0..<cap {
+            guard case .translated(let bubbles) = pages[i].state else { continue }
+            let summary = bubbles
+                .sorted { $0.index < $1.index }
+                .map { $0.translatedText }
+                .joined(separator: " ")
+            qualifying.append(summary)
+        }
+        if qualifying.count <= count {
+            return qualifying
+        }
+        return Array(qualifying.suffix(count))
+    }
+
+    // When `precedingPageIndex` is non-nil, sources `recentPageSummaries`
+    // from `summariesPreceding(pageIndex:)` — the Edit Mode Commit path.
+    // When nil, returns today's rolling-buffer behaviour used by initial
+    // and batch translation. Glossary terms are unaffected. Non-context
+    // engines (DeepL, Google) always receive empty summaries regardless.
+    private func buildTranslationContext(
+        usesRecentContext: Bool,
+        precedingPageIndex: Int? = nil
+    ) -> TranslationContext {
         let terms: [GlossaryTerm]
         if let id = activeGlossaryID {
             terms = glossaryService.listTerms(glossaryID: id)
         } else {
             terms = []
         }
-        let summaries = usesRecentContext ? recentPageTranslations : []
+        let summaries: [String]
+        if !usesRecentContext {
+            summaries = []
+        } else if let index = precedingPageIndex {
+            summaries = summariesPreceding(pageIndex: index)
+        } else {
+            summaries = recentPageTranslations
+        }
         return TranslationContext(glossaryTerms: terms, recentPageSummaries: summaries)
     }
 
@@ -193,6 +248,7 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Input Handling
 
     func handleInput(_ url: URL) async {
+        guard editSession == nil else { return }
         let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
         let ext = url.pathExtension.lowercased()
 
@@ -208,6 +264,7 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Single image
 
     func loadImage(_ url: URL) async {
+        guard editSession == nil else { return }
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         self.sourcePath = url.path
         // Copy to temp to ensure accessibility after security scope is revoked
@@ -232,6 +289,7 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Batch
 
     func loadFolder(_ url: URL, displayPath: String? = nil) async {
+        guard editSession == nil else { return }
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         self.sourcePath = displayPath ?? url.path
         let imageURLs = FileInputService.scanFolder(url)
@@ -254,6 +312,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func loadArchive(_ url: URL) async {
+        guard editSession == nil else { return }
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         do {
             let extractedURL = try FileInputService.extractArchive(url)
@@ -454,6 +513,37 @@ final class TranslationViewModel: ObservableObject {
             engine: preferences.translationEngine
         ) {
             return .cacheHit(bubbles: cached.bubbles, textPixelMask: cached.textPixelMask)
+        }
+
+        // Re-translate path: when the page already has a committed
+        // `[TranslatedBubble]`, reuse it verbatim instead of re-running
+        // bubble detection. This preserves every bubble's `boundingBox`,
+        // `text`, `index`, and `isManual` flag across re-translate — so
+        // drawn bubbles, moved/resized bubbles, and reordered sequences
+        // all survive engine switches and explicit Re-translate clicks.
+        // See `openspec/changes/manual-bubble-editing/specs/retranslate/spec.md`
+        // (MODIFIED requirement) and `design.md` §D5.
+        if bypassCache, case .translated(let existing) = previousPage.state, !existing.isEmpty {
+            let preservedClusters = existing
+                .sorted { $0.index < $1.index }
+                .map { $0.bubble }
+            pipelineLogger.log(
+                "Page \(index + 1): re-translate preserving \(preservedClusters.count) committed bubble(s); skipping OCR",
+                level: .info,
+                category: .pipeline,
+                metadata: [
+                    "page_index": "\(index + 1)",
+                    "preserved_count": "\(preservedClusters.count)",
+                    "manual_count": "\(preservedClusters.filter { $0.isManual }.count)",
+                    "reason": "retranslate_preserve_committed"
+                ]
+            )
+            return .ready(
+                meaningful: preservedClusters,
+                textPixelMask: previousPage.textPixelMask,
+                imageHash: imageHash,
+                restoreFrom: restoreFrom
+            )
         }
 
         do {
@@ -710,12 +800,16 @@ final class TranslationViewModel: ObservableObject {
     // store/addHistory during translation) call this with try/catch and never
     // alter the page state machine.
     private func logCacheMutationFailure(_ error: Error, operation: String) {
+        logCacheMutationFailure(error, operation: operation, level: .error)
+    }
+
+    private func logCacheMutationFailure(_ error: Error, operation: String, level: DebugLogLevel) {
         if let cacheError = error as? CacheError {
             switch cacheError {
             case .unavailable:
                 pipelineLogger.log(
                     "\(operation): cache unavailable",
-                    level: .error,
+                    level: level,
                     category: .cache,
                     kind: .operational,
                     metadata: ["operation": operation, "reason": "unavailable"],
@@ -725,7 +819,7 @@ final class TranslationViewModel: ObservableObject {
             case .sqlite(let code, let message, let op):
                 pipelineLogger.log(
                     "\(operation): SQLite error in \(op): \(message)",
-                    level: .error,
+                    level: level,
                     category: .cache,
                     kind: .operational,
                     metadata: [
@@ -741,7 +835,7 @@ final class TranslationViewModel: ObservableObject {
         } else {
             pipelineLogger.log(
                 "\(operation): \(error.localizedDescription)",
-                level: .error,
+                level: level,
                 category: .cache,
                 kind: .operational,
                 metadata: ["operation": operation],
@@ -762,10 +856,12 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func retranslateCurrentPage() async {
+        guard editSession == nil else { return }
         await translatePage(at: currentPageIndex, bypassCache: true)
     }
 
     func retranslateAllPages() async {
+        guard editSession == nil else { return }
         resetRecentContext()
         await runBatchPipeline(bypassCache: true)
     }
@@ -773,6 +869,7 @@ final class TranslationViewModel: ObservableObject {
     // MARK: - Navigation
 
     func nextPage() {
+        guard editSession == nil else { return }
         if currentPageIndex < pages.count - 1 {
             currentPageIndex += 1
             highlightedBubbleId = nil
@@ -780,9 +877,446 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func previousPage() {
+        guard editSession == nil else { return }
         if currentPageIndex > 0 {
             currentPageIndex -= 1
             highlightedBubbleId = nil
+        }
+    }
+
+    // MARK: - Edit Mode
+
+    // The currently-open edit session, or nil when no session is active.
+    // Read by views to drive Edit Mode UI; written only by the lifecycle
+    // methods below (`openEditSession`, `cancelEditSession`,
+    // `applyEditAction`, `undo`, `redo`, `commitEditSession`).
+    @Published private(set) var editSession: EditSession?
+
+    // True while `commitEditSession()` is mid-flight (OCR + translate). UI
+    // uses this to disable the Done / Cancel buttons so the user cannot
+    // double-fire the pipeline. On Failure this flag goes back to false
+    // with the session still open, so Done / Cancel become live again for
+    // retry / abort.
+    @Published private(set) var isCommittingEditSession: Bool = false
+
+    // Opens a per-page Edit Mode session. Rejected if `pageId` is not a
+    // current page OR the page is not in `.translated` state — Edit Mode is
+    // a transactional editor over already-translated bubbles. Captures both
+    // the bubble snapshot and the PageState so Cancel can restore the page
+    // verbatim even after a failed Commit (which would leave the page in
+    // `.error`). See
+    // `openspec/changes/manual-bubble-editing/design.md` §D1.
+    func openEditSession(pageId: UUID) {
+        guard let pageIndex = pages.firstIndex(where: { $0.id == pageId }) else { return }
+        guard case .translated(let bubbles) = pages[pageIndex].state else { return }
+        let working = bubbles.map { $0.bubble }
+        editSession = EditSession(
+            pageId: pageId,
+            workingBubbles: working,
+            originalSnapshot: bubbles,
+            originalPageState: pages[pageIndex].state
+        )
+    }
+
+    // Discards the current Edit Mode session. Restores both the page's
+    // `[TranslatedBubble]` (from `originalSnapshot`) AND the page's
+    // PageState (from `originalPageState`). The PageState restore matters
+    // when a prior Commit attempt failed and left the page in `.error`:
+    // Cancel exits Edit Mode AND clears that error in one step. No cache
+    // write occurs on Cancel.
+    func cancelEditSession() {
+        guard let session = editSession else { return }
+        if let pageIndex = pages.firstIndex(where: { $0.id == session.pageId }) {
+            pages[pageIndex].state = session.originalPageState
+        }
+        editSession = nil
+    }
+
+    // Applies `action` to the working copy, pushes it onto the undo stack,
+    // and clears the redo stack. The forward apply path dispatches on the
+    // action variant per the table in `design.md` §D2 — notably `.add` uses
+    // `ReadingOrderSorter.insertNearestNeighbour(_:into:)` so newly drawn
+    // bubbles land at their geometric position rather than at the end of
+    // the list. No-op if no edit session is open.
+    func applyEditAction(_ action: EditAction) {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession else { return }
+        Self.applyForward(action, to: &session)
+        session.undoStack.append(action)
+        session.redoStack.removeAll()
+        editSession = session
+    }
+
+    // Reverses the top of the undo stack and pushes it onto the redo stack.
+    // The inverse is dispatched via `EditAction.applyInverse(to:)` which
+    // only restores `boundingBox` for `.move`/`.resize` — `isManual` stays
+    // sticky once set (§D5). No-op when the undo stack is empty.
+    func undo() {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession,
+              let action = session.undoStack.popLast() else { return }
+        action.applyInverse(to: &session)
+        session.redoStack.append(action)
+        editSession = session
+    }
+
+    // Re-applies the top of the redo stack through the same forward apply
+    // path as the original mutation, then pushes it onto the undo stack.
+    // No-op when the redo stack is empty.
+    func redo() {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession,
+              let action = session.redoStack.popLast() else { return }
+        Self.applyForward(action, to: &session)
+        session.undoStack.append(action)
+        editSession = session
+    }
+
+    // Commits the open edit session per `design.md` §D10.
+    //
+    // Terminal branches (mutually exclusive, only one fires per call):
+    //   - **Empty**:   final working set is empty → state `.translated([])`,
+    //                  session cleared, no OCR, no translator call, cache
+    //                  best-effort with `[]`. Never enters `.processing`.
+    //   - **Success**: OCR + translate both succeed → state `.translated(output.bubbles)`,
+    //                  session cleared, cache best-effort with output.
+    //   - **Failure**: OCR or translator throws → state `.error(...)`,
+    //                  session preserved so the user can retry or cancel.
+    //
+    // Cache writes are best-effort throughout: thrown errors are logged at
+    // warning level via DebugLogger and do NOT roll back the in-memory
+    // commit. See `design.md` §D10 for rationale.
+    //
+    // Uses `summariesPreceding(pageIndex:)` to source the translation
+    // context — the rolling recent-context window used by initial / batch
+    // translation is deliberately ignored on this code path and SHALL NOT
+    // be appended to after a successful commit. The Re-translate button
+    // path continues to use the rolling window.
+    func commitEditSession() async {
+        guard let session = editSession else { return }
+        guard !isCommittingEditSession else { return }
+        guard let pageIndex = pages.firstIndex(where: { $0.id == session.pageId }) else {
+            editSession = nil
+            return
+        }
+        isCommittingEditSession = true
+        defer { isCommittingEditSession = false }
+
+        // Steps 1–2: compute the final working set with redensified indices.
+        var workingOrdered = session.workingBubbles.filter { !session.deletedBubbleIds.contains($0.id) }
+        EditAction.redensifyIndices(&workingOrdered)
+
+        // Step 3: final-state no-op short-circuit. If the user ends at the
+        // same bubble ids, order, and geometry captured at session open,
+        // Done only closes Edit Mode. In-session sticky flags such as
+        // `isManual` are treated as transient unless another content change
+        // is actually committed.
+        if Self.matchesOriginalEditSnapshot(workingOrdered, originalSnapshot: session.originalSnapshot) {
+            pages[pageIndex].state = session.originalPageState
+            editSession = nil
+            return
+        }
+
+        // Step 4: empty-set short-circuit — skip OCR, skip translator, skip
+        // .processing. The result is independent of API-key / network state.
+        if workingOrdered.isEmpty {
+            if let hash = pages[pageIndex].imageHash {
+                do {
+                    try cacheService.store(
+                        imageHash: hash,
+                        source: preferences.sourceLanguage,
+                        target: preferences.targetLanguage,
+                        engine: preferences.translationEngine,
+                        bubbles: [],
+                        textPixelMask: pages[pageIndex].textPixelMask
+                    )
+                } catch {
+                    logCacheMutationFailure(error, operation: "CacheService.store [edit commit empty]", level: .warning)
+                }
+            }
+            pages[pageIndex].state = .translated([])
+            editSession = nil
+            return
+        }
+
+        // Step 5: classify OCR-dirty using final-geometry-vs-snapshot diff.
+        // `dirtyBubbleIds` is a UI cache and is NOT consulted here (§D3).
+        let snapshotByID = Dictionary(uniqueKeysWithValues: session.originalSnapshot.map {
+            ($0.bubble.id, $0.bubble)
+        })
+        let dirtyBubbles = workingOrdered.filter { bubble in
+            guard let snapshot = snapshotByID[bubble.id] else { return true } // new
+            return bubble.boundingBox != snapshot.boundingBox                  // geometry-changed
+        }
+
+        // Step 6: enter .processing only on the non-empty, non-no-op path.
+        pages[pageIndex].state = .processing
+
+        // Step 7: run OCR over the dirty subset.
+        var ocrResults: [UUID: String] = [:]
+        if !dirtyBubbles.isEmpty {
+            guard let image = pages[pageIndex].image else {
+                pages[pageIndex].state = .error("Page image unavailable for OCR")
+                return
+            }
+            do {
+                ocrResults = try await editModeOCR.recognizeRegions(
+                    image: image,
+                    bubbles: dirtyBubbles,
+                    sourceLanguage: preferences.sourceLanguage
+                )
+            } catch {
+                pages[pageIndex].state = .error(error.localizedDescription)
+                return
+            }
+        }
+
+        // Step 8: assemble the merged bubble set in the user's current order.
+        // Dirty bubbles get fresh OCR text; clean bubbles reuse their
+        // snapshot text. Both are then re-translated.
+        let merged = workingOrdered.map { bubble -> BubbleCluster in
+            if let freshText = ocrResults[bubble.id] {
+                return bubble.withText(freshText)
+            }
+            if let snapshot = snapshotByID[bubble.id] {
+                return bubble.withText(snapshot.text)
+            }
+            return bubble
+        }
+
+        // Steps 9–10: build the indexed context and translate the whole page.
+        let service = translationService
+        let usesContext = usesRecentPageContext(service.engine)
+        let context = buildTranslationContext(
+            usesRecentContext: usesContext,
+            precedingPageIndex: pageIndex
+        )
+        let output: TranslationOutput
+        do {
+            output = try await service.translate(
+                bubbles: merged,
+                from: preferences.sourceLanguage,
+                to: preferences.targetLanguage,
+                context: context
+            )
+        } catch {
+            pages[pageIndex].state = .error(error.localizedDescription)
+            return
+        }
+
+        // Step 11: cache (best-effort). Failures are logged but do not
+        // affect the user-visible commit.
+        if let hash = pages[pageIndex].imageHash {
+            do {
+                try cacheService.store(
+                    imageHash: hash,
+                    source: preferences.sourceLanguage,
+                    target: preferences.targetLanguage,
+                    engine: preferences.translationEngine,
+                    bubbles: output.bubbles,
+                    textPixelMask: pages[pageIndex].textPixelMask
+                )
+            } catch {
+                logCacheMutationFailure(error, operation: "CacheService.store [edit commit]", level: .warning)
+            }
+        }
+
+        // Step 12: atomic in-memory swap. Note we do NOT append to the
+        // rolling recent-context window — that buffer belongs to the
+        // initial / batch translation flow.
+        pages[pageIndex].state = .translated(output.bubbles)
+        editSession = nil
+    }
+
+    private static func matchesOriginalEditSnapshot(
+        _ workingOrdered: [BubbleCluster],
+        originalSnapshot: [TranslatedBubble]
+    ) -> Bool {
+        guard workingOrdered.count == originalSnapshot.count else { return false }
+        for (working, original) in zip(workingOrdered, originalSnapshot) {
+            if working.id != original.bubble.id { return false }
+            if working.boundingBox != original.bubble.boundingBox { return false }
+        }
+        return true
+    }
+
+    // MARK: - Edit Mode selection + keyboard helpers
+
+    // Replaces the current selection with `ids`. No-op when no session.
+    func setSelection(_ ids: Set<UUID>) {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession else { return }
+        session.selectedBubbleIds = ids
+        editSession = session
+    }
+
+    // `Cmd+A` — selects every non-deleted bubble in the working copy.
+    func selectAllBubbles() {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession else { return }
+        let visible = session.workingBubbles.filter { !session.deletedBubbleIds.contains($0.id) }
+        session.selectedBubbleIds = Set(visible.map(\.id))
+        editSession = session
+    }
+
+    // `Tab` / `Shift+Tab` — moves the highlight by reading-order index.
+    // Direction +1 picks the bubble whose index is one greater than the
+    // highest currently-selected, wrapping to the lowest. Direction -1 is
+    // symmetric. Empty selection → pick the boundary bubble.
+    func cycleSelection(direction: Int) {
+        guard !isCommittingEditSession else { return }
+        guard var session = editSession else { return }
+        let visible = session.workingBubbles
+            .filter { !session.deletedBubbleIds.contains($0.id) }
+            .sorted { $0.index < $1.index }
+        guard !visible.isEmpty else { return }
+
+        if session.selectedBubbleIds.isEmpty {
+            let pick = direction > 0 ? visible.first! : visible.last!
+            session.selectedBubbleIds = [pick.id]
+            editSession = session
+            return
+        }
+        let pivotIndex: Int = direction > 0
+            ? (visible.compactMap { session.selectedBubbleIds.contains($0.id) ? $0.index : nil }.max() ?? -1)
+            : (visible.compactMap { session.selectedBubbleIds.contains($0.id) ? $0.index : nil }.min() ?? visible.count)
+        let nextIndex: Int
+        if direction > 0 {
+            nextIndex = pivotIndex + 1 < visible.count ? pivotIndex + 1 : 0
+        } else {
+            nextIndex = pivotIndex - 1 >= 0 ? pivotIndex - 1 : visible.count - 1
+        }
+        let pick = visible.first { $0.index == nextIndex } ?? visible.first!
+        session.selectedBubbleIds = [pick.id]
+        editSession = session
+    }
+
+    // `Delete` / `Backspace` — stages every currently-selected bubble for
+    // deletion as a single `.multi` so undo restores them in one shot.
+    func stageDeleteSelected() {
+        guard !isCommittingEditSession else { return }
+        guard let session = editSession, !session.selectedBubbleIds.isEmpty else { return }
+        let targets = session.workingBubbles.filter { session.selectedBubbleIds.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        if targets.count == 1 {
+            applyEditAction(.delete(targets[0]))
+        } else {
+            applyEditAction(.multi(targets.map { .delete($0) }))
+        }
+    }
+
+    // Arrow-key nudging — shifts every selected bubble by `(dx, dy)` image
+    // pixels. Empty selection → no-op (the caller must NOT fall back to
+    // page navigation; the page-navigation handler is suppressed while
+    // editing, per the lifecycle spec). A single press across N bubbles
+    // produces one `.multi` undo entry.
+    func nudgeSelection(dx: CGFloat, dy: CGFloat) {
+        guard !isCommittingEditSession else { return }
+        guard let session = editSession, !session.selectedBubbleIds.isEmpty else { return }
+        let pixelSize = editImagePixelSize(for: session)
+        var actions: [EditAction] = []
+        for bubble in session.workingBubbles where session.selectedBubbleIds.contains(bubble.id) {
+            let from = bubble.boundingBox
+            var to = CGRect(
+                x: from.origin.x + dx,
+                y: from.origin.y + dy,
+                width: from.width,
+                height: from.height
+            )
+            if let pixelSize {
+                to = Self.clampEditRect(to, pixelSize: pixelSize)
+            }
+            if to == from { continue }
+            actions.append(.move(id: bubble.id, from: from, to: to))
+        }
+        if actions.isEmpty { return }
+        if actions.count == 1 {
+            applyEditAction(actions[0])
+        } else {
+            applyEditAction(.multi(actions))
+        }
+    }
+
+    private func editImagePixelSize(for session: EditSession) -> CGSize? {
+        guard let pageIndex = pages.firstIndex(where: { $0.id == session.pageId }),
+              let image = pages[pageIndex].image else { return nil }
+        if let rep = image.representations.first as? NSBitmapImageRep,
+           rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+            return CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+        }
+        return image.size
+    }
+
+    private static func clampEditRect(_ rect: CGRect, pixelSize: CGSize) -> CGRect {
+        var clamped = rect
+        if clamped.size.width > pixelSize.width { clamped.size.width = pixelSize.width }
+        if clamped.size.height > pixelSize.height { clamped.size.height = pixelSize.height }
+        if clamped.origin.x < 0 { clamped.origin.x = 0 }
+        if clamped.origin.y < 0 { clamped.origin.y = 0 }
+        if clamped.maxX > pixelSize.width { clamped.origin.x = pixelSize.width - clamped.size.width }
+        if clamped.maxY > pixelSize.height { clamped.origin.y = pixelSize.height - clamped.size.height }
+        return clamped
+    }
+
+    // Esc cascade levels 2 + 3 per the lifecycle spec. Level 1 (abort an
+    // in-flight gesture) lives in `ImageViewer` because the gesture state
+    // is local to that view. ContentView calls this after the gesture
+    // layer has had its chance.
+    //
+    //   - Selection non-empty: clear selection only, keep the session.
+    //   - Selection empty: trigger Cancel (which restores `originalSnapshot`
+    //     and `originalPageState`, clearing any prior `.error` state).
+    func handleEscapeCascade() {
+        guard !isCommittingEditSession else { return }
+        guard let session = editSession else { return }
+        if !session.selectedBubbleIds.isEmpty {
+            setSelection([])
+        } else {
+            cancelEditSession()
+        }
+    }
+
+    // Pure mutation for the forward direction. Used by `applyEditAction`
+    // (initial apply) and `redo`. Kept on `Self` so it can be reused
+    // without re-binding `self` and can dispatch recursively for `.multi`.
+    private static func applyForward(_ action: EditAction, to session: inout EditSession) {
+        switch action {
+        case .add(let bubble):
+            // Geometric placement — see §D4. Replaces the working array
+            // wholesale because indices are redensified `0..<n`.
+            session.workingBubbles = ReadingOrderSorter.insertNearestNeighbour(
+                bubble, into: session.workingBubbles
+            )
+            // Newly drawn bubbles drive the "new" sidebar decoration via
+            // membership in `originalSnapshot`, not via `dirtyBubbleIds`,
+            // so this branch deliberately leaves the dirty cache alone.
+
+        case .delete(let bubble):
+            session.deletedBubbleIds.insert(bubble.id)
+
+        case .unstageDelete(let bubble):
+            session.deletedBubbleIds.remove(bubble.id)
+
+        case .move(let id, _, let to), .resize(let id, _, let to):
+            if let idx = session.workingBubbles.firstIndex(where: { $0.id == id }) {
+                session.workingBubbles[idx].boundingBox = to
+                // Sticky-flag flip — once true, stays true regardless of
+                // subsequent edits or undo. §D5.
+                if !session.workingBubbles[idx].isManual {
+                    session.workingBubbles[idx].isManual = true
+                }
+                // UI-only dirty marker for the sidebar "已修改" badge.
+                session.dirtyBubbleIds.insert(id)
+            }
+
+        case .reorder(_, let to):
+            session.workingBubbles = EditAction.reorder(session.workingBubbles, byIds: to)
+            EditAction.redensifyIndices(&session.workingBubbles)
+
+        case .multi(let actions):
+            for sub in actions {
+                applyForward(sub, to: &session)
+            }
         }
     }
 }

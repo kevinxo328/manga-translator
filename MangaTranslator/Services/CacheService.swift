@@ -340,6 +340,59 @@ final class CacheService: CacheServiceProtocol {
         return sqlite3_exec(db, sql, nil, nil, nil)
     }
 
+    // Test-only helper that returns the raw `bubbles_json` string stored for
+    // a cache key. Used by isManual round-trip tests to verify on-disk JSON
+    // shape — both that the `isManual` key is always emitted on encode, and
+    // that the decoder accepts JSON written without it.
+    func _rawBubblesJSON(
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine
+    ) -> String? {
+        guard isAvailable, let db else { return nil }
+        let sql = """
+        SELECT bubbles_json FROM translation_cache
+        WHERE image_hash = ? AND source_lang = ? AND target_lang = ? AND engine = ?
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
+        guard sqlite3_step(stmt) == SQLITE_ROW,
+              let cStr = sqlite3_column_text(stmt, 0) else { return nil }
+        return String(cString: cStr)
+    }
+
+    // Test-only helper that overwrites the `bubbles_json` column of an
+    // existing cache row. Used by tests to install legacy JSON (no `isManual`
+    // key) and verify decoder backward compatibility.
+    func _writeBubblesJSON(
+        _ json: String,
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine
+    ) -> Int32 {
+        guard isAvailable, let db else { return SQLITE_MISUSE }
+        let sql = """
+        UPDATE translation_cache SET bubbles_json = ?
+        WHERE image_hash = ? AND source_lang = ? AND target_lang = ? AND engine = ?
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return SQLITE_ERROR }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, json, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 5, engine.rawValue, -1, CacheService.sqliteTransient)
+        return sqlite3_step(stmt) == SQLITE_DONE ? SQLITE_OK : SQLITE_ERROR
+    }
+
     // MARK: - JSON encoding/decoding for cached bubbles
 
     private struct CachedBubble: Codable {
@@ -351,6 +404,11 @@ final class CacheService: CacheServiceProtocol {
         let translatedText: String
         let index: Int
         let isInverted: Bool
+        // Persists the Edit-Mode "this bubble was authored / touched by the
+        // user" flag across sessions. Encoded for every entry; decoded with
+        // a `false` default so cache rows written before the
+        // manual-bubble-editing change still load without error.
+        let isManual: Bool
 
         init(
             x: Double,
@@ -360,7 +418,8 @@ final class CacheService: CacheServiceProtocol {
             originalText: String,
             translatedText: String,
             index: Int,
-            isInverted: Bool
+            isInverted: Bool,
+            isManual: Bool
         ) {
             self.x = x
             self.y = y
@@ -370,6 +429,7 @@ final class CacheService: CacheServiceProtocol {
             self.translatedText = translatedText
             self.index = index
             self.isInverted = isInverted
+            self.isManual = isManual
         }
 
         init(from decoder: Decoder) throws {
@@ -382,6 +442,7 @@ final class CacheService: CacheServiceProtocol {
             translatedText = try container.decode(String.self, forKey: .translatedText)
             index = try container.decode(Int.self, forKey: .index)
             isInverted = try container.decodeIfPresent(Bool.self, forKey: .isInverted) ?? false
+            isManual = try container.decodeIfPresent(Bool.self, forKey: .isManual) ?? false
         }
     }
 
@@ -395,7 +456,8 @@ final class CacheService: CacheServiceProtocol {
                 originalText: bubble.bubble.text,
                 translatedText: bubble.translatedText,
                 index: bubble.index,
-                isInverted: bubble.bubble.isInverted
+                isInverted: bubble.bubble.isInverted,
+                isManual: bubble.bubble.isManual
             )
         }
 
@@ -415,7 +477,8 @@ final class CacheService: CacheServiceProtocol {
                 text: item.originalText,
                 observations: [],
                 index: item.index,
-                isInverted: item.isInverted
+                isInverted: item.isInverted,
+                isManual: item.isManual
             )
             return TranslatedBubble(
                 bubble: cluster,

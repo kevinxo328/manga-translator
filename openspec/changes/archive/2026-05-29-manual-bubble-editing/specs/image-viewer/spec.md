@@ -5,15 +5,18 @@
 When a page is in an active Edit Mode session (see `manual-bubble-editing`), `ImageViewer` SHALL render an edit-mode overlay layer above the existing `BubbleOverlay` layer. The overlay SHALL:
 
 - Draw a 1.5 pt accent-colour border around every selected box.
+- Draw unselected boxes using the same neutral border/fill vocabulary as the existing viewing-mode bubble overlay.
 - Draw 8 handles per selected box (4 corners at 16×16 pt, 4 edge midpoints at 16×8 pt for top/bottom edges and 8×16 pt for left/right edges) positioned in display coordinates.
 - Draw a dashed marquee outline during an in-flight Draw gesture, following the cursor in real time.
-- Visually distinguish manually-flagged boxes (`isManual = true`) from auto-detected boxes (`isManual = false`) with a stable colour difference (e.g. solid border for manual, dashed for auto). This decoration SHALL coexist with selection highlight.
+- Avoid using separate canvas colours for manually-flagged boxes (`isManual = true`) versus auto-detected boxes (`isManual = false`); manual state is tracked in data and surfaced through sidebar dirty-state decoration where needed.
 
-`ImageViewer` SHALL compose three `DragGesture`s with `.simultaneousGesture(...)`:
+`ImageViewer` SHALL route the edit interaction through a single `DragGesture(minimumDistance: 0)` state machine. The first `onChanged` event SHALL classify the gesture into exactly one of three modes:
 
 1. **Empty-canvas drag** (gated by `onChanged`'s first event hit-testing outside all existing boxes' display rects) → Draw.
 2. **Box-body drag** (gated by first event inside a box, outside handle zones) → Move.
 3. **Handle drag** (gated by first event inside one of the 8 handle zones) → Resize.
+
+This unified state machine replaces the earlier three-gesture `.simultaneousGesture(...)` design to avoid focus and cancellation races in SwiftUI while preserving the same user-visible routing rules.
 
 Hit-testing SHALL use **display coordinates** (not image pixel coordinates), with handle zones rendered at the constant point sizes above regardless of image zoom.
 
@@ -40,10 +43,10 @@ Outside Edit Mode, `ImageViewer`'s behaviour SHALL be identical to today's behav
 - **WHEN** Edit Mode is active and the user starts a drag inside box A's bottom-right corner handle
 - **THEN** a Resize gesture begins adjusting A's right and bottom edges
 
-#### Scenario: Manual vs auto visual distinction
+#### Scenario: Manual and auto boxes share canvas styling
 - **WHEN** Edit Mode is active, box A has `isManual = true`, and box B has `isManual = false`
-- **THEN** A and B are rendered with visually distinct border styles
-- **AND** the distinction is preserved regardless of which one is currently selected
+- **THEN** A and B use the same unselected canvas border and fill styling
+- **AND** selecting either box uses the same selected-box highlight and handles
 
 #### Scenario: Viewing mode unchanged
 - **WHEN** no Edit Mode session is active

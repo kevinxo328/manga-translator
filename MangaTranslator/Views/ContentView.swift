@@ -1,9 +1,26 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
     @Environment(\.openWindow) private var openWindow
+
+    // Stored handle for the NSEvent local monitor that catches Edit Mode
+    // keys whose SwiftUI keyboardShortcut routing is focus-dependent.
+    @State private var editKeyMonitor: EditKeyMonitorBox = EditKeyMonitorBox()
+    @State private var editGestureInFlight = false
+
+    private var isEditing: Bool { viewModel.editSession != nil }
+
+    // Edit button is enabled only when the current page sits in
+    // `.translated` state per `manual-bubble-editing` spec — the gating
+    // rule that guarantees Edit Mode opens against fully-translated content.
+    private var isEditEnabledForCurrentPage: Bool {
+        guard let page = viewModel.currentPage else { return false }
+        if case .translated = page.state { return true }
+        return false
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,6 +44,26 @@ struct ContentView: View {
                 isProcessing: viewModel.isCurrentPageProcessing,
                 onRetranslate: {
                     Task { await viewModel.retranslateCurrentPage() }
+                },
+                editEnabled: isEditEnabledForCurrentPage,
+                editSession: viewModel.editSession,
+                isCommittingEditSession: viewModel.isCommittingEditSession,
+                onEnterEdit: {
+                    if let pageId = viewModel.currentPage?.id {
+                        viewModel.openEditSession(pageId: pageId)
+                    }
+                },
+                onCommitEdit: {
+                    Task { await viewModel.commitEditSession() }
+                },
+                onCancelEdit: {
+                    viewModel.cancelEditSession()
+                },
+                onApplyEditAction: { action in
+                    viewModel.applyEditAction(action)
+                },
+                onSelectionChange: { ids in
+                    viewModel.setSelection(ids)
                 }
             )
         }
@@ -77,21 +114,74 @@ struct ContentView: View {
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { providers in
             handlePaste(providers)
         }
-        // Bubble Navigation Shortcuts
-        .background(
-            Button("") {
-                navigateBubbles(direction: 1)
+        .background(KeyboardShortcutLayer(viewModel: viewModel, isEditing: isEditing, navigateBubbles: navigateBubbles))
+        .background(WindowCloseInterceptor(isEditing: isEditing))
+        .onAppear { installEditKeyMonitor() }
+        .onDisappear { removeEditKeyMonitor() }
+        .onExitCommand {
+            // Esc cascade levels 2 + 3 — selection clear, then Cancel.
+            // Level 1 (abort in-flight gesture) is handled inside
+            // ImageViewer because the gesture state machine is local
+            // to that view. See `manual-bubble-editing/spec.md` lifecycle.
+            guard !editGestureInFlight else { return }
+            viewModel.handleEscapeCascade()
+        }
+    }
+
+    // Catches Edit Mode keys via NSEvent's local monitor rather than a
+    // focusable SwiftUI surface. The focusable route intercepted mouse
+    // events meant for ImageViewer gestures and drew a phantom focus box.
+    // Arrow keys also need to work when focus sits in the sidebar.
+    private func installEditKeyMonitor() {
+        guard editKeyMonitor.monitor == nil else { return }
+        editKeyMonitor.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Don't steal Delete from text fields (sidebar search, settings
+            // panes, etc.). Only act when Edit Mode is active and the event
+            // isn't directed at a TextField-like first responder.
+            guard viewModel.editSession != nil else { return event }
+            if let nudge = editNudgeDelta(for: event) {
+                Task { @MainActor in
+                    viewModel.nudgeSelection(dx: nudge.dx, dy: nudge.dy)
+                }
+                return nil
             }
-            .keyboardShortcut(.downArrow, modifiers: [])
-            .hidden()
-        )
-        .background(
-            Button("") {
-                navigateBubbles(direction: -1)
+            if event.keyCode == 51 || event.keyCode == 117 {
+                // Skip when a text input is the responder — let it backspace
+                // its own content instead of deleting our selection.
+                if isTextInputFirstResponder() {
+                    return event
+                }
+                Task { @MainActor in
+                    viewModel.stageDeleteSelected()
+                }
+                return nil
             }
-            .keyboardShortcut(.upArrow, modifiers: [])
-            .hidden()
-        )
+            return event
+        }
+    }
+
+    private func removeEditKeyMonitor() {
+        if let m = editKeyMonitor.monitor {
+            NSEvent.removeMonitor(m)
+            editKeyMonitor.monitor = nil
+        }
+    }
+
+    private func editNudgeDelta(for event: NSEvent) -> (dx: CGFloat, dy: CGFloat)? {
+        let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
+        switch event.keyCode {
+        case 123: return (-step, 0)
+        case 124: return (step, 0)
+        case 125: return (0, step)
+        case 126: return (0, -step)
+        default: return nil
+        }
+    }
+
+    private func isTextInputFirstResponder() -> Bool {
+        guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+        return responder.isKind(of: NSText.self)
+            || NSStringFromClass(type(of: responder)).contains("TextInput")
     }
 
     private func navigateBubbles(direction: Int) {
@@ -130,7 +220,18 @@ struct ContentView: View {
             ImageViewer(
                 page: page,
                 translations: currentBubbles,
-                highlightedBubbleId: $viewModel.highlightedBubbleId
+                highlightedBubbleId: $viewModel.highlightedBubbleId,
+                isEditing: isEditing,
+                editSession: viewModel.editSession,
+                onEditAction: { action in
+                    viewModel.applyEditAction(action)
+                },
+                onSelectionChange: { ids in
+                    viewModel.setSelection(ids)
+                },
+                onGestureInFlightChange: { inFlight in
+                    editGestureInFlight = inFlight
+                }
             )
 
             // Overlays
@@ -191,6 +292,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             Button {
+                guard !isEditing else { return }
                 viewModel.showFileImporter = true
             } label: {
                 VStack(spacing: 20) {
@@ -236,11 +338,15 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button(action: { viewModel.showFileImporter = true }) {
+            Button(action: {
+                guard !isEditing else { return }
+                viewModel.showFileImporter = true
+            }) {
                 Label("Open", systemImage: "plus.rectangle.on.folder")
             }
             .help("Open image, folder or archive")
             .keyboardShortcut("o", modifiers: .command)
+            .disabled(isEditing)
         }
 
         if viewModel.pages.count > 1 {
@@ -249,14 +355,12 @@ struct ContentView: View {
                     Button(action: { viewModel.previousPage() }) {
                         Label("Previous", systemImage: "chevron.left")
                     }
-                    .disabled(viewModel.currentPageIndex == 0)
-                    .keyboardShortcut(.leftArrow, modifiers: [])
+                    .disabled(viewModel.currentPageIndex == 0 || isEditing)
 
                     Button(action: { viewModel.nextPage() }) {
                         Label("Next", systemImage: "chevron.right")
                     }
-                    .disabled(viewModel.currentPageIndex >= viewModel.pages.count - 1)
-                    .keyboardShortcut(.rightArrow, modifiers: [])
+                    .disabled(viewModel.currentPageIndex >= viewModel.pages.count - 1 || isEditing)
                 }
             }
 
@@ -375,21 +479,24 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // Re-translate All
             Button {
+                guard !isEditing else { return }
                 Task { await viewModel.retranslateAllPages() }
             } label: {
                 Image(systemName: "arrow.trianglehead.2.counterclockwise")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(viewModel.isProcessing)
+            .disabled(viewModel.isProcessing || isEditing)
             .help("Re-translate all pages using current settings")
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
+                guard !isEditing else { return }
                 Task { await viewModel.retranslateCurrentPage() }
             }
         }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !isEditing else { return false }
         guard let provider = providers.first else { return false }
         provider.loadItem(forTypeIdentifier: "public.file-url") { item, _ in
             guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
@@ -399,6 +506,7 @@ struct ContentView: View {
     }
 
     private func handlePaste(_ providers: [NSItemProvider]) {
+        guard !isEditing else { return }
         guard let provider = providers.first else { return }
         provider.loadItem(forTypeIdentifier: "public.file-url") { item, _ in
             guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
@@ -425,5 +533,149 @@ struct ContentView: View {
             .padding(.vertical, 8)   // 增加上下邊距，讓空間更開闊
             .background(.ultraThinMaterial)
         }
+    }
+}
+
+// Box holding the NSEvent local-monitor handle for Edit Mode keyboard
+// routing. Lives as `@State` on ContentView; mutated only on the main actor
+// by `.onAppear` / `.onDisappear`. The reference-type wrapper lets us mutate
+// `monitor` without SwiftUI treating the `@State` value as changed every
+// frame.
+@MainActor
+private final class EditKeyMonitorBox {
+    var monitor: Any?
+    init() { self.monitor = nil }
+}
+
+// Hidden-button keyboard-shortcut surface, extracted into its own view so
+// the ContentView body's type-check time stays bounded. Each shortcut is
+// gated on `isEditing` where appropriate. Arrow keys route through
+// `nudgeOrNavigate` so they nudge selected bubbles inside Edit Mode and
+// navigate pages / bubbles outside it — page navigation is NEVER fired
+// while editing, per `manual-bubble-editing/spec.md`.
+private struct KeyboardShortcutLayer: View {
+    @ObservedObject var viewModel: TranslationViewModel
+    let isEditing: Bool
+    let navigateBubbles: (Int) -> Void
+
+    var body: some View {
+        Group {
+            arrowGroup
+            editGroup
+        }
+    }
+
+    private var arrowGroup: some View {
+        Group {
+            shortcut(.leftArrow, []) { nudgeOrNavigate(dx: -1, dy: 0) }
+            shortcut(.rightArrow, []) { nudgeOrNavigate(dx: 1, dy: 0) }
+            shortcut(.upArrow, []) { nudgeOrNavigate(dx: 0, dy: -1) }
+            shortcut(.downArrow, []) { nudgeOrNavigate(dx: 0, dy: 1) }
+            shortcut(.leftArrow, .shift) { nudgeOrNavigate(dx: -10, dy: 0) }
+            shortcut(.rightArrow, .shift) { nudgeOrNavigate(dx: 10, dy: 0) }
+            shortcut(.upArrow, .shift) { nudgeOrNavigate(dx: 0, dy: -10) }
+            shortcut(.downArrow, .shift) { nudgeOrNavigate(dx: 0, dy: 10) }
+        }
+    }
+
+    private var editGroup: some View {
+        Group {
+            shortcut("z", .command, enabled: isEditing) { viewModel.undo() }
+            shortcut("z", [.command, .shift], enabled: isEditing) { viewModel.redo() }
+            // Delete / Backspace and Edit Mode arrow keys are intentionally
+            // NOT routed through hidden `.keyboardShortcut(...)` Buttons.
+            // They need focus-independent AppKit routing, handled by
+            // `installEditKeyMonitor()`.
+            shortcut("a", .command, enabled: isEditing) { viewModel.selectAllBubbles() }
+            shortcut(.tab, [], enabled: isEditing) { viewModel.cycleSelection(direction: 1) }
+            shortcut(.tab, .shift, enabled: isEditing) { viewModel.cycleSelection(direction: -1) }
+        }
+    }
+
+    private func nudgeOrNavigate(dx: CGFloat, dy: CGFloat) {
+        if isEditing {
+            viewModel.nudgeSelection(dx: dx, dy: dy)
+            return
+        }
+        if dx != 0 {
+            if dx < 0 { viewModel.previousPage() } else { viewModel.nextPage() }
+        } else if dy != 0 {
+            navigateBubbles(dy > 0 ? 1 : -1)
+        }
+    }
+
+    @ViewBuilder
+    private func shortcut(
+        _ key: KeyEquivalent,
+        _ modifiers: EventModifiers,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button("", action: action)
+            .keyboardShortcut(key, modifiers: modifiers)
+            .disabled(!enabled)
+            .hidden()
+    }
+}
+
+// Installs an NSWindowDelegate bridge for the main SwiftUI window so an active
+// Edit Mode session can block window close. This is intentionally non-modal:
+// the close is rejected, the window shakes, and the system alert sound gives
+// the user a lightweight cue to use Done or Cancel first.
+private struct WindowCloseInterceptor: NSViewRepresentable {
+    let isEditing: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: view.window)
+            context.coordinator.isEditing = isEditing
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isEditing = isEditing
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: nsView.window)
+        }
+    }
+
+    final class Coordinator: NSObject, NSWindowDelegate {
+        weak var window: NSWindow?
+        weak var previousDelegate: NSWindowDelegate?
+        var isEditing = false
+
+        func attach(to window: NSWindow?) {
+            guard let window, self.window !== window else { return }
+            self.window = window
+            previousDelegate = window.delegate
+            window.delegate = self
+        }
+
+        func windowShouldClose(_ sender: NSWindow) -> Bool {
+            if isEditing {
+                sender.shake()
+                NSSound.beep()
+                return false
+            }
+            return previousDelegate?.windowShouldClose?(sender) ?? true
+        }
+    }
+}
+
+private extension NSWindow {
+    func shake() {
+        let animation = CAKeyframeAnimation(keyPath: "position.x")
+        animation.values = [0, -8, 8, -6, 6, -3, 3, 0]
+        animation.keyTimes = [0, 0.12, 0.24, 0.38, 0.52, 0.68, 0.84, 1]
+        animation.duration = 0.35
+        animation.isAdditive = true
+        animations = ["shake": animation]
+        animator().setFrameOrigin(frame.origin)
     }
 }

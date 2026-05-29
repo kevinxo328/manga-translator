@@ -489,6 +489,121 @@ final class CacheServiceTests: XCTestCase {
         XCTAssertEqual(fetched?.name, "ABCDEFGHIJKLMNOPQRST")
     }
 
+    // MARK: - isManual round-trip (manual-bubble-editing change)
+
+    func testIsManualPersistsAcrossWriteAndRead() throws {
+        let cache = makeCache()
+        try cache.clearAll()
+
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 5, y: 6, width: 7, height: 8),
+            text: "drawn",
+            observations: [],
+            index: 0,
+            isManual: true
+        )
+        let translated = TranslatedBubble(bubble: bubble, translatedText: "畫的", index: 0)
+        let hash = "ismanual-roundtrip-\(UUID().uuidString)"
+
+        try cache.store(
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .openAI,
+            bubbles: [translated],
+            textPixelMask: nil
+        )
+
+        let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
+        XCTAssertEqual(result?.bubbles.first?.bubble.isManual, true)
+    }
+
+    func testEveryEncodedEntryIncludesIsManualKey() throws {
+        let cache = makeCache()
+        try cache.clearAll()
+
+        let bubbleA = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10),
+            text: "auto",
+            observations: [],
+            index: 0,
+            isManual: false
+        )
+        let bubbleB = BubbleCluster(
+            boundingBox: CGRect(x: 20, y: 20, width: 10, height: 10),
+            text: "drawn",
+            observations: [],
+            index: 1,
+            isManual: true
+        )
+        let hash = "ismanual-key-emission-\(UUID().uuidString)"
+        try cache.store(
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .openAI,
+            bubbles: [
+                TranslatedBubble(bubble: bubbleA, translatedText: "自動", index: 0),
+                TranslatedBubble(bubble: bubbleB, translatedText: "手繪", index: 1)
+            ],
+            textPixelMask: nil
+        )
+
+        let rawJSON = cache._rawBubblesJSON(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .openAI
+        )
+        XCTAssertNotNil(rawJSON)
+        // The encoder always emits `isManual` for every entry, regardless of
+        // value, so old readers cannot lose the bit and new readers cannot
+        // mis-attribute manual authorship to the wrong bubble.
+        let isManualOccurrences = rawJSON?
+            .components(separatedBy: "\"isManual\":").count.advanced(by: -1)
+        XCTAssertEqual(isManualOccurrences, 2)
+        // Spot-check that the values are also present.
+        XCTAssertTrue(rawJSON?.contains("\"isManual\":true") ?? false)
+        XCTAssertTrue(rawJSON?.contains("\"isManual\":false") ?? false)
+    }
+
+    func testDecodingLegacyJSONWithoutIsManualDefaultsToFalse() throws {
+        let cache = makeCache()
+        try cache.clearAll()
+
+        // Seed a row first so the unique key exists.
+        let placeholder = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 1, height: 1),
+            text: "placeholder",
+            observations: [],
+            index: 0
+        )
+        let hash = "ismanual-legacy-\(UUID().uuidString)"
+        try cache.store(
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .openAI,
+            bubbles: [TranslatedBubble(bubble: placeholder, translatedText: "x", index: 0)],
+            textPixelMask: nil
+        )
+
+        // Overwrite the JSON with a legacy payload that omits `isManual`.
+        let legacy = """
+        [{"x":10,"y":20,"width":30,"height":40,"originalText":"old","translatedText":"舊","index":0,"isInverted":false}]
+        """
+        let writeStatus = cache._writeBubblesJSON(
+            legacy,
+            imageHash: hash,
+            source: .ja,
+            target: .zhHant,
+            engine: .openAI
+        )
+        XCTAssertEqual(writeStatus, SQLITE_OK)
+
+        let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
+        XCTAssertEqual(result?.bubbles.count, 1)
+        XCTAssertEqual(result?.bubbles.first?.bubble.isManual, false)
+        XCTAssertEqual(result?.bubbles.first?.bubble.text, "old")
+    }
+
     // MARK: - Helpers
 
     private func makeCache() -> CacheService {

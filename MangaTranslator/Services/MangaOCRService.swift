@@ -30,6 +30,23 @@ actor MangaOCRService {
         return try recognizeAndCluster(in: cgImage)
     }
 
+    // Recognises text for a single, caller-supplied region. Used by the Edit
+    // Mode commit pipeline to re-OCR newly drawn or moved bubbles without
+    // re-running detection over the whole page. Lazy-loads the default
+    // recognizer if none is set — the caller is responsible for selecting a
+    // PaddleOCR recognizer (via `setRecognizer`) when the device + download
+    // state demands it.
+    func recognizeRegion(in cgImage: CGImage, region: CGRect) throws -> String {
+        if recognizer == nil {
+            recognizer = try Self.makeRecognizer()
+        }
+        guard let recognizer else {
+            throw MangaOCRError.inferenceError("failed to initialize recognizer")
+        }
+        let (text, _) = try recognizer.recognizeText(in: cgImage, region: region)
+        return text
+    }
+
     func recognizeAndCluster(in cgImage: CGImage) throws -> MangaOCRPageResult {
         if recognizer == nil {
             recognizer = try Self.makeRecognizer()

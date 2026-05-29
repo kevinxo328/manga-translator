@@ -100,6 +100,8 @@
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
 		T10000010000000000000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000004 /* KeychainServiceTests.swift */; };
 		T10000010000000000000005 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000005 /* ModelsTests.swift */; };
+		T10000010000000000000014 /* EditActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000014 /* EditActionTests.swift */; };
+		T10000010000000000000015 /* ReadingOrderSorterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000015 /* ReadingOrderSorterTests.swift */; };
 		T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000006 /* CopilotEnvironmentTests.swift */; };
 		T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000007 /* CopilotTranslationServiceTests.swift */; };
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
@@ -265,6 +267,8 @@
 		T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIViewCorrectnessTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000005 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000014 /* EditActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditActionTests.swift; sourceTree = "<group>"; };
+		T20000010000000000000015 /* ReadingOrderSorterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingOrderSorterTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000007 /* CopilotTranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotTranslationServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
@@ -498,6 +502,8 @@
 				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
 				T20000010000000000000004 /* KeychainServiceTests.swift */,
 				T20000010000000000000005 /* ModelsTests.swift */,
+				T20000010000000000000014 /* EditActionTests.swift */,
+				T20000010000000000000015 /* ReadingOrderSorterTests.swift */,
 				T20000010000000000000006 /* CopilotEnvironmentTests.swift */,
 				T20000010000000000000007 /* CopilotTranslationServiceTests.swift */,
 				T20000010000000000000008 /* ImageViewerTests.swift */,
@@ -828,6 +834,8 @@
 				T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */,
 				T10000010000000000000004 /* KeychainServiceTests.swift in Sources */,
 				T10000010000000000000005 /* ModelsTests.swift in Sources */,
+				T10000010000000000000014 /* EditActionTests.swift in Sources */,
+				T10000010000000000000015 /* ReadingOrderSorterTests.swift in Sources */,
 				T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */,
 				T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */,
 				T10000010000000000000008 /* ImageViewerTests.swift in Sources */,

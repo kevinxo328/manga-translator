@@ -902,6 +902,1306 @@ final class TranslationViewModelTests: XCTestCase {
         // Batch 2 (u6): priorContext is the rolling window after batch 1 trimmed to last 3.
         XCTAssertEqual(retranslate["u6"], ["T:u3", "T:u4", "T:u5"])
     }
+
+    // MARK: - summariesPreceding (manual-bubble-editing change)
+
+    func testSummariesPrecedingReturnsUpToCountTranslatedEntriesInOrder() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        vm.pages = (0..<6).map { i in
+            var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p\(i).jpg"))
+            page.state = .translated([makeTranslated(text: "p\(i)", index: 0)])
+            return page
+        }
+
+        let summaries = vm.summariesPreceding(pageIndex: 5, count: 3)
+        // 5 preceding translated pages (0..4); keep the last 3 in ascending order.
+        XCTAssertEqual(summaries, ["p2", "p3", "p4"])
+    }
+
+    func testSummariesPrecedingSkipsNonTranslatedPages() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        vm.pages = (0..<6).map { i in
+            var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p\(i).jpg"))
+            switch i {
+            case 0: page.state = .translated([makeTranslated(text: "p0", index: 0)])
+            case 1: page.state = .error("boom")
+            case 2: page.state = .translated([makeTranslated(text: "p2", index: 0)])
+            case 3: page.state = .pending
+            case 4: page.state = .translated([makeTranslated(text: "p4", index: 0)])
+            default: page.state = .pending
+            }
+            return page
+        }
+
+        let summaries = vm.summariesPreceding(pageIndex: 5, count: 3)
+        XCTAssertEqual(summaries, ["p0", "p2", "p4"])
+    }
+
+    func testSummariesPrecedingReturnsEmptyForFirstPage() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        vm.pages = (0..<3).map { i in
+            var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p\(i).jpg"))
+            page.state = .translated([makeTranslated(text: "p\(i)", index: 0)])
+            return page
+        }
+
+        XCTAssertTrue(vm.summariesPreceding(pageIndex: 0).isEmpty)
+    }
+
+    func testSummariesPrecedingConcatenatesBubbleTextsInIndexOrder() {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
+        // Page 0 has three translated bubbles supplied OUT of index order.
+        let unordered: [TranslatedBubble] = [
+            makeTranslated(text: "third", index: 2),
+            makeTranslated(text: "first", index: 0),
+            makeTranslated(text: "second", index: 1)
+        ]
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p0.jpg"))
+        page.state = .translated(unordered)
+        var nextPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p1.jpg"))
+        nextPage.state = .pending
+        vm.pages = [page, nextPage]
+
+        let summaries = vm.summariesPreceding(pageIndex: 1)
+        XCTAssertEqual(summaries, ["first second third"])
+    }
+
+    private func makeTranslated(text: String, index: Int) -> TranslatedBubble {
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10),
+            text: text,
+            observations: [],
+            index: index
+        )
+        return TranslatedBubble(bubble: bubble, translatedText: text, index: index)
+    }
+
+    // MARK: - Edit session lifecycle (manual-bubble-editing change)
+
+    func testOpenEditSessionCapturesBubblesAndPageState() {
+        let vm = makeEditVM()
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "hi",
+            observations: [],
+            index: 0
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p0.jpg"))
+        page.state = .translated([TranslatedBubble(bubble: bubble, translatedText: "嗨", index: 0)])
+        vm.pages = [page]
+
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        XCTAssertNotNil(vm.editSession)
+        XCTAssertEqual(vm.editSession?.workingBubbles.first?.id, bubble.id)
+        XCTAssertEqual(vm.editSession?.originalSnapshot.count, 1)
+        if case .translated(let snapshotBubbles) = vm.editSession?.originalPageState {
+            XCTAssertEqual(snapshotBubbles.count, 1)
+        } else {
+            XCTFail("originalPageState should be .translated at open")
+        }
+    }
+
+    func testOpenEditSessionRejectsNonTranslatedStates() {
+        let vm = makeEditVM()
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p0.jpg"))
+        page.state = .processing
+        vm.pages = [page]
+
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertNil(vm.editSession)
+
+        vm.pages[0].state = .error("boom")
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertNil(vm.editSession)
+
+        vm.pages[0].state = .pending
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCancelRestoresSnapshotBubblesAndState() {
+        let vm = makeEditVM()
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "orig",
+            observations: [],
+            index: 0
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p0.jpg"))
+        page.state = .translated([TranslatedBubble(bubble: bubble, translatedText: "原始", index: 0)])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        // Mutate the working copy via a forward action.
+        let newBox = BubbleCluster(
+            boundingBox: CGRect(x: 50, y: 50, width: 30, height: 30),
+            text: "",
+            observations: [],
+            isManual: true
+        )
+        vm.applyEditAction(.add(newBox))
+        XCTAssertEqual(vm.editSession?.workingBubbles.count, 2)
+
+        vm.cancelEditSession()
+
+        XCTAssertNil(vm.editSession)
+        guard case .translated(let restored) = vm.pages[0].state else {
+            return XCTFail("Page should be .translated after Cancel")
+        }
+        XCTAssertEqual(restored.count, 1)
+        XCTAssertEqual(restored.first?.bubble.id, bubble.id)
+    }
+
+    func testCancelAfterFailedCommitClearsErrorState() {
+        let vm = makeEditVM()
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10),
+            text: "x",
+            observations: [],
+            index: 0
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p0.jpg"))
+        let original: [TranslatedBubble] = [TranslatedBubble(bubble: bubble, translatedText: "x", index: 0)]
+        page.state = .translated(original)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        // Simulate a failed commit: page sits in .error, session is still open.
+        vm.pages[0].state = .error("simulated network failure")
+
+        vm.cancelEditSession()
+
+        XCTAssertNil(vm.editSession)
+        guard case .translated(let restored) = vm.pages[0].state else {
+            return XCTFail("Page should be .translated after Cancel-after-failure")
+        }
+        XCTAssertEqual(restored.map(\.bubble.id), original.map(\.bubble.id))
+    }
+
+    func testApplyAddPlacesBubbleAfterNearestNeighbour() {
+        // Three pre-existing bubbles at known centres; the new bubble's
+        // centre is closest to bubble at index 1. The new bubble SHALL
+        // land at array position 2 with redensified indices `0..<4`.
+        // Plain-append behaviour SHALL produce a different result and
+        // is rejected.
+        let vm = makeEditVM()
+        let b0 = BubbleCluster(
+            boundingBox: CGRect(x: 80, y: 80, width: 40, height: 40),
+            text: "0", observations: [], index: 0
+        )
+        let b1 = BubbleCluster(
+            boundingBox: CGRect(x: 480, y: 80, width: 40, height: 40),
+            text: "1", observations: [], index: 1
+        )
+        let b2 = BubbleCluster(
+            boundingBox: CGRect(x: 80, y: 480, width: 40, height: 40),
+            text: "2", observations: [], index: 2
+        )
+        let page = makeTranslatedPage(with: [b0, b1, b2])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Nearest to b1 (centre 500, 100) is at (500, 110).
+        let newBubble = BubbleCluster(
+            boundingBox: CGRect(x: 480, y: 90, width: 40, height: 40),
+            text: "", observations: [], isManual: true
+        )
+        vm.applyEditAction(.add(newBubble))
+
+        let workingIds = vm.editSession?.workingBubbles.map(\.id) ?? []
+        XCTAssertEqual(workingIds, [b0.id, b1.id, newBubble.id, b2.id])
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.index), [0, 1, 2, 3])
+        // Plain-append would put the new bubble at position 3 — verify
+        // that's NOT what happened.
+        XCTAssertNotEqual(workingIds.last, newBubble.id)
+    }
+
+    func testMoveFirstFlipsIsManualAndSubsequentMovesDoNotResetIt() {
+        let vm = makeEditVM()
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "auto", observations: [], index: 0, isManual: false
+        )
+        let page = makeTranslatedPage(with: [b])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // First move: isManual flips false → true.
+        let r1 = CGRect(x: 10, y: 0, width: 40, height: 40)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: r1))
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].isManual, true)
+
+        // Second move: isManual stays true.
+        let r2 = CGRect(x: 20, y: 0, width: 40, height: 40)
+        vm.applyEditAction(.move(id: b.id, from: r1, to: r2))
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].isManual, true)
+    }
+
+    func testUndoMoveRestoresBoundingBoxButKeepsIsManualSticky() {
+        let vm = makeEditVM()
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "auto", observations: [], index: 0, isManual: false
+        )
+        let page = makeTranslatedPage(with: [b])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let from = b.boundingBox
+        let to = CGRect(x: 30, y: 0, width: 40, height: 40)
+        vm.applyEditAction(.move(id: b.id, from: from, to: to))
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].boundingBox, to)
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].isManual, true)
+
+        vm.undo()
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].boundingBox, from)
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].isManual, true) // sticky
+
+        // Redo: bbox back to `to`; isManual still true.
+        vm.redo()
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].boundingBox, to)
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].isManual, true)
+    }
+
+    func testNewMutationAfterUndoClearsRedoStack() {
+        let vm = makeEditVM()
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "a", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.applyEditAction(.move(
+            id: b.id,
+            from: b.boundingBox,
+            to: CGRect(x: 5, y: 0, width: 40, height: 40)
+        ))
+        vm.undo()
+        XCTAssertEqual(vm.editSession?.redoStack.count, 1)
+
+        // New mutation clears redo.
+        vm.applyEditAction(.delete(b))
+        XCTAssertTrue(vm.editSession?.redoStack.isEmpty ?? false)
+    }
+
+    func testDeleteUndoOnlyRemovesIdFromDeletedSetLeavingWorkingCopyIntact() {
+        let vm = makeEditVM()
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "x", observations: [], index: 0, isManual: false
+        )
+        let page = makeTranslatedPage(with: [b])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.applyEditAction(.delete(b))
+        XCTAssertEqual(vm.editSession?.deletedBubbleIds, [b.id])
+        // Staging never removes from workingBubbles.
+        XCTAssertEqual(vm.editSession?.workingBubbles.first?.id, b.id)
+
+        vm.undo()
+        XCTAssertTrue(vm.editSession?.deletedBubbleIds.isEmpty ?? false)
+        // Bubble identity, geometry, text untouched.
+        let restored = vm.editSession?.workingBubbles.first
+        XCTAssertEqual(restored?.id, b.id)
+        XCTAssertEqual(restored?.boundingBox, b.boundingBox)
+        XCTAssertEqual(restored?.text, b.text)
+    }
+
+    func testFullUndoRedoCycleRestoresGeometryAndOrderByteForByte() {
+        let vm = makeEditVM()
+        let b1 = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "1", observations: [], index: 0
+        )
+        let b2 = BubbleCluster(
+            boundingBox: CGRect(x: 100, y: 0, width: 40, height: 40),
+            text: "2", observations: [], index: 1
+        )
+        let page = makeTranslatedPage(with: [b1, b2])
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let r2 = CGRect(x: 20, y: 5, width: 40, height: 40)
+        vm.applyEditAction(.resize(id: b1.id, from: b1.boundingBox, to: r2))
+        vm.applyEditAction(.reorder(from: [b1.id, b2.id], to: [b2.id, b1.id]))
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.id), [b2.id, b1.id])
+        XCTAssertEqual(vm.editSession?.workingBubbles.first(where: { $0.id == b1.id })?.boundingBox, r2)
+
+        // Undo reorder.
+        vm.undo()
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.id), [b1.id, b2.id])
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.index), [0, 1])
+
+        // Undo resize.
+        vm.undo()
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].boundingBox, b1.boundingBox)
+        XCTAssertEqual(vm.editSession?.workingBubbles[0].text, b1.text)
+    }
+
+    private func makeEditVM() -> TranslationViewModel {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        return TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService()
+        )
+    }
+
+    private func makeTranslatedPage(with bubbles: [BubbleCluster]) -> MangaPage {
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/p-\(UUID().uuidString).jpg"))
+        page.image = makeTestImage()
+        page.imageHash = "edit-commit-hash-\(UUID().uuidString)"
+        let translated: [TranslatedBubble] = bubbles.map {
+            TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index)
+        }
+        page.state = .translated(translated)
+        return page
+    }
+
+    // MARK: - Commit pipeline (manual-bubble-editing change)
+
+    func testCommitWithUnchangedFinalStateSkipsOCRTranslatorCacheAndClosesSession() async {
+        let existing = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "old", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [existing])
+        let recordingTS = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let recordingOCR = RecordingEditModeOCR(text: "should-not-run")
+        let cache = CapturingCacheService()
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR, cache: cache)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(recordingOCR.recognisedIDs.isEmpty)
+        XCTAssertEqual(recordingTS.translateCalls.count, 0)
+        XCTAssertEqual(recordingTS.batchCalls.count, 0)
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty)
+        if case .translated(let result) = vm.pages[0].state {
+            XCTAssertEqual(result.map(\.bubble.id), [existing.id])
+            XCTAssertEqual(result.first?.translatedText, "old")
+        } else {
+            XCTFail("No-op commit should leave page .translated")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCommitWithOnlyNewBoxRunsOCROnlyOnNewAndTranslatesAllNonDeleted() async {
+        let existing = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "old", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [existing])
+        let recordingTS = RecordingTranslationService()
+        let recordingOCR = RecordingEditModeOCR(text: "freshly-ocred")
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let drawn = BubbleCluster(
+            boundingBox: CGRect(x: 100, y: 100, width: 40, height: 40),
+            text: "", observations: [], isManual: true
+        )
+        vm.applyEditAction(.add(drawn))
+
+        await vm.commitEditSession()
+
+        // OCR ran exactly on the new bubble.
+        XCTAssertEqual(recordingOCR.recognisedIDs, [drawn.id])
+        // Translator received both bubbles in working order.
+        let lastCall = recordingTS.translateCalls.last
+        XCTAssertEqual(lastCall?.bubbles.map(\.id), [existing.id, drawn.id])
+        // The new bubble received the OCR-recognised text on its way into translate.
+        XCTAssertEqual(lastCall?.bubbles.last?.text, "freshly-ocred")
+        XCTAssertEqual(lastCall?.bubbles.first?.text, "old")
+        // Translator received the per-page entry point, not the batch entry.
+        XCTAssertEqual(recordingTS.batchCalls.count, 0)
+        // Page state and session terminated correctly.
+        if case .translated(let result) = vm.pages[0].state {
+            XCTAssertEqual(result.count, 2)
+        } else {
+            XCTFail("Commit should leave page .translated")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCommitWithOnlyDeletionsSkipsOCRAndPassesSurvivorsToTranslator() async {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "A", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 30, y: 0, width: 20, height: 20),
+            text: "B", observations: [], index: 1
+        )
+        let c = BubbleCluster(
+            boundingBox: CGRect(x: 60, y: 0, width: 20, height: 20),
+            text: "C", observations: [], index: 2
+        )
+        let page = makeTranslatedPage(with: [a, b, c])
+        let recordingTS = RecordingTranslationService()
+        let recordingOCR = RecordingEditModeOCR(text: "should-not-be-used")
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Stage b for deletion; leave a and c intact.
+        vm.applyEditAction(.delete(b))
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(recordingOCR.recognisedIDs.isEmpty,
+                      "OCR must not run when no bubble's geometry changed")
+        let lastCall = recordingTS.translateCalls.last
+        XCTAssertEqual(lastCall?.bubbles.map(\.id), [a.id, c.id])
+        XCTAssertFalse(lastCall?.bubbles.contains(where: { $0.id == b.id }) ?? true,
+                       "Deleted bubble must not be in the translate input")
+        XCTAssertEqual(recordingTS.batchCalls.count, 0)
+    }
+
+    func testCommitWithOnlyReorderSkipsOCRAndPassesNewOrderToTranslator() async {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "A", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 30, y: 0, width: 20, height: 20),
+            text: "B", observations: [], index: 1
+        )
+        let c = BubbleCluster(
+            boundingBox: CGRect(x: 60, y: 0, width: 20, height: 20),
+            text: "C", observations: [], index: 2
+        )
+        let page = makeTranslatedPage(with: [a, b, c])
+        let recordingTS = RecordingTranslationService()
+        let recordingOCR = RecordingEditModeOCR(text: "should-not-be-used")
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.applyEditAction(.reorder(
+            from: [a.id, b.id, c.id],
+            to:   [c.id, a.id, b.id]
+        ))
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(recordingOCR.recognisedIDs.isEmpty)
+        let lastCall = recordingTS.translateCalls.last
+        XCTAssertEqual(lastCall?.bubbles.map(\.id), [c.id, a.id, b.id])
+        // Indices densified `0..<3` in the new order.
+        XCTAssertEqual(lastCall?.bubbles.map(\.index), [0, 1, 2])
+    }
+
+    func testMoveThenUndoToOriginalSkipsOCRTranslatorCacheAndDoesNotCommitStickyManual() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "untouched", observations: [], index: 0, isManual: false
+        )
+        let page = makeTranslatedPage(with: [b])
+        let recordingTS = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let recordingOCR = RecordingEditModeOCR(text: "should-not-be-used")
+        let cache = CapturingCacheService()
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR, cache: cache)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Move then undo so the bbox returns to the snapshot value.
+        let moved = CGRect(x: 30, y: 0, width: 40, height: 40)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+        vm.undo()
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(recordingOCR.recognisedIDs.isEmpty)
+        XCTAssertEqual(recordingTS.translateCalls.count, 0)
+        XCTAssertEqual(recordingTS.batchCalls.count, 0)
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty)
+        if case .translated(let result) = vm.pages[0].state {
+            XCTAssertEqual(result.first?.bubble.isManual, false)
+            XCTAssertEqual(result.first?.translatedText, "untouched")
+        } else {
+            XCTFail("No-op commit should restore the original translated page")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testAddThenUndoToOriginalSkipsOCRTranslatorAndCache() async {
+        let existing = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "old", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [existing])
+        let recordingTS = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let recordingOCR = RecordingEditModeOCR(text: "should-not-run")
+        let cache = CapturingCacheService()
+        let vm = makeEditVM(translation: recordingTS, editOCR: recordingOCR, cache: cache)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let drawn = BubbleCluster(
+            boundingBox: CGRect(x: 100, y: 100, width: 40, height: 40),
+            text: "", observations: [], isManual: true
+        )
+        vm.applyEditAction(.add(drawn))
+        vm.undo()
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(recordingOCR.recognisedIDs.isEmpty)
+        XCTAssertEqual(recordingTS.translateCalls.count, 0)
+        XCTAssertEqual(recordingTS.batchCalls.count, 0)
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty)
+        if case .translated(let result) = vm.pages[0].state {
+            XCTAssertEqual(result.map(\.bubble.id), [existing.id])
+        } else {
+            XCTFail("Add-then-undo commit should restore the original translated page")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCommitFailureKeepsSessionAndSetsErrorState() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let throwingTS = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let recordingOCR = RecordingEditModeOCR(text: "ok")
+        let vm = makeEditVM(translation: throwingTS, editOCR: recordingOCR)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Force OCR-dirty so commit reaches the translator.
+        let moved = CGRect(x: 10, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+
+        await vm.commitEditSession()
+
+        XCTAssertNotNil(vm.editSession, "Session stays open so the user can retry or cancel")
+        if case .error(let message) = vm.pages[0].state {
+            XCTAssertFalse(message.isEmpty)
+        } else {
+            XCTFail("Page state should be .error after a translator throw")
+        }
+    }
+
+    func testCommitWithEmptyFinalSetSkipsOCRTranslatorAndNeverEntersProcessing() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        // Translator rigged to throw on ANY call — short-circuit must keep us
+        // from ever invoking it.
+        let translator = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let ocr = RecordingEditModeOCR(text: "should-not-run")
+        let vm = makeEditVM(translation: translator, editOCR: ocr)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.applyEditAction(.delete(b))
+
+        await vm.commitEditSession()
+
+        XCTAssertTrue(ocr.recognisedIDs.isEmpty)
+        XCTAssertEqual(translator.translateCalls.count, 0)
+        XCTAssertEqual(translator.batchCalls.count, 0)
+        if case .translated(let bubbles) = vm.pages[0].state {
+            XCTAssertTrue(bubbles.isEmpty)
+        } else {
+            XCTFail("Empty-set path should land in .translated([])")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCommitPersistsIsManualThroughCacheRoundTrip() async {
+        let drawnId = UUID()
+        let existing = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "auto", observations: [], index: 0, isManual: false
+        )
+        let page = makeTranslatedPage(with: [existing])
+        let cache = CapturingCacheService()
+        let translator = RecordingTranslationService()
+        let ocr = RecordingEditModeOCR(text: "drawn-text")
+        let vm = makeEditVM(translation: translator, editOCR: ocr, cache: cache)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let drawn = BubbleCluster(
+            id: drawnId,
+            boundingBox: CGRect(x: 80, y: 80, width: 30, height: 30),
+            text: "", observations: [], isManual: true
+        )
+        vm.applyEditAction(.add(drawn))
+
+        await vm.commitEditSession()
+
+        XCTAssertEqual(cache.storedBubbleSets.count, 1)
+        let storedBubbles = cache.storedBubbleSets.last ?? []
+        let storedDrawn = storedBubbles.first(where: { $0.bubble.id == drawnId })
+        XCTAssertEqual(storedDrawn?.bubble.isManual, true)
+        let storedExisting = storedBubbles.first(where: { $0.bubble.id == existing.id })
+        XCTAssertEqual(storedExisting?.bubble.isManual, false)
+    }
+
+    func testCommitSucceedsEvenWhenCacheStoreThrows() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let cache = CapturingCacheService()
+        cache.storeError = CacheError.unavailable
+        let translator = RecordingTranslationService()
+        let ocr = RecordingEditModeOCR(text: "fresh")
+        let vm = makeEditVM(translation: translator, editOCR: ocr, cache: cache)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Trigger an OCR-dirty edit so the commit path goes all the way
+        // through cache store.
+        let moved = CGRect(x: 10, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+
+        await vm.commitEditSession()
+
+        // In-memory commit succeeded.
+        if case .translated = vm.pages[0].state {
+            // ok
+        } else {
+            XCTFail("Cache failure must not roll back the in-memory commit")
+        }
+        XCTAssertNil(vm.editSession)
+    }
+
+    func testCommitCacheStoreFailureIsLoggedAsWarning() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let cache = CapturingCacheService()
+        cache.storeError = CacheError.unavailable
+        let logFixture = makeDebugLogFixture()
+        defer { logFixture.cleanup() }
+        let vm = makeEditVM(
+            translation: RecordingTranslationService(),
+            editOCR: RecordingEditModeOCR(text: "fresh"),
+            cache: cache,
+            pipelineLogger: logFixture.logger
+        )
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.applyEditAction(.move(
+            id: b.id,
+            from: b.boundingBox,
+            to: CGRect(x: 10, y: 0, width: 20, height: 20)
+        ))
+
+        await vm.commitEditSession()
+        await logFixture.logger.flush()
+
+        var filter = DebugLogFilter()
+        filter.category = .cache
+        filter.sessionIDFilter = .session(logFixture.logger.sessionID)
+        let entries = await logFixture.store.queryAll(filter: filter)
+        let match = entries.first { $0.message.contains("CacheService.store [edit commit]") }
+        XCTAssertEqual(match?.level, .warning)
+    }
+
+    // MARK: - Keyboard helpers (manual-bubble-editing change)
+
+    func testEscapeCascadeWithSelectionClearsSelectionOnly() {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        vm.setSelection([b.id])
+
+        vm.handleEscapeCascade()
+
+        XCTAssertNotNil(vm.editSession, "Session must stay open")
+        XCTAssertTrue(vm.editSession?.selectedBubbleIds.isEmpty ?? false)
+    }
+
+    func testEscapeCascadeWithEmptySelectionTriggersCancel() {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertNotNil(vm.editSession)
+
+        vm.handleEscapeCascade()
+
+        XCTAssertNil(vm.editSession, "Empty-selection Esc must trigger Cancel")
+    }
+
+    func testNudgeSelectionMovesAllSelectedBubblesAndRecordsSingleMultiUndo() {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 10, y: 10, width: 20, height: 20),
+            text: "a", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 60, y: 60, width: 20, height: 20),
+            text: "b", observations: [], index: 1
+        )
+        let page = makeTranslatedPage(with: [a, b])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        vm.setSelection([a.id, b.id])
+
+        vm.nudgeSelection(dx: 1, dy: 0)
+
+        let working = vm.editSession?.workingBubbles ?? []
+        XCTAssertEqual(working.first(where: { $0.id == a.id })?.boundingBox.origin.x, 11)
+        XCTAssertEqual(working.first(where: { $0.id == b.id })?.boundingBox.origin.x, 61)
+        // One undo entry covering both moves.
+        XCTAssertEqual(vm.editSession?.undoStack.count, 1)
+        if case .multi(let subs) = vm.editSession?.undoStack.last ?? .add(a) {
+            XCTAssertEqual(subs.count, 2)
+        } else {
+            XCTFail("Two-box nudge must record a single .multi undo entry")
+        }
+    }
+
+    func testNudgeSelectionWithEmptySelectionIsNoop() {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "a", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [a])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertTrue(vm.editSession?.selectedBubbleIds.isEmpty ?? false)
+
+        vm.nudgeSelection(dx: -1, dy: 0)
+
+        // Working copy and undo stack are untouched.
+        XCTAssertEqual(vm.editSession?.workingBubbles.first?.boundingBox.origin.x, 0)
+        XCTAssertTrue(vm.editSession?.undoStack.isEmpty ?? false)
+    }
+
+    func testNudgeSelectionClampsToImageBoundsAndSkipsNoop() {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "a", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [a])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        vm.setSelection([a.id])
+
+        vm.nudgeSelection(dx: -10, dy: -10)
+
+        XCTAssertEqual(vm.editSession?.workingBubbles.first?.boundingBox, a.boundingBox)
+        XCTAssertTrue(vm.editSession?.undoStack.isEmpty ?? false)
+    }
+
+    func testSelectAllBubblesIncludesEveryNonDeletedBubble() {
+        let a = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", observations: [], index: 0)
+        let b = BubbleCluster(boundingBox: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b", observations: [], index: 1)
+        let c = BubbleCluster(boundingBox: CGRect(x: 40, y: 0, width: 10, height: 10), text: "c", observations: [], index: 2)
+        let page = makeTranslatedPage(with: [a, b, c])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        vm.applyEditAction(.delete(b))
+
+        vm.selectAllBubbles()
+
+        XCTAssertEqual(vm.editSession?.selectedBubbleIds, Set([a.id, c.id]))
+    }
+
+    func testCycleSelectionForwardFromEmptyPicksFirstByIndex() {
+        let a = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", observations: [], index: 0)
+        let b = BubbleCluster(boundingBox: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b", observations: [], index: 1)
+        let page = makeTranslatedPage(with: [a, b])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        vm.cycleSelection(direction: 1)
+        XCTAssertEqual(vm.editSession?.selectedBubbleIds, [a.id])
+
+        vm.cycleSelection(direction: 1)
+        XCTAssertEqual(vm.editSession?.selectedBubbleIds, [b.id])
+
+        // Wrap around to the lowest index.
+        vm.cycleSelection(direction: 1)
+        XCTAssertEqual(vm.editSession?.selectedBubbleIds, [a.id])
+    }
+
+    func testStageDeleteSelectedEmitsMultiForGroupedDelete() {
+        let a = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", observations: [], index: 0)
+        let b = BubbleCluster(boundingBox: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b", observations: [], index: 1)
+        let page = makeTranslatedPage(with: [a, b])
+        let vm = makeEditVM()
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        vm.setSelection([a.id, b.id])
+
+        vm.stageDeleteSelected()
+
+        XCTAssertEqual(vm.editSession?.deletedBubbleIds, Set([a.id, b.id]))
+        XCTAssertEqual(vm.editSession?.undoStack.count, 1)
+        if case .multi(let subs) = vm.editSession?.undoStack.last ?? .add(a) {
+            XCTAssertEqual(subs.count, 2)
+        } else {
+            XCTFail("Two-box delete must record a single .multi undo entry")
+        }
+    }
+
+    func testPageNavigationMethodsAreIgnoredDuringEditSession() {
+        let a = BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", observations: [], index: 0)
+        let first = makeTranslatedPage(with: [a])
+        let second = makeTranslatedPage(with: [a])
+        let vm = makeEditVM()
+        vm.pages = [first, second]
+        vm.currentPageIndex = 0
+        vm.openEditSession(pageId: first.id)
+
+        vm.nextPage()
+        XCTAssertEqual(vm.currentPageIndex, 0)
+
+        vm.currentPageIndex = 1
+        vm.previousPage()
+        XCTAssertEqual(vm.currentPageIndex, 1)
+    }
+
+    // MARK: - Re-translate preserves manual edits (manual-bubble-editing fix)
+
+    func testRetranslatePreservesCommittedBubbleSetAndIsManualFlags() async {
+        // Setup: a page translated with two bubbles — one auto, one manual.
+        let drawnId = UUID()
+        let autoId = UUID()
+        let auto = BubbleCluster(
+            id: autoId,
+            boundingBox: CGRect(x: 0, y: 0, width: 40, height: 40),
+            text: "auto-src",
+            observations: [],
+            index: 0,
+            isManual: false
+        )
+        let drawn = BubbleCluster(
+            id: drawnId,
+            boundingBox: CGRect(x: 100, y: 100, width: 30, height: 30),
+            text: "drawn-src",
+            observations: [],
+            index: 1,
+            isManual: true
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/preserve-\(UUID().uuidString).jpg"))
+        page.image = makeTestImage()
+        page.imageHash = "preserve-\(UUID().uuidString)"
+        page.state = .translated([
+            TranslatedBubble(bubble: auto, translatedText: "T-auto", index: 0),
+            TranslatedBubble(bubble: drawn, translatedText: "T-drawn", index: 1)
+        ])
+
+        // OCR fake fails loudly if called — proves Re-translate skipped detection.
+        let assertNoOCRDetector = FailIfOCRCalledDetector()
+        let assertNoOCRService = MangaOCRService(detector: assertNoOCRDetector)
+        let router = OCRRouter(
+            mangaOCRService: assertNoOCRService,
+            capabilityChecker: MockCapabilityChecker(.unsupported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+            paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+        )
+        let translator = RecordingTranslationService()
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let vm = TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: router,
+            translationService: translator
+        )
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        // OCR detector was never asked to detect.
+        XCTAssertEqual(assertNoOCRDetector.detectCallCount, 0,
+                       "Re-translate must skip OCR detection when the page already has committed bubbles")
+        // Translator received the preserved bubble set with isManual intact.
+        XCTAssertEqual(translator.translateCalls.count, 1)
+        let received = translator.translateCalls.last?.bubbles ?? []
+        XCTAssertEqual(received.count, 2)
+        XCTAssertEqual(received.first(where: { $0.id == autoId })?.isManual, false)
+        XCTAssertEqual(received.first(where: { $0.id == drawnId })?.isManual, true)
+        // Output page state retains those flags.
+        if case .translated(let outputBubbles) = vm.pages[0].state {
+            XCTAssertEqual(outputBubbles.first(where: { $0.bubble.id == drawnId })?.bubble.isManual, true)
+            XCTAssertEqual(outputBubbles.first(where: { $0.bubble.id == autoId })?.bubble.isManual, false)
+        } else {
+            XCTFail("Re-translate should land in .translated")
+        }
+    }
+
+    func testIsCommittingEditSessionFlipsForTheDurationOfCommit() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let translator = RecordingTranslationService()
+        let ocr = RecordingEditModeOCR(text: "fresh")
+        let vm = makeEditVM(translation: translator, editOCR: ocr)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        XCTAssertFalse(vm.isCommittingEditSession)
+
+        // Touch a bubble so commit reaches the translator.
+        let moved = CGRect(x: 5, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+
+        await vm.commitEditSession()
+
+        XCTAssertFalse(vm.isCommittingEditSession,
+                       "Flag must reset on the success path even after async work")
+    }
+
+    func testEditMutationsAreIgnoredWhileCommitIsInFlight() async {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "a", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 40, y: 0, width: 20, height: 20),
+            text: "b", observations: [], index: 1
+        )
+        let page = makeTranslatedPage(with: [a, b])
+        let translator = BlockingTranslationService()
+        let ocr = RecordingEditModeOCR(text: "fresh")
+        let vm = makeEditVM(translation: translator, editOCR: ocr)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        let moved = CGRect(x: 5, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: a.id, from: a.boundingBox, to: moved))
+
+        let task = Task { await vm.commitEditSession() }
+        while !vm.isCommittingEditSession {
+            await Task.yield()
+        }
+        let snapshot = vm.editSession
+
+        vm.applyEditAction(.delete(b))
+        vm.undo()
+        vm.redo()
+        vm.setSelection([b.id])
+        vm.selectAllBubbles()
+        vm.cycleSelection(direction: 1)
+        vm.stageDeleteSelected()
+        vm.nudgeSelection(dx: 10, dy: 0)
+        vm.handleEscapeCascade()
+
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.id), snapshot?.workingBubbles.map(\.id))
+        XCTAssertEqual(vm.editSession?.workingBubbles.map(\.boundingBox), snapshot?.workingBubbles.map(\.boundingBox))
+        XCTAssertEqual(vm.editSession?.deletedBubbleIds, snapshot?.deletedBubbleIds)
+        XCTAssertEqual(vm.editSession?.selectedBubbleIds, snapshot?.selectedBubbleIds)
+        XCTAssertEqual(vm.editSession?.undoStack.count, snapshot?.undoStack.count)
+        XCTAssertEqual(vm.editSession?.redoStack.count, snapshot?.redoStack.count)
+
+        translator.release()
+        await task.value
+    }
+
+    func testCommitFailureResetsCommittingFlag() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let translator = RecordingTranslationService(throwOnTranslate: SimulatedTranslateError.network)
+        let ocr = RecordingEditModeOCR(text: "fresh")
+        let vm = makeEditVM(translation: translator, editOCR: ocr)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+        let moved = CGRect(x: 5, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+
+        await vm.commitEditSession()
+
+        // Session preserved (per failure semantics) and the flag is back to false
+        // so the user can retry or cancel.
+        XCTAssertNotNil(vm.editSession)
+        XCTAssertFalse(vm.isCommittingEditSession)
+    }
+
+    func testCommitNeverInvokesTranslateBatch() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let translator = RecordingTranslationService()
+        let ocr = RecordingEditModeOCR(text: "fresh")
+        let vm = makeEditVM(translation: translator, editOCR: ocr)
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        // Touch the bubble so commit reaches the translator.
+        let moved = CGRect(x: 5, y: 0, width: 20, height: 20)
+        vm.applyEditAction(.move(id: b.id, from: b.boundingBox, to: moved))
+
+        await vm.commitEditSession()
+
+        XCTAssertEqual(translator.batchCalls.count, 0)
+        XCTAssertGreaterThanOrEqual(translator.translateCalls.count, 1)
+    }
+
+    func testRetranslateCurrentPageIsIgnoredDuringEditSession() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let translator = RecordingTranslationService()
+        let vm = makeEditVM(translation: translator, editOCR: RecordingEditModeOCR(text: "fresh"))
+        vm.pages = [page]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        await vm.retranslateCurrentPage()
+
+        XCTAssertNotNil(vm.editSession)
+        XCTAssertEqual(translator.translateCalls.count, 0)
+        XCTAssertEqual(translator.batchCalls.count, 0)
+        guard case .translated(let bubbles) = vm.pages[0].state else {
+            return XCTFail("Expected page to remain translated during edit")
+        }
+        XCTAssertEqual(bubbles.map(\.bubble.id), [b.id])
+    }
+
+    func testRetranslateAllPagesIsIgnoredDuringEditSession() async {
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "a", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 30, y: 0, width: 20, height: 20),
+            text: "b", observations: [], index: 0
+        )
+        let translator = RecordingTranslationService()
+        let vm = makeEditVM(translation: translator, editOCR: RecordingEditModeOCR(text: "fresh"))
+        vm.pages = [makeTranslatedPage(with: [a]), makeTranslatedPage(with: [b])]
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        await vm.retranslateAllPages()
+
+        XCTAssertNotNil(vm.editSession)
+        XCTAssertEqual(translator.translateCalls.count, 0)
+        XCTAssertEqual(translator.batchCalls.count, 0)
+        guard case .translated(let pageOneBubbles) = vm.pages[0].state,
+              case .translated(let pageTwoBubbles) = vm.pages[1].state else {
+            return XCTFail("Expected pages to remain translated during edit")
+        }
+        XCTAssertEqual(pageOneBubbles.map(\.bubble.id), [a.id])
+        XCTAssertEqual(pageTwoBubbles.map(\.bubble.id), [b.id])
+    }
+
+    func testHandleInputIsIgnoredDuringEditSession() async {
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "x", observations: [], index: 0
+        )
+        let page = makeTranslatedPage(with: [b])
+        let translator = RecordingTranslationService()
+        let vm = makeEditVM(translation: translator, editOCR: RecordingEditModeOCR(text: "fresh"))
+        vm.pages = [page]
+        vm.sourcePath = "/tmp/original-source"
+        vm.openEditSession(pageId: vm.pages[0].id)
+
+        await vm.handleInput(URL(fileURLWithPath: "/tmp/new-input-\(UUID().uuidString).jpg"))
+
+        XCTAssertNotNil(vm.editSession)
+        XCTAssertEqual(vm.sourcePath, "/tmp/original-source")
+        XCTAssertEqual(vm.pages.map(\.id), [page.id])
+        XCTAssertEqual(translator.translateCalls.count, 0)
+        XCTAssertEqual(translator.batchCalls.count, 0)
+    }
+
+    private func makeEditVM(
+        translation: any TranslationService,
+        editOCR: any EditModeOCRPerforming,
+        cache: (any CacheServiceProtocol)? = nil,
+        pipelineLogger: any PipelineLogging = DebugLogger.shared
+    ) -> TranslationViewModel {
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        return TranslationViewModel(
+            preferences: prefs,
+            ocrRouter: makeEmptyRouter(),
+            translationService: translation,
+            cacheService: cache,
+            pipelineLogger: pipelineLogger,
+            editModeOCR: editOCR
+        )
+    }
+}
+
+// MARK: - Edit Mode test doubles
+
+private enum SimulatedTranslateError: Error {
+    case network
+}
+
+@MainActor
+private final class RecordingEditModeOCR: EditModeOCRPerforming {
+    struct Call {
+        let bubbles: [BubbleCluster]
+    }
+    private let textProvider: (BubbleCluster) -> String
+    private(set) var calls: [Call] = []
+    var recognisedIDs: [UUID] { calls.flatMap { $0.bubbles.map(\.id) } }
+
+    init(text: String) {
+        self.textProvider = { _ in text }
+    }
+    init(textProvider: @escaping (BubbleCluster) -> String) {
+        self.textProvider = textProvider
+    }
+
+    func recognizeRegions(
+        image: NSImage,
+        bubbles: [BubbleCluster],
+        sourceLanguage: Language
+    ) async throws -> [UUID: String] {
+        calls.append(Call(bubbles: bubbles))
+        var output: [UUID: String] = [:]
+        for b in bubbles { output[b.id] = textProvider(b) }
+        return output
+    }
+}
+
+private final class RecordingTranslationService: TranslationService, @unchecked Sendable {
+    struct TranslateCall {
+        let bubbles: [BubbleCluster]
+        let context: TranslationContext
+    }
+    struct BatchCall {
+        let pageInputs: [BatchPageInput]
+    }
+    var engine: TranslationEngine { .githubCopilot }
+    private(set) var translateCalls: [TranslateCall] = []
+    private(set) var batchCalls: [BatchCall] = []
+    private let throwOnTranslate: Error?
+
+    init(throwOnTranslate: Error? = nil) {
+        self.throwOnTranslate = throwOnTranslate
+    }
+
+    func translate(
+        bubbles: [BubbleCluster],
+        from source: Language,
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
+        translateCalls.append(TranslateCall(bubbles: bubbles, context: context))
+        if let err = throwOnTranslate { throw err }
+        let translated = bubbles.map {
+            TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
+        }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput] {
+        batchCalls.append(BatchCall(pageInputs: pageInputs))
+        return pageInputs.map { input in
+            BatchPageOutput(
+                pageId: input.pageId,
+                bubbles: input.bubbles.map {
+                    TranslatedBubble(bubble: $0, translatedText: "B:\($0.text)", index: $0.index)
+                },
+                detectedTerms: []
+            )
+        }
+    }
+}
+
+private final class BlockingTranslationService: TranslationService, @unchecked Sendable {
+    var engine: TranslationEngine { .githubCopilot }
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func translate(
+        bubbles: [BubbleCluster],
+        from source: Language,
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+        let translated = bubbles.map {
+            TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
+        }
+        return TranslationOutput(bubbles: translated, detectedTerms: [])
+    }
+
+    func translateBatch(
+        pageInputs: [BatchPageInput],
+        from source: Language,
+        to target: Language,
+        priorContext: TranslationContext
+    ) async throws -> [BatchPageOutput] {
+        []
+    }
+}
+
+private final class CapturingCacheService: CacheServiceProtocol, @unchecked Sendable {
+    var isAvailable: Bool = true
+    var storeError: Error?
+    let glossaryService: GlossaryService = GlossaryService(db: nil, isAvailable: false)
+    private(set) var storedBubbleSets: [[TranslatedBubble]] = []
+
+    func lookup(
+        imageHash: String, source: Language, target: Language, engine: TranslationEngine
+    ) -> CacheService.CachedTranslationResult? { nil }
+    func translationCacheSize() -> Int64 { 0 }
+
+    func store(
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine,
+        bubbles: [TranslatedBubble],
+        textPixelMask: CGImage?
+    ) throws {
+        if let storeError { throw storeError }
+        storedBubbleSets.append(bubbles)
+    }
+
+    func addHistory(path: String, pageCount: Int?) throws {}
+    func clearAll() throws {}
 }
 
 // MARK: - Helpers
@@ -1069,6 +2369,25 @@ private final class SequentialOCRRecognizer: @unchecked Sendable, OCRRecognizing
 private struct EmptyComicTextDetector: ComicTextDetecting {
     func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
         ComicTextDetectorResult(regions: [], textPixelMask: nil, lowConfidenceRegionCount: 0)
+    }
+}
+
+// Detector whose `detectCallCount` lets tests assert OCR detection was
+// skipped (e.g. the Re-translate preservation path must not re-detect).
+// Returns an empty region set so it is safe to leave wired even when the
+// pipeline accidentally calls it; the call count is the assertion target.
+private final class FailIfOCRCalledDetector: ComicTextDetecting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _detectCallCount = 0
+    var detectCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _detectCallCount
+    }
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        lock.lock()
+        _detectCallCount += 1
+        lock.unlock()
+        return ComicTextDetectorResult(regions: [], textPixelMask: nil, lowConfidenceRegionCount: 0)
     }
 }
 
