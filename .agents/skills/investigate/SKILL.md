@@ -1,7 +1,11 @@
 ---
 name: investigate
+version: 1.0.0
 description: |
   Research an open question with discipline: verify-don't-assume → evaluate → report → exhaustively question. Use whenever the user is making a solution / architecture / setup decision — technology selection, architectural design, third-party option evaluation, configuration choices, feasibility studies, or breaking into an unfamiliar codebase. Triggers include: "investigate", "evaluate", "research", "how should we design X", "what should we use for Y", "is X viable".
+allowed-tools:
+  - Read
+  - Glob
 ---
 
 # Investigate
