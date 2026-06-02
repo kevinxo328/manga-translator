@@ -57,6 +57,15 @@ xcodebuild -project MangaTranslator.xcodeproj \
 
 The `PaddleOCRVL` dependency is vendored at `Vendor/paddleocr-vl.swift` so the text-side rotary parity fix stays versioned in this repository instead of living in SwiftPM or Xcode cache directories.
 
+### Optional PaddleOCR-VL Model
+
+The Apple Silicon PaddleOCR-VL path uses the app-ready MLX model published at
+[kevinxo328/paddleocr-vl-manga-mlx](https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx).
+That model is converted with the tooling in
+[`scripts/convert_model`](scripts/convert_model/README.md) from
+[`jzhang533/PaddleOCR-VL-For-Manga`](https://huggingface.co/jzhang533/PaddleOCR-VL-For-Manga)
+and packaged for this app's optional high-accuracy OCR workflow.
+
 ### Configuration
 
 1. Launch the app and open **Settings** (`Cmd + ,`).
@@ -174,6 +183,6 @@ Or switch to the **PaddleOCRParityDiagnostic** scheme in Xcode and press `⌘U`.
 
 - **Manga-OCR (2025)** — Based on the original work by [kha-white](https://github.com/kha-white/manga-ocr), updated with [2025 fine-tuned weights](https://huggingface.co/jzhang533/manga-ocr-base-2025) and optimized for ONNX by [l0wgear](https://huggingface.co/l0wgear/manga-ocr-2025-onnx).
 - **Text Detection** — Comic text detector based on YOLOv5.
-- **PaddleOCR-VL-For-Manga** — High-accuracy OCR model by [jzhang533](https://huggingface.co/jzhang533/PaddleOCR-VL-For-Manga), licensed under Apache 2.0. Used as an optional downloadable model for Apple Silicon.
+- **PaddleOCR-VL MLX model** — App-ready converted model published at [kevinxo328/paddleocr-vl-manga-mlx](https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx), produced with [`scripts/convert_model`](scripts/convert_model/README.md) from [jzhang533/PaddleOCR-VL-For-Manga](https://huggingface.co/jzhang533/PaddleOCR-VL-For-Manga), licensed under Apache 2.0. Used as an optional downloadable model for Apple Silicon.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for full license details.

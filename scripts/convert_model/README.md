@@ -4,6 +4,11 @@ Convert `jzhang533/PaddleOCR-VL-For-Manga` to MLX quantized format for the
 high-accuracy OCR feature on Apple Silicon, then verify consistency (parity)
 between the BF16 original and the quantized 8-bit version.
 
+The converted app-ready model is published at
+[kevinxo328/paddleocr-vl-manga-mlx](https://huggingface.co/kevinxo328/paddleocr-vl-manga-mlx).
+Use this repository when you want the ready-to-download model for MangaTranslator;
+use this directory when you need to reproduce, verify, or upload the conversion.
+
 > **Note:** 4-bit quantization produces only newlines for this model architecture
 > and is unusable. 8-bit is the minimum viable quantization.
 
