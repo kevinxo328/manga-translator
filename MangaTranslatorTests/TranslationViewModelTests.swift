@@ -23,6 +23,48 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertTrue(vm.glossaries.contains { $0.id == glossary.id }, "Glossary list must refresh after creation")
     }
 
+    func testCreateGlossaryValidationFailureDoesNotMutateSelectionOrList() throws {
+        let cache = makeTempCache()
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            cacheService: cache
+        )
+        let existing = try vm.createAndSelectGlossary(named: "Characters")
+        let initialGlossaries = vm.glossaries.map { "\($0.id):\($0.name)" }
+        let initialActiveID = vm.activeGlossaryID
+
+        for invalidName in ["   ", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "  Characters  "] {
+            XCTAssertThrowsError(try vm.createAndSelectGlossary(named: invalidName))
+            XCTAssertEqual(
+                vm.glossaries.map { "\($0.id):\($0.name)" },
+                initialGlossaries,
+                "Failed create must not append a glossary for \(invalidName)"
+            )
+            XCTAssertEqual(vm.activeGlossaryID, initialActiveID, "Failed create must not change selection for \(invalidName)")
+            XCTAssertEqual(vm.activeGlossary?.id, existing.id)
+        }
+    }
+
+    func testRenameGlossaryValidationFailureDoesNotMutateCachedNameOrSelection() throws {
+        let cache = makeTempCache()
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            cacheService: cache
+        )
+        let characters = try vm.createAndSelectGlossary(named: "Characters")
+        let places = try vm.createAndSelectGlossary(named: "Places")
+        vm.activeGlossaryID = places.id
+
+        for invalidName in ["   ", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "  Characters  "] {
+            XCTAssertThrowsError(try vm.renameGlossary(id: places.id, to: invalidName))
+            XCTAssertEqual(vm.glossaries.first { $0.id == characters.id }?.name, "Characters")
+            XCTAssertEqual(vm.glossaries.first { $0.id == places.id }?.name, "Places")
+            XCTAssertEqual(vm.activeGlossaryID, places.id, "Failed rename must not change active selection for \(invalidName)")
+        }
+    }
+
     // MARK: - textPixelMask cleared on non-OCR paths
 
     func testSameLanguageClearsTextPixelMask() async {

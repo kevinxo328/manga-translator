@@ -16,15 +16,24 @@ final class GlossaryService {
 
     // MARK: - Name normalization
 
-    // Trims whitespace/newlines, rejects empty strings, and truncates to 20 Swift
-    // Characters. Callers must use this before any SQL interaction.
+    // Trims whitespace/newlines and validates the persisted display name.
+    // Callers must use this before any mutation SQL interaction.
     private func normalizeGlossaryName(_ name: String) throws -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw GlossaryValidationError.emptyName }
         if trimmed.count > 20 {
-            return String(trimmed.prefix(20))
+            throw GlossaryValidationError.nameTooLong(max: 20)
         }
         return trimmed
+    }
+
+    private func validateUniqueGlossaryName(_ name: String, excludingID excludedID: String? = nil) throws {
+        let duplicate = listGlossaries().contains { glossary in
+            glossary.name == name && glossary.id != excludedID
+        }
+        if duplicate {
+            throw GlossaryValidationError.duplicateName
+        }
     }
 
     // MARK: - Glossary CRUD
@@ -32,6 +41,7 @@ final class GlossaryService {
     func createGlossary(name: String) throws -> Glossary {
         guard isAvailable, let db else { throw CacheError.unavailable }
         let normalized = try normalizeGlossaryName(name)
+        try validateUniqueGlossaryName(normalized)
         let id = UUID().uuidString
         let sql = """
         INSERT INTO glossaries (id, name, source_lang, target_lang, created_at) VALUES (?, ?, '', '', ?)
@@ -56,6 +66,7 @@ final class GlossaryService {
     func renameGlossary(id: String, newName: String) throws {
         guard isAvailable, let db else { throw CacheError.unavailable }
         let normalized = try normalizeGlossaryName(newName)
+        try validateUniqueGlossaryName(normalized, excludingID: id)
         let sql = "UPDATE glossaries SET name = ? WHERE id = ?"
         var stmt: OpaquePointer?
         let prepareResult = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)

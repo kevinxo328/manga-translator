@@ -15,6 +15,8 @@ enum CacheError: Error, Equatable {
 // caller input and are distinct from database-level failures.
 enum GlossaryValidationError: Error, Equatable {
     case emptyName
+    case nameTooLong(max: Int)
+    case duplicateName
 }
 
 // Abstraction injected into TranslationViewModel so tests can substitute a

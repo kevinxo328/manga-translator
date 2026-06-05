@@ -64,6 +64,12 @@ The change affects service validation, caller error handling, and the Settings G
 
    Alternative considered: log service errors only. That leaves the user without a clear recovery path.
 
+7. Do not show empty-name feedback before the user interacts with a sheet.
+
+   Create and rename sheets still disable confirmation whenever the current input is invalid, including initial empty create input. However, the empty-name message is withheld until the user has edited the field. Overlong and duplicate-name feedback remains immediate once the current input is non-empty. This avoids presenting a newly opened sheet as already erroneous while preserving clear recovery feedback after user interaction.
+
+   Alternative considered: always show all validation feedback for any invalid input. That is technically direct but makes the default create sheet feel like an error state before the user has acted.
+
 ## Risks / Trade-offs
 
 - Existing duplicates can remain visible → Mitigation: the rule is enforced on all future create/rename mutations, and existing rows stay addressable by stable ids.

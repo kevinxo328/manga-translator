@@ -12,8 +12,16 @@ struct ContentView: View {
     @State private var editGestureInFlight = false
     @State private var showNewGlossarySheet = false
     @State private var newGlossaryName = ""
+    @State private var newGlossaryNameWasEdited = false
 
     private var isEditing: Bool { viewModel.editSession != nil }
+    private var newGlossaryValidation: GlossaryNameValidation {
+        GlossaryNameValidation.validate(
+            newGlossaryName,
+            existingGlossaries: viewModel.glossaries,
+            hasUserEdited: newGlossaryNameWasEdited
+        )
+    }
 
     // Edit button is enabled only when the current page sits in
     // `.translated` state per `manual-bubble-editing` spec — the gating
@@ -345,9 +353,16 @@ struct ContentView: View {
 
             TextField("Glossary name", text: $newGlossaryName)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: newGlossaryName) { _, newValue in
-                    if newValue.count > 20 { newGlossaryName = String(newValue.prefix(20)) }
+                .onChange(of: newGlossaryName) { _, _ in
+                    newGlossaryNameWasEdited = true
                 }
+
+            if let message = newGlossaryValidation.message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             HStack {
                 Button("Cancel") { showNewGlossarySheet = false }
@@ -355,17 +370,21 @@ struct ContentView: View {
                 Button("Create") {
                     do {
                         try viewModel.createAndSelectGlossary(named: newGlossaryName)
+                        showNewGlossarySheet = false
                     } catch {
-                        viewModel.errorMessage = "Failed to update glossary. Please try again, or restart the app if the problem persists."
+                        if let validationError = error as? GlossaryValidationError {
+                            viewModel.errorMessage = GlossaryNameValidation.message(for: validationError)
+                        } else {
+                            viewModel.errorMessage = "Failed to update glossary. Please try again, or restart the app if the problem persists."
+                        }
                         DebugLogger.shared.log(
                             "ContentView.createGlossary: \(error.localizedDescription)",
                             level: .error,
                             category: .cache
                         )
                     }
-                    showNewGlossarySheet = false
                 }
-                .disabled(newGlossaryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!newGlossaryValidation.isValid)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -430,6 +449,7 @@ struct ContentView: View {
                 Divider()
                 Button {
                     newGlossaryName = ""
+                    newGlossaryNameWasEdited = false
                     showNewGlossarySheet = true
                 } label: {
                     Label("Add Glossary...", systemImage: "plus")

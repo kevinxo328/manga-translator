@@ -444,14 +444,42 @@ final class CacheServiceTests: XCTestCase {
         XCTAssertEqual(service.listGlossaries().count, countBefore)
     }
 
-    // 3.3 createGlossary truncates names longer than 20 characters.
-    func testCreateGlossaryTruncatesNameOver20Chars() throws {
+    // 3.3 createGlossary rejects names longer than 20 characters before SQL.
+    func testCreateGlossaryNameOver20CharsThrowsValidationError() throws {
         let cache = makeCache()
         let service = cache.glossaryService
         let longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" // 26 chars
-        let glossary = try service.createGlossary(name: longName)
-        XCTAssertEqual(glossary.name.count, 20)
-        XCTAssertEqual(glossary.name, "ABCDEFGHIJKLMNOPQRST")
+        let countBefore = service.listGlossaries().count
+
+        XCTAssertThrowsError(try service.createGlossary(name: longName)) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .nameTooLong(max: 20))
+        }
+        XCTAssertEqual(service.listGlossaries().count, countBefore)
+        XCTAssertFalse(service.listGlossaries().contains { $0.name == "ABCDEFGHIJKLMNOPQRST" })
+    }
+
+    func testCreateGlossaryDuplicateTrimmedNameThrowsValidationError() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        _ = try service.createGlossary(name: "Characters")
+        let countBefore = service.listGlossaries().count
+
+        XCTAssertThrowsError(try service.createGlossary(name: "  Characters  ")) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .duplicateName)
+        }
+        XCTAssertEqual(service.listGlossaries().count, countBefore)
+    }
+
+    func testCreateGlossaryDuplicateComparisonIsCaseSensitive() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+
+        _ = try service.createGlossary(name: "Characters")
+        let lower = try service.createGlossary(name: "characters")
+
+        XCTAssertEqual(lower.name, "characters")
+        XCTAssertTrue(service.listGlossaries().contains { $0.name == "Characters" })
+        XCTAssertTrue(service.listGlossaries().contains { $0.name == "characters" })
     }
 
     // 3.4 renameGlossary updates the name in the database.
@@ -478,15 +506,44 @@ final class CacheServiceTests: XCTestCase {
         XCTAssertEqual(fetched?.name, "Original")
     }
 
-    // 3.6 renameGlossary truncates names longer than 20 characters.
-    func testRenameGlossaryTruncatesNameOver20Chars() throws {
+    // 3.6 renameGlossary rejects names longer than 20 characters before SQL.
+    func testRenameGlossaryNameOver20CharsThrowsValidationError() throws {
         let cache = makeCache()
         let service = cache.glossaryService
         let glossary = try service.createGlossary(name: "Original")
         let longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" // 26 chars
-        try service.renameGlossary(id: glossary.id, newName: longName)
+
+        XCTAssertThrowsError(try service.renameGlossary(id: glossary.id, newName: longName)) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .nameTooLong(max: 20))
+        }
         let fetched = service.listGlossaries().first { $0.id == glossary.id }
-        XCTAssertEqual(fetched?.name, "ABCDEFGHIJKLMNOPQRST")
+        XCTAssertEqual(fetched?.name, "Original")
+        XCTAssertFalse(service.listGlossaries().contains { $0.name == "ABCDEFGHIJKLMNOPQRST" })
+    }
+
+    func testRenameGlossaryDuplicateTrimmedNameThrowsValidationError() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let characters = try service.createGlossary(name: "Characters")
+        let places = try service.createGlossary(name: "Places")
+
+        XCTAssertThrowsError(try service.renameGlossary(id: places.id, newName: "  Characters  ")) { error in
+            XCTAssertEqual(error as? GlossaryValidationError, .duplicateName)
+        }
+        let glossaries = service.listGlossaries()
+        XCTAssertEqual(glossaries.first { $0.id == characters.id }?.name, "Characters")
+        XCTAssertEqual(glossaries.first { $0.id == places.id }?.name, "Places")
+    }
+
+    func testRenameGlossaryToOwnNormalizedNameSucceeds() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "Characters")
+
+        try service.renameGlossary(id: glossary.id, newName: "  Characters  ")
+
+        let fetched = service.listGlossaries().first { $0.id == glossary.id }
+        XCTAssertEqual(fetched?.name, "Characters")
     }
 
     // MARK: - isManual round-trip (manual-bubble-editing change)

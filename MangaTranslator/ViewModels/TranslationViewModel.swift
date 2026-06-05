@@ -114,6 +114,11 @@ final class TranslationViewModel: ObservableObject {
         return glossary
     }
 
+    func renameGlossary(id: String, to newName: String) throws {
+        try glossaryService.renameGlossary(id: id, newName: newName)
+        loadGlossaries()
+    }
+
     var activeGlossary: Glossary? {
         guard let id = activeGlossaryID else { return nil }
         return glossaries.first { $0.id == id }

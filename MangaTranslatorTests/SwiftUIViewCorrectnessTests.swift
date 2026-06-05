@@ -173,4 +173,39 @@ struct SwiftUIViewCorrectnessTests {
         #expect(pages.allSatisfy { $0.image != nil },
                 "All MangaPages must have non-nil image after pre-loading")
     }
+
+    @Test("Glossary create sheet validation blocks empty, overlong, and duplicate names")
+    func glossaryCreateSheetValidationBlocksInvalidNames() {
+        let existing = [Glossary(id: "characters", name: "Characters")]
+
+        #expect(GlossaryNameValidation.validate("   ", existingGlossaries: existing).message == "Enter a glossary name.")
+        #expect(GlossaryNameValidation.validate("ABCDEFGHIJKLMNOPQRSTUVWXYZ", existingGlossaries: existing).message == "Glossary names must be 20 characters or fewer.")
+        #expect(GlossaryNameValidation.validate("  Characters  ", existingGlossaries: existing).message == "A glossary with this name already exists.")
+        #expect(GlossaryNameValidation.validate("characters", existingGlossaries: existing).isValid)
+    }
+
+    @Test("Glossary rename sheet validation excludes current row from duplicate checks")
+    func glossaryRenameSheetValidationExcludesCurrentRow() {
+        let existing = [
+            Glossary(id: "characters", name: "Characters"),
+            Glossary(id: "places", name: "Places")
+        ]
+
+        #expect(GlossaryNameValidation.validate("  Places  ", existingGlossaries: existing, excludingID: "places").isValid)
+        #expect(GlossaryNameValidation.validate("  Characters  ", existingGlossaries: existing, excludingID: "places").message == "A glossary with this name already exists.")
+        #expect(GlossaryNameValidation.validate("ABCDEFGHIJKLMNOPQRSTUVWXYZ", existingGlossaries: existing, excludingID: "places").message == "Glossary names must be 20 characters or fewer.")
+        #expect(GlossaryNameValidation.validate("   ", existingGlossaries: existing, excludingID: "places").message == "Enter a glossary name.")
+    }
+
+    @Test("Glossary sheets do not show empty-name feedback before field interaction")
+    func glossarySheetValidationHidesInitialEmptyFeedback() {
+        let validation = GlossaryNameValidation.validate(
+            "",
+            existingGlossaries: [],
+            hasUserEdited: false
+        )
+
+        #expect(!validation.isValid)
+        #expect(validation.message == nil)
+    }
 }

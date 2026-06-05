@@ -1,5 +1,58 @@
 import SwiftUI
 
+struct GlossaryNameValidation {
+    static let maxLength = 20
+
+    let normalizedName: String
+    let isValid: Bool
+    let message: String?
+
+    static func validate(
+        _ name: String,
+        existingGlossaries: [Glossary],
+        excludingID excludedID: String? = nil,
+        hasUserEdited: Bool = true
+    ) -> GlossaryNameValidation {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty {
+            return GlossaryNameValidation(
+                normalizedName: normalized,
+                isValid: false,
+                message: hasUserEdited ? "Enter a glossary name." : nil
+            )
+        }
+        if normalized.count > maxLength {
+            return GlossaryNameValidation(
+                normalizedName: normalized,
+                isValid: false,
+                message: "Glossary names must be 20 characters or fewer."
+            )
+        }
+        let duplicate = existingGlossaries.contains { glossary in
+            glossary.name == normalized && glossary.id != excludedID
+        }
+        if duplicate {
+            return GlossaryNameValidation(
+                normalizedName: normalized,
+                isValid: false,
+                message: "A glossary with this name already exists."
+            )
+        }
+        return GlossaryNameValidation(normalizedName: normalized, isValid: true, message: nil)
+    }
+
+    static func message(for error: GlossaryValidationError) -> String {
+        switch error {
+        case .emptyName:
+            return "Enter a glossary name."
+        case .nameTooLong(let max):
+            return "Glossary names must be \(max) characters or fewer."
+        case .duplicateName:
+            return "A glossary with this name already exists."
+        }
+    }
+}
+
 struct GlossaryView: View {
     @ObservedObject var viewModel: TranslationViewModel
     // When true, renders as a native grouped Form inside SettingsView.
@@ -17,13 +70,32 @@ struct GlossaryView: View {
     @State private var editingTerm: GlossaryTerm? = nil
     @State private var editSourceTerm = ""
     @State private var editTargetTerm = ""
+    @State private var newGlossaryNameWasEdited = false
 
     // Embedded-only: rename sheet state
     @State private var showRenameSheet = false
     @State private var glossaryNameInput: String = ""
+    @State private var glossaryNameInputWasEdited = false
 
     private var glossaryService: GlossaryService {
         viewModel.glossaryServiceForView
+    }
+
+    private var newGlossaryValidation: GlossaryNameValidation {
+        GlossaryNameValidation.validate(
+            newGlossaryName,
+            existingGlossaries: viewModel.glossaries,
+            hasUserEdited: newGlossaryNameWasEdited
+        )
+    }
+
+    private var renameGlossaryValidation: GlossaryNameValidation {
+        GlossaryNameValidation.validate(
+            glossaryNameInput,
+            existingGlossaries: viewModel.glossaries,
+            excludingID: viewModel.activeGlossaryID,
+            hasUserEdited: glossaryNameInputWasEdited
+        )
     }
 
     var body: some View {
@@ -72,6 +144,7 @@ struct GlossaryView: View {
                     // Rename (pencil) — only enabled when a glossary is active
                     Button {
                         glossaryNameInput = viewModel.activeGlossary?.name ?? ""
+                        glossaryNameInputWasEdited = false
                         showRenameSheet = true
                     } label: {
                         Image(systemName: "pencil")
@@ -83,6 +156,7 @@ struct GlossaryView: View {
                     // Add glossary
                     Button {
                         newGlossaryName = ""
+                        newGlossaryNameWasEdited = false
                         showNewGlossarySheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -211,20 +285,14 @@ struct GlossaryView: View {
     @discardableResult
     private func commitRename() -> Bool {
         guard let id = viewModel.activeGlossaryID else { return true }
-        let normalized = glossaryNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else {
-            syncNameInput() // Reject empty: restore existing name
-            return true
-        }
-        let truncated = normalized.count > 20 ? String(normalized.prefix(20)) : normalized
-        guard truncated != viewModel.activeGlossary?.name else { return true } // No-op if unchanged
+        let validation = renameGlossaryValidation
+        guard validation.isValid else { return false }
+        guard validation.normalizedName != viewModel.activeGlossary?.name else { return true }
         do {
-            try glossaryService.renameGlossary(id: id, newName: truncated)
-            viewModel.loadGlossaries()
+            try viewModel.renameGlossary(id: id, to: glossaryNameInput)
             return true
         } catch {
             handleGlossaryFailure(error, operation: "GlossaryView.renameGlossary")
-            syncNameInput() // Restore on failure
             return false
         }
     }
@@ -266,6 +334,7 @@ struct GlossaryView: View {
 
                 Button {
                     newGlossaryName = ""
+                    newGlossaryNameWasEdited = false
                     showNewGlossarySheet = true
                 } label: {
                     Image(systemName: "plus")
@@ -414,9 +483,16 @@ struct GlossaryView: View {
 
             TextField("Glossary name", text: $glossaryNameInput)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: glossaryNameInput) { _, newValue in
-                    if newValue.count > 20 { glossaryNameInput = String(newValue.prefix(20)) }
+                .onChange(of: glossaryNameInput) { _, _ in
+                    glossaryNameInputWasEdited = true
                 }
+
+            if let message = renameGlossaryValidation.message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             HStack {
                 Button("Cancel") { showRenameSheet = false }
@@ -424,7 +500,7 @@ struct GlossaryView: View {
                 Button("Rename") {
                     if commitRename() { showRenameSheet = false }
                 }
-                .disabled(glossaryNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!renameGlossaryValidation.isValid)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -439,9 +515,16 @@ struct GlossaryView: View {
 
             TextField("Glossary name", text: $newGlossaryName)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: newGlossaryName) { _, newValue in
-                    if newValue.count > 20 { newGlossaryName = String(newValue.prefix(20)) }
+                .onChange(of: newGlossaryName) { _, _ in
+                    newGlossaryNameWasEdited = true
                 }
+
+            if let message = newGlossaryValidation.message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             HStack {
                 Button("Cancel") { showNewGlossarySheet = false }
@@ -451,12 +534,12 @@ struct GlossaryView: View {
                         _ = try viewModel.createAndSelectGlossary(named: newGlossaryName)
                         reloadTerms()
                         syncNameInput()
+                        showNewGlossarySheet = false
                     } catch {
                         handleGlossaryFailure(error, operation: "GlossaryView.createGlossary")
                     }
-                    showNewGlossarySheet = false
                 }
-                .disabled(newGlossaryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!newGlossaryValidation.isValid)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -525,6 +608,10 @@ struct GlossaryView: View {
     // and routes the underlying SQLite text to DebugLogger so the UI stays
     // free of database-internal strings.
     private func handleGlossaryFailure(_ error: Error, operation: String) {
+        if let validationError = error as? GlossaryValidationError {
+            viewModel.errorMessage = GlossaryNameValidation.message(for: validationError)
+            return
+        }
         viewModel.errorMessage = "Failed to update glossary. Please try again, or restart the app if the problem persists."
         if let cacheError = error as? CacheError {
             switch cacheError {

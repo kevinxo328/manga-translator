@@ -120,7 +120,7 @@ The system SHALL make every `GlossaryService` mutation (`createGlossary`, `renam
 - **THEN** the database SHALL NOT be touched
 
 ### Requirement: Glossary management settings tab
-The system SHALL provide a Glossary tab in the Settings window (positioned between Preferences and Debug) for managing glossaries. The Glossary tab SHALL display in `.formStyle(.grouped)` matching the visual style of other Settings tabs. It SHALL show a single-row glossary selector (Menu showing the active glossary name, or "Select a Glossary…" as placeholder when none is selected) with inline rename, new, and delete action buttons. Rename is confirmed via a sheet pre-filled with the current name. Create and rename sheets SHALL use the same glossary-name rules as `GlossaryService`: trimmed names must be non-empty, no longer than 20 Swift `Character` values, and not duplicate another glossary's persisted name. The sheets SHALL provide immediate validation feedback and SHALL NOT enable confirmation when the current input is invalid. The terms list SHALL display in a separate section ordered newest first, with a button in the section header to add terms. Each term row SHALL show source to target text, an auto-detected badge where applicable, and edit/delete action buttons.
+The system SHALL provide a Glossary tab in the Settings window (positioned between Preferences and Debug) for managing glossaries. The Glossary tab SHALL display in `.formStyle(.grouped)` matching the visual style of other Settings tabs. It SHALL show a single-row glossary selector (Menu showing the active glossary name, or "Select a Glossary…" as placeholder when none is selected) with inline rename, new, and delete action buttons. Rename is confirmed via a sheet pre-filled with the current name. Create and rename sheets SHALL use the same glossary-name rules as `GlossaryService`: trimmed names must be non-empty, no longer than 20 Swift `Character` values, and not duplicate another glossary's persisted name. The sheets SHALL NOT enable confirmation when the current input is invalid. Empty-name validation feedback SHALL NOT be shown before the user edits the sheet field; after user interaction, empty input SHALL show specific validation feedback. Over-20-character and duplicate-name feedback SHALL be shown immediately for non-empty invalid input. The terms list SHALL display in a separate section ordered newest first, with a button in the section header to add terms. Each term row SHALL show source to target text, an auto-detected badge where applicable, and edit/delete action buttons.
 
 #### Scenario: User opens Glossary tab directly from toolbar
 - **WHEN** user selects "Manage Glossaries..." from the main window toolbar glossary menu
@@ -135,9 +135,12 @@ The system SHALL provide a Glossary tab in the Settings window (positioned betwe
 - **AND** the new glossary becomes the selected glossary
 
 #### Scenario: Settings create sheet blocks invalid names
+- **WHEN** user opens the create glossary sheet
+- **THEN** the confirmation action is disabled
+- **AND** empty-name validation feedback is not shown before the user edits the field
 - **WHEN** user enters an empty, over-20-character, or duplicate glossary name in the create glossary sheet
-- **THEN** the sheet displays validation feedback for the specific invalid condition
-- **AND** the confirmation action is disabled
+- **THEN** the sheet displays validation feedback for the specific invalid condition after the interaction rules allow it
+- **AND** the confirmation action remains disabled
 - **AND** no glossary record is created
 
 #### Scenario: User renames a glossary via the settings tab
@@ -146,8 +149,10 @@ The system SHALL provide a Glossary tab in the Settings window (positioned betwe
 - **AND** all pickers reflect the new name immediately
 
 #### Scenario: Settings rename sheet blocks invalid names
+- **WHEN** user opens the rename glossary sheet with the current valid name pre-filled
+- **THEN** validation feedback is not shown
 - **WHEN** user enters an empty, over-20-character, or duplicate glossary name in the rename glossary sheet
-- **THEN** the sheet displays validation feedback for the specific invalid condition
+- **THEN** the sheet displays validation feedback for the specific invalid condition after the interaction rules allow it
 - **AND** the confirmation action is disabled
 - **AND** the existing glossary name remains unchanged
 
