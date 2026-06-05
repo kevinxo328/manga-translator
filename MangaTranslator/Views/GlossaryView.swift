@@ -448,9 +448,7 @@ struct GlossaryView: View {
                 Spacer()
                 Button("Create") {
                     do {
-                        let g = try glossaryService.createGlossary(name: newGlossaryName)
-                        viewModel.loadGlossaries()
-                        viewModel.activeGlossaryID = g.id
+                        _ = try viewModel.createAndSelectGlossary(named: newGlossaryName)
                         reloadTerms()
                         syncNameInput()
                     } catch {

@@ -6,6 +6,23 @@ import AppKit
 @MainActor
 final class TranslationViewModelTests: XCTestCase {
 
+    // MARK: - Glossary selection
+
+    func testCreateGlossarySelectsNewGlossary() throws {
+        let cache = makeTempCache()
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            cacheService: cache
+        )
+
+        let glossary = try vm.createAndSelectGlossary(named: "  Navbar  ")
+
+        XCTAssertEqual(vm.activeGlossaryID, glossary.id, "New glossary must become the active glossary immediately")
+        XCTAssertEqual(vm.activeGlossary?.name, "Navbar")
+        XCTAssertTrue(vm.glossaries.contains { $0.id == glossary.id }, "Glossary list must refresh after creation")
+    }
+
     // MARK: - textPixelMask cleared on non-OCR paths
 
     func testSameLanguageClearsTextPixelMask() async {

@@ -10,6 +10,8 @@ struct ContentView: View {
     // keys whose SwiftUI keyboardShortcut routing is focus-dependent.
     @State private var editKeyMonitor: EditKeyMonitorBox = EditKeyMonitorBox()
     @State private var editGestureInFlight = false
+    @State private var showNewGlossarySheet = false
+    @State private var newGlossaryName = ""
 
     private var isEditing: Bool { viewModel.editSession != nil }
 
@@ -87,6 +89,7 @@ struct ContentView: View {
                 }
             }
         }
+        .sheet(isPresented: $showNewGlossarySheet) { newGlossarySheet }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers)
         }
@@ -335,6 +338,41 @@ struct ContentView: View {
         }
     }
 
+    private var newGlossarySheet: some View {
+        VStack(spacing: 16) {
+            Text("New Glossary")
+                .font(.headline)
+
+            TextField("Glossary name", text: $newGlossaryName)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: newGlossaryName) { _, newValue in
+                    if newValue.count > 20 { newGlossaryName = String(newValue.prefix(20)) }
+                }
+
+            HStack {
+                Button("Cancel") { showNewGlossarySheet = false }
+                Spacer()
+                Button("Create") {
+                    do {
+                        try viewModel.createAndSelectGlossary(named: newGlossaryName)
+                    } catch {
+                        viewModel.errorMessage = "Failed to update glossary. Please try again, or restart the app if the problem persists."
+                        DebugLogger.shared.log(
+                            "ContentView.createGlossary: \(error.localizedDescription)",
+                            level: .error,
+                            category: .cache
+                        )
+                    }
+                    showNewGlossarySheet = false
+                }
+                .disabled(newGlossaryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 280)
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -390,6 +428,12 @@ struct ContentView: View {
                     Button(glossary.name) { viewModel.activeGlossaryID = glossary.id }
                 }
                 Divider()
+                Button {
+                    newGlossaryName = ""
+                    showNewGlossarySheet = true
+                } label: {
+                    Label("Add Glossary...", systemImage: "plus")
+                }
                 Button {
                     viewModel.preferences.activeTabIdentifier = "glossary"
                     openWindow(id: "settings")

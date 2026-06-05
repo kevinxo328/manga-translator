@@ -106,6 +106,14 @@ final class TranslationViewModel: ObservableObject {
         glossaries = glossaryService.listGlossaries()
     }
 
+    @discardableResult
+    func createAndSelectGlossary(named name: String) throws -> Glossary {
+        let glossary = try glossaryService.createGlossary(name: name)
+        loadGlossaries()
+        activeGlossaryID = glossary.id
+        return glossary
+    }
+
     var activeGlossary: Glossary? {
         guard let id = activeGlossaryID else { return nil }
         return glossaries.first { $0.id == id }
