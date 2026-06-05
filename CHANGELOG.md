@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.1 (2026-06-05)
+
+### Improvements
+
+- Expanded target language support to include French, German, Indonesian, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, and Vietnamese, so that you can translate manga into more of your preferred languages.
+- Added a quick-create glossary option in the main toolbar with real-time name validation, so that you can quickly set up error-free glossaries without leaving your main view.
+
 ## v1.5.0 (2026-05-29)
 
 ### New Features
