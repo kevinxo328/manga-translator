@@ -16,6 +16,39 @@ struct GoogleTranslationServiceTests {
         BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
     }
 
+    @Test("Google request body uses provider language codes for every target language")
+    func googleRequestBodyLanguageCodes() async throws {
+        let expectedCodes: [(Language, String)] = [
+            (.en, "en"),
+            (.fr, "fr"),
+            (.de, "de"),
+            (.id, "id"),
+            (.ja, "ja"),
+            (.ko, "ko"),
+            (.ptBR, "pt-BR"),
+            (.zhHans, "zh-CN"),
+            (.es, "es"),
+            (.zhHant, "zh-TW"),
+            (.vi, "vi")
+        ]
+
+        for (language, expectedCode) in expectedCodes {
+            let session = ProviderHTTPMockURLProtocol.makeSession { request in
+                let body = request.jsonMockBody()
+                #expect(body["source"] as? String == "ja")
+                #expect(body["target"] as? String == expectedCode)
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                let data = Data(#"{"data":{"translations":[{"translatedText":"ok"}]}}"#.utf8)
+                return (response, data)
+            }
+            defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+            let service = makeService(session: session)
+            let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: language, context: .empty)
+            #expect(output.bubbles.first?.translatedText == "ok")
+        }
+    }
+
     @Test("Google PERMISSION_DENIED yields sanitized error with status as code")
     func googlePermissionDenied() async throws {
         let body = Data(#"""

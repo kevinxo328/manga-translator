@@ -14,6 +14,7 @@ struct KeychainService {
     var secItemUpdate: ((CFDictionary, CFDictionary) -> OSStatus)? = nil
     var secItemDelete: ((CFDictionary) -> OSStatus)? = nil
     var secItemCopyMatching: ((CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus)? = nil
+    var usesCache: Bool = true
 
     // MARK: - Public API
 
@@ -30,7 +31,9 @@ struct KeychainService {
         let updateStatus = updateFn(searchQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
 
         if updateStatus == errSecSuccess {
-            Self.setCachedValue(apiKey, for: account)
+            if usesCache {
+                Self.setCachedValue(apiKey, for: account)
+            }
             return
         }
 
@@ -44,14 +47,16 @@ struct KeychainService {
         ]
         let addFn = secItemAdd ?? Security.SecItemAdd
         if addFn(addQuery as CFDictionary, nil) == errSecSuccess {
-            Self.setCachedValue(apiKey, for: account)
+            if usesCache {
+                Self.setCachedValue(apiKey, for: account)
+            }
         }
     }
 
     func retrieve(for engine: TranslationEngine) -> String? {
         let account = engine.rawValue
 
-        if let cached = Self.cachedValue(for: account) {
+        if usesCache, let cached = Self.cachedValue(for: account) {
             return cached
         }
 
@@ -70,7 +75,9 @@ struct KeychainService {
         guard status == errSecSuccess, let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else { return nil }
 
-        Self.setCachedValue(value, for: account)
+        if usesCache {
+            Self.setCachedValue(value, for: account)
+        }
         return value
     }
 
@@ -83,7 +90,7 @@ struct KeychainService {
         ]
         let deleteFn = secItemDelete ?? Security.SecItemDelete
         let status = deleteFn(query as CFDictionary)
-        if status == errSecSuccess || status == errSecItemNotFound {
+        if usesCache, status == errSecSuccess || status == errSecItemNotFound {
             Self.removeCachedValue(for: account)
         }
     }

@@ -23,17 +23,17 @@ The system SHALL store translation service API keys (DeepL, Google, OpenAI) in t
 - **THEN** the system retrieves the DeepL API key from Keychain
 
 ### Requirement: Settings UI
-The system SHALL provide a settings view accessible via Cmd+,. The settings window SHALL use a tabbed sidebar structure with tabs in the following fixed order: **API Keys → Preferences → Glossary → Debug → About**. Each tab's content is owned by the corresponding capability (`auto-update` for the Updates section within Preferences, `copilot-model-management` for the GitHub Copilot section, `openai-compatible-config` for the OpenAI Compatible section, `local-model-lifecycle` for the High-Accuracy OCR section, `debug-log-management` for the Debug tab, `glossary-management` for the Glossary tab). All language selection pickers SHALL display languages using flag emoji and full English names (e.g., `"🇯🇵 Japanese"`, `"🇺🇸 English"`, `"🇹🇼 Traditional Chinese"`).
+The system SHALL provide a settings view accessible via Cmd+,. The settings window SHALL use a tabbed sidebar structure with tabs in the following fixed order: **API Keys → Preferences → Glossary → Debug → About**. Each tab's content is owned by the corresponding capability (`auto-update` for the Updates section within Preferences, `copilot-model-management` for the GitHub Copilot section, `openai-compatible-config` for the OpenAI Compatible section, `local-model-lifecycle` for the High-Accuracy OCR section, `debug-log-management` for the Debug tab, `glossary-management` for the Glossary tab). All language selection pickers SHALL display languages using flag emoji and full English names (e.g., `"🇺🇸 English"`, `"🇯🇵 Japanese"`, `"🇹🇼 Traditional Chinese"`).
 
 #### Scenario: Open settings
 - **WHEN** user presses Cmd+,
 - **THEN** the settings window opens and displays the API Keys tab on a fresh app launch, unless an in-memory deep-link has already selected another tab
 
-#### Scenario: Language picker display codes
+#### Scenario: Language picker display labels
 - **WHEN** user opens the source language picker in settings or the toolbar
-- **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"` and `"🇺🇸 English"` only
+- **THEN** the options SHALL be displayed as `"🇺🇸 English"` and `"🇯🇵 Japanese"` in that order
 - **WHEN** user opens the target language picker in settings or the toolbar
-- **THEN** the options SHALL be displayed as `"🇯🇵 Japanese"`, `"🇺🇸 English"`, and `"🇹🇼 Traditional Chinese"`
+- **THEN** the options SHALL be displayed as `"🇺🇸 English"`, `"🇫🇷 French"`, `"🇩🇪 German"`, `"🇮🇩 Indonesian"`, `"🇯🇵 Japanese"`, `"🇰🇷 Korean"`, `"🇧🇷 Portuguese (Brazil)"`, `"🇨🇳 Simplified Chinese"`, `"🇪🇸 Spanish"`, `"🇹🇼 Traditional Chinese"`, and `"🇻🇳 Vietnamese"` in that order
 
 ### Requirement: Programmatic tab deep-linking
 The system SHALL support navigating to a specific Settings tab from outside the Settings window without persisting the destination to UserDefaults. `PreferencesService` SHALL expose an in-memory `@Published var activeTabIdentifier: String` that defaults to `"apiKeys"` on every fresh app launch and is never written to UserDefaults. The Settings window SHALL bind its visible tab to this identifier. The supported identifier values are `"apiKeys"`, `"preferences"`, `"glossary"`, `"debug"`, and `"about"`. An unsupported identifier value SHALL cause the Settings window to display the API Keys tab and normalize `activeTabIdentifier` back to `"apiKeys"`. Manual tab selection inside the Settings window SHALL update `activeTabIdentifier` to the canonical identifier of the selected tab.

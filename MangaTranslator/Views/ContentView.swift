@@ -499,7 +499,7 @@ struct ContentView: View {
 
                 Menu {
                     Picker("Target", selection: $viewModel.preferences.targetLanguage) {
-                        ForEach(Language.allCases) { lang in
+                        ForEach(Language.targetLanguages) { lang in
                             Text(lang.displayName).tag(lang)
                         }
                     }

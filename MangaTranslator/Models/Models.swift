@@ -6,20 +6,49 @@ enum Language: String, CaseIterable, Identifiable, Codable {
     case ja = "ja"
     case en = "en"
     case zhHant = "zh-Hant"
+    case fr = "fr"
+    case de = "de"
+    case id = "id"
+    case ko = "ko"
+    case ptBR = "pt-BR"
+    case zhHans = "zh-Hans"
+    case es = "es"
+    case vi = "vi"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .ja: return "🇯🇵 Japanese"
         case .en: return "🇺🇸 English"
+        case .fr: return "🇫🇷 French"
+        case .de: return "🇩🇪 German"
+        case .id: return "🇮🇩 Indonesian"
+        case .ja: return "🇯🇵 Japanese"
+        case .ko: return "🇰🇷 Korean"
+        case .ptBR: return "🇧🇷 Portuguese (Brazil)"
+        case .zhHans: return "🇨🇳 Simplified Chinese"
+        case .es: return "🇪🇸 Spanish"
         case .zhHant: return "🇹🇼 Traditional Chinese"
+        case .vi: return "🇻🇳 Vietnamese"
         }
     }
 
     // OCR currently supports Japanese and English as source languages only.
-    static let sourceLanguages: [Language] = [.ja, .en]
+    static let sourceLanguages: [Language] = [.en, .ja]
 
+    static let targetLanguages: [Language] = [
+        .en,
+        .fr,
+        .de,
+        .id,
+        .ja,
+        .ko,
+        .ptBR,
+        .zhHans,
+        .es,
+        .zhHant,
+        .vi
+    ]
 }
 
 enum TranslationEngine: String, CaseIterable, Identifiable, Codable {

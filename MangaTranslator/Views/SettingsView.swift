@@ -270,7 +270,7 @@ struct SettingsView: View {
                     }
                 }
                 Picker("Target Language", selection: $preferences.targetLanguage) {
-                    ForEach(Language.allCases) { lang in
+                    ForEach(Language.targetLanguages) { lang in
                         Text(lang.displayName).tag(lang)
                     }
                 }

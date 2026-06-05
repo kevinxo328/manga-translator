@@ -102,7 +102,15 @@ struct DeepLTranslationService: TranslationService {
         switch language {
         case .ja: return "JA"
         case .en: return "EN"
+        case .fr: return "FR"
+        case .de: return "DE"
+        case .id: return "ID"
+        case .ko: return "KO"
+        case .ptBR: return "PT-BR"
+        case .zhHans: return "ZH-HANS"
+        case .es: return "ES"
         case .zhHant: return "ZH-HANT"
+        case .vi: return "VI"
         }
     }
 }

@@ -100,18 +100,20 @@ extension URLRequest {
         }
         return data
     }
+
+    func jsonMockBody() -> [String: Any] {
+        (try? JSONSerialization.jsonObject(with: readMockBody()) as? [String: Any]) ?? [:]
+    }
 }
 
 // MARK: - KeychainService test factory
 
 extension KeychainService {
     /// Builds a `KeychainService` that returns the given value for every
-    /// `retrieve(for:)` call. The static keychain cache is class-shared, but
-    /// the value returned by the mocked closure does not affect correctness
-    /// in provider HTTP tests because the mocked URL session ignores the
-    /// supplied credential — so cross-test races on the cache are benign.
+    /// `retrieve(for:)` call without touching the shared production cache.
     static func mocked(returning value: String) -> KeychainService {
         var service = KeychainService()
+        service.usesCache = false
         let valueData = Data(value.utf8) as CFData
         service.secItemCopyMatching = { _, resultPtr in
             resultPtr?.pointee = valueData

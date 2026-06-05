@@ -70,6 +70,14 @@ struct LLMPromptTests {
 
         #expect(prompt.lowercased().contains("echo"))
     }
+
+    @Test("systemPrompt uses expanded language display names")
+    func systemPromptUsesExpandedLanguageDisplayNames() {
+        let prompt = LLMPrompt.systemPrompt(from: .en, to: .ptBR)
+
+        #expect(prompt.contains("🇺🇸 English"))
+        #expect(prompt.contains("🇧🇷 Portuguese (Brazil)"))
+    }
 }
 
 @Suite("LLMResponseParser")

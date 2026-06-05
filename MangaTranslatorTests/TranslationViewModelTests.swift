@@ -1960,9 +1960,8 @@ final class TranslationViewModelTests: XCTestCase {
         vm.applyEditAction(.move(id: a.id, from: a.boundingBox, to: moved))
 
         let task = Task { await vm.commitEditSession() }
-        while !vm.isCommittingEditSession {
-            await Task.yield()
-        }
+        await translator.waitUntilTranslateStarted()
+        XCTAssertTrue(vm.isCommittingEditSession)
         let snapshot = vm.editSession
 
         vm.applyEditAction(.delete(b))
@@ -1982,7 +1981,7 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(vm.editSession?.undoStack.count, snapshot?.undoStack.count)
         XCTAssertEqual(vm.editSession?.redoStack.count, snapshot?.redoStack.count)
 
-        translator.release()
+        await translator.release()
         await task.value
     }
 
@@ -2204,11 +2203,14 @@ private final class RecordingTranslationService: TranslationService, @unchecked 
 
 private final class BlockingTranslationService: TranslationService, @unchecked Sendable {
     var engine: TranslationEngine { .githubCopilot }
-    private var continuation: CheckedContinuation<Void, Never>?
+    private let gate = BlockingTranslationGate()
 
-    func release() {
-        continuation?.resume()
-        continuation = nil
+    func waitUntilTranslateStarted() async {
+        await gate.waitUntilTranslateStarted()
+    }
+
+    func release() async {
+        await gate.release()
     }
 
     func translate(
@@ -2217,9 +2219,7 @@ private final class BlockingTranslationService: TranslationService, @unchecked S
         to target: Language,
         context: TranslationContext
     ) async throws -> TranslationOutput {
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
+        await gate.waitForRelease()
         let translated = bubbles.map {
             TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
         }
@@ -2233,6 +2233,38 @@ private final class BlockingTranslationService: TranslationService, @unchecked S
         priorContext: TranslationContext
     ) async throws -> [BatchPageOutput] {
         []
+    }
+}
+
+private actor BlockingTranslationGate {
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private var startContinuations: [CheckedContinuation<Void, Never>] = []
+    private var didStart = false
+
+    func waitUntilTranslateStarted() async {
+        if didStart { return }
+        await withCheckedContinuation { continuation in
+            if didStart {
+                continuation.resume()
+            } else {
+                startContinuations.append(continuation)
+            }
+        }
+    }
+
+    func waitForRelease() async {
+        await withCheckedContinuation { continuation in
+            releaseContinuation = continuation
+            didStart = true
+            let continuations = startContinuations
+            startContinuations = []
+            continuations.forEach { $0.resume() }
+        }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }
 

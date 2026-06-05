@@ -102,7 +102,15 @@ struct GoogleTranslationService: TranslationService {
         switch language {
         case .ja: return "ja"
         case .en: return "en"
+        case .fr: return "fr"
+        case .de: return "de"
+        case .id: return "id"
+        case .ko: return "ko"
+        case .ptBR: return "pt-BR"
+        case .zhHans: return "zh-CN"
+        case .es: return "es"
         case .zhHant: return "zh-TW"
+        case .vi: return "vi"
         }
     }
 }

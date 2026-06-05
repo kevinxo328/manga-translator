@@ -12,18 +12,26 @@ The system SHALL define a `TranslationService` protocol that all translation bac
 - **THEN** it conforms to the `TranslationService` protocol and can be used interchangeably
 
 ### Requirement: Support DeepL translation backend
-The system SHALL support DeepL API as a translation backend. DeepL SHALL translate each bubble independently via the DeepL REST API.
+The system SHALL support DeepL API as a translation backend. DeepL SHALL translate each bubble independently via the DeepL REST API. DeepL language-code mapping SHALL support every language in the target language list.
 
 #### Scenario: DeepL translates Japanese to Traditional Chinese
 - **WHEN** user selects DeepL engine and translates a page from Japanese to Traditional Chinese
 - **THEN** each bubble is sent to DeepL API and the translated text is returned
 
+#### Scenario: DeepL maps expanded target languages
+- **WHEN** user selects any supported target language
+- **THEN** DeepL requests SHALL use the provider language code for that target language
+
 ### Requirement: Support Google Translate backend
-The system SHALL support Google Cloud Translation API as a translation backend.
+The system SHALL support Google Cloud Translation API as a translation backend. Google language-code mapping SHALL support every language in the target language list.
 
 #### Scenario: Google translates English to Japanese
 - **WHEN** user selects Google engine and translates a page from English to Japanese
 - **THEN** each bubble is sent to Google Cloud Translation API and the translated text is returned
+
+#### Scenario: Google maps expanded target languages
+- **WHEN** user selects any supported target language
+- **THEN** Google Translate requests SHALL use the provider language code for that target language
 
 ### Requirement: Support OpenAI LLM translation backend
 The system SHALL support OpenAI API (GPT models) as a translation backend. The system SHALL send all bubbles on a page in a single request with positional context and a system prompt instructing manga-style translation. The user prompt SHALL use each bubble's original `bubble.index` (not enumeration offset) as the `index` field. The system prompt SHALL instruct the LLM to echo back the `index` field exactly as given without reordering. The system prompt SHALL additionally include glossary terms and recent page context. The response SHALL be in JSON format with the extended `detected_terms` field.
@@ -40,12 +48,13 @@ The system SHALL support OpenAI API (GPT models) as a translation backend. The s
 - **WHEN** bubbles with indices [0, 2, 3] are sent (after punctuation filtering)
 - **THEN** the response contains exactly indices [0, 2, 3], not [0, 1, 2]
 
-### Requirement: Four translation directions
-The system SHALL support the following four translation directions: Japanese → English, Japanese → Traditional Chinese, English → Japanese, English → Traditional Chinese. Traditional Chinese is available as a target language only and SHALL NOT appear as a source language option.
+### Requirement: Supported translation languages
+The system SHALL support English and Japanese as source languages. The system SHALL support English, French, German, Indonesian, Japanese, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, Traditional Chinese, and Vietnamese as target languages. Source and target language lists SHALL be sorted A-Z by English display name. Any valid combination SHALL be selectable, including same-language pairs; same-language execution behavior is owned by the pipeline skip optimization capability.
 
 #### Scenario: All language pairs available
 - **WHEN** user opens the language selection UI
-- **THEN** the source language dropdown contains Japanese and English only; the target language dropdown contains Japanese, English, and Traditional Chinese; any valid combination is selectable (except same source and target)
+- **THEN** the source language dropdown contains English and Japanese in that order
+- **AND** the target language dropdown contains English, French, German, Indonesian, Japanese, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, Traditional Chinese, and Vietnamese in that order
 
 ### Requirement: Support GitHub Copilot translation backend
 The system SHALL support GitHub Copilot as a translation backend. The engine SHALL read the OAuth token from the local keychain entry stored by the Copilot CLI (`copilot-cli` service). The engine SHALL call `api.individual.githubcopilot.com` (for Individual accounts) or `api.githubcopilot.com` (for Business/Enterprise accounts) using the OpenAI-compatible chat completions endpoint with the `Copilot-Integration-Id: vscode-chat` header and `X-GitHub-Api-Version: 2022-11-28` header. The engine SHALL use the same LLM prompt, JSON parsing, and retry logic as the OpenAI backend. If the Copilot CLI is not installed or not logged in, the system SHALL throw `TranslationError.missingAPIKey(.githubCopilot)`.

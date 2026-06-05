@@ -16,6 +16,39 @@ struct DeepLTranslationServiceTests {
         BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
     }
 
+    @Test("DeepL request body uses provider language codes for every target language")
+    func deepLRequestBodyLanguageCodes() async throws {
+        let expectedCodes: [(Language, String)] = [
+            (.en, "EN"),
+            (.fr, "FR"),
+            (.de, "DE"),
+            (.id, "ID"),
+            (.ja, "JA"),
+            (.ko, "KO"),
+            (.ptBR, "PT-BR"),
+            (.zhHans, "ZH-HANS"),
+            (.es, "ES"),
+            (.zhHant, "ZH-HANT"),
+            (.vi, "VI")
+        ]
+
+        for (language, expectedCode) in expectedCodes {
+            let session = ProviderHTTPMockURLProtocol.makeSession { request in
+                let body = request.jsonMockBody()
+                #expect(body["source_lang"] as? String == "JA")
+                #expect(body["target_lang"] as? String == expectedCode)
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                let data = Data(#"{"translations":[{"text":"ok"}]}"#.utf8)
+                return (response, data)
+            }
+            defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+            let service = makeService(session: session)
+            let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: language, context: .empty)
+            #expect(output.bubbles.first?.translatedText == "ok")
+        }
+    }
+
     @Test("DeepL 456 with top-level message yields sanitized error")
     func deepLQuotaError() async throws {
         let body = Data(#"{"message":"Quota for this billing period has been exceeded"}"#.utf8)
