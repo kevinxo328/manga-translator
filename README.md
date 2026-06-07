@@ -17,10 +17,23 @@ A native macOS application that automatically detects, recognizes, and translate
 
 ## Supported Languages
 
-| Source   | OCR Method                              | Target                        |
-| -------- | --------------------------------------- | ----------------------------- |
-| English  | Manga-OCR (ONNX), optional PaddleOCR-VL | English, French, German, Indonesian, Japanese, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, Traditional Chinese, Vietnamese |
-| Japanese | Manga-OCR (ONNX), optional PaddleOCR-VL | English, French, German, Indonesian, Japanese, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, Traditional Chinese, Vietnamese |
+| Source            | OCR Method                              |
+| ----------------- | --------------------------------------- |
+| English, Japanese | Manga-OCR (ONNX), optional PaddleOCR-VL |
+
+Target languages:
+
+- English
+- French
+- German
+- Indonesian
+- Japanese
+- Korean
+- Portuguese (Brazil)
+- Simplified Chinese
+- Spanish
+- Traditional Chinese
+- Vietnamese
 
 ## Installation
 
