@@ -255,16 +255,35 @@ final class GlossaryService {
     // MARK: - Auto-detection: insert only if source term doesn't already exist
 
     func insertDetectedTerms(_ terms: [GlossaryTerm], glossaryID: String) throws {
-        guard isAvailable else { throw CacheError.unavailable }
+        guard isAvailable, let db else { throw CacheError.unavailable }
         let existing = listTerms(glossaryID: glossaryID)
         let existingSources = Set(existing.map { $0.sourceTerm })
-        for term in terms where !existingSources.contains(term.sourceTerm) {
-            _ = try addTerm(
-                glossaryID: glossaryID,
-                sourceTerm: term.sourceTerm,
-                targetTerm: term.targetTerm,
-                autoDetected: true
-            )
+        let newTerms = terms.filter { !existingSources.contains($0.sourceTerm) }
+        guard !newTerms.isEmpty else { return }
+
+        let beginResult = sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil)
+        if beginResult != SQLITE_OK {
+            throw CacheService.makeError(db: db, operation: "GlossaryService.insertDetectedTerms.begin")
+        }
+
+        do {
+            for term in newTerms {
+                _ = try addTerm(
+                    glossaryID: glossaryID,
+                    sourceTerm: term.sourceTerm,
+                    targetTerm: term.targetTerm,
+                    autoDetected: true
+                )
+            }
+            let commitResult = sqlite3_exec(db, "COMMIT", nil, nil, nil)
+            if commitResult != SQLITE_OK {
+                let commitError = CacheService.makeError(db: db, operation: "GlossaryService.insertDetectedTerms.commit")
+                sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+                throw commitError
+            }
+        } catch {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            throw error
         }
     }
 }

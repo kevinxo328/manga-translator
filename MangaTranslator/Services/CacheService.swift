@@ -154,6 +154,8 @@ final class CacheService: CacheServiceProtocol {
             created_at REAL NOT NULL,
             FOREIGN KEY (glossary_id) REFERENCES glossaries(id)
         );
+        CREATE INDEX IF NOT EXISTS idx_terms_glossary
+            ON glossary_terms(glossary_id);
         """
         sqlite3_exec(db, sql, nil, nil, nil)
         ensureTranslationCacheColumns()
