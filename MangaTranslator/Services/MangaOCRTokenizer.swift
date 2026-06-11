@@ -11,20 +11,8 @@ final class MangaOCRTokenizer: Sendable {
     static let sepTokenId = 3     // [SEP] = eos_token_id
 
     init() throws {
-        guard let vocabURL = Bundle.main.url(forResource: "vocab", withExtension: "txt", subdirectory: nil) else {
-            // Try Models subdirectory
-            guard let vocabURL = Bundle.main.url(forResource: "vocab", withExtension: "txt") else {
-                throw MangaOCRError.vocabNotFound
-            }
-            let content = try String(contentsOf: vocabURL, encoding: .utf8)
-            let tokens = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
-            self.vocab = tokens
-            var map = [String: Int]()
-            for (i, token) in tokens.enumerated() {
-                map[token] = i
-            }
-            self.idMap = map
-            return
+        guard let vocabURL = Bundle.main.url(forResource: "vocab", withExtension: "txt") else {
+            throw MangaOCRError.vocabNotFound
         }
         let content = try String(contentsOf: vocabURL, encoding: .utf8)
         let tokens = content.components(separatedBy: .newlines).filter { !$0.isEmpty }

@@ -54,11 +54,7 @@ final class TranslationViewModel: ObservableObject {
         [.image, .folder, .zip, UTType(filenameExtension: "cbz") ?? .zip]
     }
 
-    #if arch(arm64)
     var ocrRouter: OCRRouter
-    #else
-    var ocrRouter: OCRRouter
-    #endif
     private let cacheService: any CacheServiceProtocol
     private let keychainService = KeychainService()
     private var cancellables = Set<AnyCancellable>()

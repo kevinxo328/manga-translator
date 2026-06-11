@@ -29,6 +29,12 @@ enum BaseURLValidatorError: LocalizedError {
 enum BaseURLValidator {
     private static let localHosts: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1"]
 
+    // Strips trailing slashes so `appendingPathComponent("chat/completions")`
+    // on the validated URL never produces a double slash.
+    static func sanitized(_ urlString: String) -> String {
+        String(urlString.reversed().drop(while: { $0 == "/" }).reversed())
+    }
+
     @discardableResult
     static func validate(_ urlString: String) throws -> URL {
         let trimmed = urlString.trimmingCharacters(in: .whitespaces)

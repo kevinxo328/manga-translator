@@ -123,6 +123,19 @@ struct BaseURLValidatorTests {
         }
     }
 
+    // MARK: - Trailing-slash sanitization
+
+    @Test("sanitized strips trailing slashes so appendingPathComponent yields no double slash")
+    func sanitizedStripsTrailingSlashes() {
+        #expect(BaseURLValidator.sanitized("https://api.openai.com/v1/") == "https://api.openai.com/v1")
+        #expect(BaseURLValidator.sanitized("https://api.openai.com/v1///") == "https://api.openai.com/v1")
+    }
+
+    @Test("sanitized leaves URL without trailing slash unchanged")
+    func sanitizedLeavesCleanURLUnchanged() {
+        #expect(BaseURLValidator.sanitized("https://api.openai.com/v1") == "https://api.openai.com/v1")
+    }
+
     // MARK: - URL construction
 
     @Test("validate returns URL that can be extended with /chat/completions")

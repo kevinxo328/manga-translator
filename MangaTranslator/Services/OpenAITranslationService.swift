@@ -26,7 +26,7 @@ struct OpenAITranslationService: TranslationService {
         to target: Language,
         context: TranslationContext
     ) async throws -> TranslationOutput {
-        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        let sanitizedBaseURL = BaseURLValidator.sanitized(baseURL)
         try BaseURLValidator.validate(sanitizedBaseURL)
 
         guard let apiKey = keychainService.retrieve(for: .openAI) else {
@@ -74,7 +74,7 @@ struct OpenAITranslationService: TranslationService {
         to target: Language,
         priorContext: TranslationContext
     ) async throws -> [BatchPageOutput] {
-        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        let sanitizedBaseURL = BaseURLValidator.sanitized(baseURL)
         try BaseURLValidator.validate(sanitizedBaseURL)
 
         guard let apiKey = keychainService.retrieve(for: .openAI) else {
@@ -124,7 +124,7 @@ struct OpenAITranslationService: TranslationService {
     }
 
     private func callAPI(systemPrompt: String, userPrompt: String, apiKey: String) async throws -> String {
-        let sanitizedBaseURL = String(baseURL.reversed().drop(while: { $0 == "/" }).reversed())
+        let sanitizedBaseURL = BaseURLValidator.sanitized(baseURL)
         let sanitizedModel = String(model.drop(while: { $0 == "/" }))
         let url = try BaseURLValidator.validate(sanitizedBaseURL).appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
