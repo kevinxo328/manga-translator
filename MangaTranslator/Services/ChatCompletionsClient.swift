@@ -17,6 +17,25 @@ struct ChatCompletionsClient {
     private let maxRetries = 2
     private var endpointDescription: String { endpoint.absoluteString }
 
+    /// Shared sampling temperature for all LLM translation requests.
+    static let temperature: Double = 0.3
+
+    /// Loose upper bound on response tokens: a base for JSON scaffolding and
+    /// the optional detected_terms block, plus per-page and per-bubble
+    /// allowances. The per-bubble allowance is sized for token-heavy target
+    /// languages (CJK tokenizes at ~1-2 tokens per character) so a legitimate
+    /// translation is never truncated; the cap only exists to bound the cost
+    /// of runaway repetition loops.
+    ///
+    /// Deliberately unclamped: large batches can exceed the output limit of
+    /// some models (e.g. 16,384), where certain providers reject the request
+    /// with HTTP 400 instead of clamping. We accept that trade-off to avoid
+    /// ever truncating output on high-limit models; revisit if a capped model
+    /// needs to be supported.
+    static func estimatedMaxTokens(bubbleCount: Int, pageCount: Int) -> Int {
+        4096 + 512 * pageCount + 1024 * bubbleCount
+    }
+
     init(
         endpoint: URL,
         model: String,
@@ -54,7 +73,8 @@ struct ChatCompletionsClient {
             let responseText = try await callAPI(
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                authToken: authToken
+                authToken: authToken,
+                maxTokens: Self.estimatedMaxTokens(bubbleCount: bubbles.count, pageCount: 1)
             )
 
             if let (parsed, detected) = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
@@ -99,7 +119,11 @@ struct ChatCompletionsClient {
                 let responseText = try await callAPI(
                     systemPrompt: systemPrompt,
                     userPrompt: userPrompt,
-                    authToken: authToken
+                    authToken: authToken,
+                    maxTokens: Self.estimatedMaxTokens(
+                        bubbleCount: pageInputs.reduce(0) { $0 + $1.bubbles.count },
+                        pageCount: pageInputs.count
+                    )
                 )
                 let outputs = try LLMResponseParser.parseMultiPage(responseText, pageInputs: pageInputs)
                 DebugLogger.shared.logAPIDiagnostic(
@@ -125,7 +149,7 @@ struct ChatCompletionsClient {
         throw lastError ?? TranslationError.invalidResponse
     }
 
-    func callAPI(systemPrompt: String, userPrompt: String, authToken: String) async throws -> String {
+    func callAPI(systemPrompt: String, userPrompt: String, authToken: String, maxTokens: Int) async throws -> String {
         let url = endpoint.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -141,7 +165,8 @@ struct ChatCompletionsClient {
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt]
             ],
-            "temperature": 0.3
+            "temperature": Self.temperature,
+            "max_tokens": maxTokens
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

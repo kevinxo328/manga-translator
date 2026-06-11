@@ -337,6 +337,50 @@ struct CopilotTranslationServiceBatchTests {
         #expect(counter.count == 1)
     }
 
+    @Test("request body caps max_tokens and uses the shared temperature")
+    func setsMaxTokensAndTemperature() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, validMultiPageResponseBody(translations: [("1", "T1"), ("2", "T2")]))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        _ = try await service.translateBatch(
+            pageInputs: makeBatchInputs(["1", "2"]),
+            from: .ja,
+            to: .en,
+            priorContext: .empty,
+            token: "copilot-token-test"
+        )
+
+        let body = try #require(counter.capturedBodies.first)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        // Without max_tokens a runaway repetition loop bills up to the model's
+        // full output window; the request must always carry an explicit cap.
+        let maxTokens = try #require(json["max_tokens"] as? Int)
+        #expect(maxTokens == ChatCompletionsClient.estimatedMaxTokens(bubbleCount: 2, pageCount: 2))
+        let temperature = try #require(json["temperature"] as? Double)
+        #expect(temperature == ChatCompletionsClient.temperature)
+        #expect(temperature == 0.3)
+    }
+
+    @Test("estimatedMaxTokens scales with bubbles and keeps per-bubble headroom")
+    func estimatedMaxTokensScaling() {
+        // The cap exists to bound runaway cost, but it must never truncate a
+        // legitimate full-page translation: each extra bubble needs enough
+        // headroom for its translated text plus JSON scaffolding, including
+        // token-heavy target languages (CJK ~1-2 tokens per character).
+        let single = ChatCompletionsClient.estimatedMaxTokens(bubbleCount: 1, pageCount: 1)
+        let busyPage = ChatCompletionsClient.estimatedMaxTokens(bubbleCount: 31, pageCount: 1)
+        #expect((busyPage - single) / 30 >= 1024)
+        // Even an empty page keeps a positive base for JSON scaffolding and
+        // the optional detected_terms block.
+        #expect(ChatCompletionsClient.estimatedMaxTokens(bubbleCount: 0, pageCount: 1) > 0)
+    }
+
     @Test("translateBatch propagates cancellation without retry or fallback")
     func doesNotRetryOrFallbackOnCancellation() async throws {
         let counter = BatchRequestCounter()

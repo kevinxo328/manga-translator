@@ -83,6 +83,11 @@ struct CopilotTranslationService: TranslationService {
     /// Internal access so provider error tests can drive the non-2xx path
     /// without requiring `CopilotEnvironment.check()` to succeed in CI.
     func callAPI(systemPrompt: String, userPrompt: String, token: String) async throws -> String {
-        try await client.callAPI(systemPrompt: systemPrompt, userPrompt: userPrompt, authToken: token)
+        try await client.callAPI(
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            authToken: token,
+            maxTokens: ChatCompletionsClient.estimatedMaxTokens(bubbleCount: 1, pageCount: 1)
+        )
     }
 }
