@@ -20,7 +20,18 @@ enum FileInputService {
             }
         }
 
-        return imageURLs.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        // Sort by the path relative to the scanned root, not the filename
+        // alone — multi-volume folders (vol1/001.jpg, vol2/001.jpg) would
+        // otherwise interleave pages from different volumes.
+        let rootPath = url.standardizedFileURL.path
+        func relativePath(_ fileURL: URL) -> String {
+            let path = fileURL.standardizedFileURL.path
+            guard path.hasPrefix(rootPath) else { return path }
+            return String(path.dropFirst(rootPath.count))
+        }
+        return imageURLs.sorted {
+            relativePath($0).localizedStandardCompare(relativePath($1)) == .orderedAscending
+        }
     }
 
     static func extractArchive(

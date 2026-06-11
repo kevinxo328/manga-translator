@@ -699,6 +699,32 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(scanned, ["page_1.png", "page_2.jpg", "page_10.jpg"])
     }
 
+    // Multi-volume folders (vol1/, vol2/, …) must keep each volume's pages
+    // together in reading order. Sorting by filename alone interleaves pages
+    // from different volumes that share the same numbering.
+    func testScanFolderKeepsVolumesTogetherInsteadOfInterleavingByFilename() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let vol1 = root.appendingPathComponent("vol1")
+        let vol2 = root.appendingPathComponent("vol2")
+        try FileManager.default.createDirectory(at: vol1, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: vol2, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = [
+            vol1.appendingPathComponent("page_1.jpg"),
+            vol1.appendingPathComponent("page_3.jpg"),
+            vol2.appendingPathComponent("page_2.jpg")
+        ]
+        for url in files {
+            try Data("x".utf8).write(to: url)
+        }
+
+        let scanned = FileInputService.scanFolder(root).map {
+            $0.pathComponents.suffix(2).joined(separator: "/")
+        }
+
+        XCTAssertEqual(scanned, ["vol1/page_1.jpg", "vol1/page_3.jpg", "vol2/page_2.jpg"])
+    }
+
     func testPageNavigationClampsAtCollectionBoundsAndClearsHighlight() {
         let vm = TranslationViewModel(preferences: makePrefs(source: .ja, target: .zhHant))
         vm.pages = [
