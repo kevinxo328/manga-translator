@@ -458,7 +458,11 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
             }
 
             // Task 5.1 — verify archive checksum BEFORE creating any install directory.
-            let actualChecksum = sha256(of: tempFile) ?? ""
+            // Hash off the main actor: the archive is multi-GB and a synchronous
+            // SHA256 here would freeze the UI (same pattern as verifyOnLaunch).
+            let actualChecksum = await Task.detached(priority: .userInitiated) { [tempFile] in
+                Self.sha256Static(of: tempFile) ?? ""
+            }.value
             DebugLogger.shared.log("Actual checksum prefix:   \(actualChecksum.prefix(16))…", level: .info, category: .modelDownload)
             guard !actualChecksum.isEmpty, actualChecksum == expectedChecksum else {
                 DebugLogger.shared.log("Checksum mismatch — expected: \(expectedChecksum.prefix(16)) actual: \(actualChecksum.prefix(16))", level: .error, category: .modelDownload)
