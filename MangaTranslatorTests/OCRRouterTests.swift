@@ -429,7 +429,7 @@ final class OCRRouterTests: XCTestCase {
         page.image = image
         viewModel.pages = [page]
 
-        await viewModel.translatePage(at: 0, bypassCache: true)
+        await viewModel.translatePage(at: 0, mode: .retranslate)
 
         if case .translated = viewModel.pages[0].state {
             // expected

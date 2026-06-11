@@ -554,7 +554,7 @@ struct ContentView: View {
             .help("Re-translate all pages using current settings")
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 guard !isEditing else { return }
-                Task { await viewModel.retranslateCurrentPage() }
+                Task { await viewModel.switchEngineForCurrentPage() }
             }
         }
     }

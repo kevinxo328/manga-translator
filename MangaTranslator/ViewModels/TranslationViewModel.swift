@@ -207,6 +207,34 @@ final class TranslationViewModel: ObservableObject {
         recentPageTranslations = []
     }
 
+    // Pipeline shape for a page translation request. `.standard` consults the
+    // cache and runs full OCR on a miss; `.retranslate` bypasses the cache and
+    // preserves any committed bubble set; `.engineSwitch` consults the new
+    // engine's cache but only trusts entries whose layout matches the committed
+    // set. See `openspec/changes/engine-switch-cache-reuse/design.md` D1.
+    enum PageTranslationMode {
+        case standard
+        case retranslate
+        case engineSwitch
+    }
+
+    // Layout comparison between a page's committed bubble set and a cached
+    // entry, used by the engine-switch cache-hit gate. Translated text is
+    // deliberately excluded: matching layouts with different translations are
+    // exactly the case the lookup exists for. Exact CGRect equality, no
+    // tolerance — same convention as the Edit Mode OCR-dirty rule. See
+    // `openspec/changes/engine-switch-cache-reuse/design.md` D2.
+    nonisolated static func layoutMatches(committed: [TranslatedBubble], cached: [TranslatedBubble]) -> Bool {
+        guard committed.count == cached.count else { return false }
+        let lhs = committed.sorted { $0.index < $1.index }
+        let rhs = cached.sorted { $0.index < $1.index }
+        return zip(lhs, rhs).allSatisfy { a, b in
+            a.index == b.index
+                && a.bubble.boundingBox == b.bubble.boundingBox
+                && a.bubble.text == b.bubble.text
+        }
+    }
+
     // Intermediate result of the page-preparation phase that happens before LLM translation.
     // Carries enough state for the finalize phase to either set the page result directly
     // (cache hit, skip, failure) or call the translation service in page-index order.
@@ -344,16 +372,16 @@ final class TranslationViewModel: ObservableObject {
     }
 
     private func translateBatch() async {
-        await runBatchPipeline(bypassCache: false)
+        await runBatchPipeline(mode: .standard)
     }
 
     // MARK: - Translation pipeline
 
-    func translatePage(at index: Int, bypassCache: Bool = false) async {
+    func translatePage(at index: Int, mode: PageTranslationMode = .standard) async {
         guard pages.indices.contains(index) else { return }
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
-        let preparation = await preparePage(at: index, bypassCache: bypassCache, service: service)
+        let preparation = await preparePage(at: index, mode: mode, service: service)
         await finalizePage(at: index, preparation: preparation, service: service, usesRecentContext: usesContext)
     }
 
@@ -364,7 +392,7 @@ final class TranslationViewModel: ObservableObject {
     // A throughput-friendlier producer/consumer pipeline is deferred. See the
     // "Deferred Optimization: Producer/Consumer LLM Pipeline" section in
     // fix-batch-recent-context-order/design.md for the trade-offs.
-    private func runBatchPipeline(bypassCache: Bool) async {
+    private func runBatchPipeline(mode: PageTranslationMode) async {
         isProcessing = true
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
@@ -385,7 +413,7 @@ final class TranslationViewModel: ObservableObject {
                         guard let self else {
                             return (i, .failed(message: "view model deallocated", restoreFrom: nil))
                         }
-                        let prep = await self.preparePage(at: i, bypassCache: bypassCache, service: service)
+                        let prep = await self.preparePage(at: i, mode: mode, service: service)
                         return (i, prep)
                     }
                 }
@@ -444,7 +472,7 @@ final class TranslationViewModel: ObservableObject {
                     started += 1
                     group.addTask { [weak self] in
                         guard let self else { return }
-                        let prep = await self.preparePage(at: i, bypassCache: bypassCache, service: service)
+                        let prep = await self.preparePage(at: i, mode: mode, service: service)
                         await self.finalizePage(at: i, preparation: prep, service: service, usesRecentContext: false)
                     }
                 }
@@ -456,7 +484,7 @@ final class TranslationViewModel: ObservableObject {
     // Page preparation: does everything up to (but not including) the translation API call.
     // Returns intermediate state so the finalize phase can serialize translation calls
     // for context-consuming engines without holding up OCR work for other pages.
-    private func preparePage(at index: Int, bypassCache: Bool, service: any TranslationService) async -> PagePreparation {
+    private func preparePage(at index: Int, mode: PageTranslationMode, service: any TranslationService) async -> PagePreparation {
         guard pages.indices.contains(index) else {
             return .failed(message: "invalid page index", restoreFrom: nil)
         }
@@ -465,7 +493,7 @@ final class TranslationViewModel: ObservableObject {
         pages[index].state = .processing
 
         let restoreFrom: MangaPage?
-        if bypassCache, case .translated = previousPage.state {
+        if mode != .standard, case .translated = previousPage.state {
             restoreFrom = previousPage
         } else {
             restoreFrom = nil
@@ -519,13 +547,26 @@ final class TranslationViewModel: ObservableObject {
             return .failed(message: "Failed to read image data", restoreFrom: restoreFrom)
         }
 
-        if !bypassCache, let cached = cacheService.lookup(
+        // `.standard` and `.engineSwitch` consult the cache; `.retranslate`
+        // never does. An engine switch only trusts a cached entry whose layout
+        // matches the page's committed bubble set — a stale layout (bubbles
+        // drawn, moved, deleted, or reordered since the entry was written)
+        // falls through to the preserve-and-retranslate branch below. See
+        // `openspec/changes/engine-switch-cache-reuse/design.md` D2/D3.
+        if mode != .retranslate, let cached = cacheService.lookup(
             imageHash: imageHash,
             source: preferences.sourceLanguage,
             target: preferences.targetLanguage,
             engine: preferences.translationEngine
         ) {
-            return .cacheHit(bubbles: cached.bubbles)
+            if case .translated(let existing) = previousPage.state, !existing.isEmpty, mode == .engineSwitch {
+                if Self.layoutMatches(committed: existing, cached: cached.bubbles) {
+                    return .cacheHit(bubbles: cached.bubbles)
+                }
+                // Stale layout: fall through to the preserve branch.
+            } else {
+                return .cacheHit(bubbles: cached.bubbles)
+            }
         }
 
         // Re-translate path: when the page already has a committed
@@ -536,7 +577,7 @@ final class TranslationViewModel: ObservableObject {
         // all survive engine switches and explicit Re-translate clicks.
         // See `openspec/changes/manual-bubble-editing/specs/retranslate/spec.md`
         // (MODIFIED requirement) and `design.md` §D5.
-        if bypassCache, case .translated(let existing) = previousPage.state, !existing.isEmpty {
+        if mode != .standard, case .translated(let existing) = previousPage.state, !existing.isEmpty {
             var preservedClusters = existing
                 .sorted { $0.index < $1.index }
                 .map { $0.bubble }
@@ -854,13 +895,21 @@ final class TranslationViewModel: ObservableObject {
 
     func retranslateCurrentPage() async {
         guard editSession == nil else { return }
-        await translatePage(at: currentPageIndex, bypassCache: true)
+        await translatePage(at: currentPageIndex, mode: .retranslate)
+    }
+
+    // Entry point for the toolbar engine picker's onChange. Unlike the explicit
+    // Re-translate button this consults the new engine's cache, so flipping
+    // back to a previously used engine is free when the layout still matches.
+    func switchEngineForCurrentPage() async {
+        guard editSession == nil else { return }
+        await translatePage(at: currentPageIndex, mode: .engineSwitch)
     }
 
     func retranslateAllPages() async {
         guard editSession == nil else { return }
         resetRecentContext()
-        await runBatchPipeline(bypassCache: true)
+        await runBatchPipeline(mode: .retranslate)
     }
 
     // MARK: - Navigation

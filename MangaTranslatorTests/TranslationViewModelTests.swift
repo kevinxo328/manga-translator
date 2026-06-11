@@ -6,6 +6,374 @@ import AppKit
 @MainActor
 final class TranslationViewModelTests: XCTestCase {
 
+    // MARK: - Engine-switch layout match (engine-switch-cache-reuse)
+
+    private func makeTranslated(
+        index: Int,
+        box: CGRect,
+        text: String,
+        translated: String = "t",
+        isManual: Bool = false
+    ) -> TranslatedBubble {
+        TranslatedBubble(
+            bubble: BubbleCluster(boundingBox: box, text: text, observations: [], index: index, isManual: isManual),
+            translatedText: translated,
+            index: index
+        )
+    }
+
+    func testLayoutMatchesAcceptsIdenticalLayoutWithDifferentTranslations() {
+        let committed = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "engine A"),
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b", translated: "engine A")
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "engine B"),
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b", translated: "engine B")
+        ]
+        XCTAssertTrue(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "Same layout with different translated text must match — differing translations are the point of the lookup"
+        )
+    }
+
+    func testLayoutMatchesIsArrayOrderInsensitive() {
+        let committed = [
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b"),
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a"),
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "b")
+        ]
+        XCTAssertTrue(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "Comparison must sort by index, not rely on array order"
+        )
+    }
+
+    func testLayoutMatchesRejectsAddedBubble() {
+        let committed = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a"),
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "drawn", isManual: true)
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")
+        ]
+        XCTAssertFalse(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "A bubble drawn after the cache entry was written must invalidate the match"
+        )
+    }
+
+    func testLayoutMatchesRejectsDeletedBubble() {
+        let committed = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a"),
+            makeTranslated(index: 1, box: CGRect(x: 20, y: 0, width: 10, height: 10), text: "deleted")
+        ]
+        XCTAssertFalse(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "A stale cache entry containing a deleted bubble must not be used — it would resurrect the bubble"
+        )
+    }
+
+    func testLayoutMatchesRejectsMovedBoundingBox() {
+        let committed = [
+            makeTranslated(index: 0, box: CGRect(x: 5, y: 5, width: 10, height: 10), text: "a", isManual: true)
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")
+        ]
+        XCTAssertFalse(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "A moved bubble must invalidate the match (exact CGRect equality, no tolerance)"
+        )
+    }
+
+    func testLayoutMatchesRejectsReorderedIndices() {
+        // Reorder-only edits flip no isManual flag; the index assignment is the
+        // only difference. This is the case the isManual-based predicate misses.
+        let boxA = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let boxB = CGRect(x: 20, y: 0, width: 10, height: 10)
+        let committed = [
+            makeTranslated(index: 0, box: boxB, text: "b"),
+            makeTranslated(index: 1, box: boxA, text: "a")
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: boxA, text: "a"),
+            makeTranslated(index: 1, box: boxB, text: "b")
+        ]
+        XCTAssertFalse(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "A reading-order change must invalidate the match even though geometry and text are unchanged"
+        )
+    }
+
+    func testLayoutMatchesRejectsDifferentSourceText() {
+        let committed = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "fresh OCR")
+        ]
+        let cached = [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "old OCR")
+        ]
+        XCTAssertFalse(
+            TranslationViewModel.layoutMatches(committed: committed, cached: cached),
+            "Differing source text means the cached translations describe different content"
+        )
+    }
+
+    // MARK: - Engine-switch preparation path (engine-switch-cache-reuse)
+
+    private final class StubCacheService: CacheServiceProtocol, @unchecked Sendable {
+        var isAvailable: Bool = true
+        let glossaryService = GlossaryService(db: nil, isAvailable: false)
+        var lookupResult: CacheService.CachedTranslationResult?
+        private(set) var lookupCount = 0
+        private(set) var storedBubbleSets: [[TranslatedBubble]] = []
+
+        func lookup(
+            imageHash: String, source: Language, target: Language, engine: TranslationEngine
+        ) -> CacheService.CachedTranslationResult? {
+            lookupCount += 1
+            return lookupResult
+        }
+        func translationCacheSize() -> Int64 { 0 }
+        func store(
+            imageHash: String, source: Language, target: Language,
+            engine: TranslationEngine, bubbles: [TranslatedBubble]
+        ) throws {
+            storedBubbleSets.append(bubbles)
+        }
+        func addHistory(path: String, pageCount: Int?) throws {}
+        func clearAll() throws {}
+    }
+
+    // Router whose recognizer throws: any test reaching OCR errors the page,
+    // so a final `.translated` state proves OCR never ran.
+    private func makeThrowingOCRRouter() async -> OCRRouter {
+        let service = MangaOCRService(detector: MockComicTextDetectorSingle())
+        await service.setRecognizer(ThrowingOCRRecognizer())
+        return OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.unsupported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
+            paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
+        )
+    }
+
+    private func makeCommittedPage(_ bubbles: [TranslatedBubble], hash: String = "hash-1") -> MangaPage {
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/engine-switch-test.png"))
+        page.image = makeTestImage()
+        page.imageHash = hash
+        page.state = .translated(bubbles)
+        return page
+    }
+
+    func testEngineSwitchUsesMatchingCacheWithoutOCROrAPI() async {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let box1 = CGRect(x: 20, y: 0, width: 10, height: 10)
+        let committed = [
+            makeTranslated(index: 0, box: box0, text: "a", translated: "old A"),
+            makeTranslated(index: 1, box: box1, text: "b", translated: "old A")
+        ]
+        let cache = StubCacheService()
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: box0, text: "a", translated: "cached B"),
+            makeTranslated(index: 1, box: box1, text: "b", translated: "cached B")
+        ])
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated from cache hit, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["cached B", "cached B"], "Cached translations must be displayed")
+        XCTAssertFalse(translationCalled, "Matching cache hit must not call the translation service")
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty, "Cache hit must not write back to the cache")
+        XCTAssertEqual(cache.lookupCount, 1, "Engine switch must consult the new engine's cache")
+    }
+
+    func testEngineSwitchCacheMissPreservesBubblesAndTranslatesOnly() async {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let box1 = CGRect(x: 20, y: 0, width: 10, height: 10)
+        let committed = [
+            makeTranslated(index: 0, box: box0, text: "a", translated: "old"),
+            makeTranslated(index: 1, box: box1, text: "b", translated: "old")
+        ]
+        let cache = StubCacheService() // lookupResult = nil → miss
+        var translateCallCount = 0
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translateCallCount += 1 }),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated after re-translate on miss, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(translateCallCount, 1, "Cache miss must re-run translation exactly once")
+        XCTAssertEqual(result.map(\.bubble.boundingBox), [box0, box1], "Committed geometry must be preserved verbatim")
+        XCTAssertEqual(result.map(\.bubble.text), ["a", "b"], "Committed OCR text must be preserved verbatim")
+        XCTAssertEqual(result.map(\.index), [0, 1], "Committed reading order must be preserved verbatim")
+        XCTAssertEqual(cache.storedBubbleSets.count, 1, "Result must be written to the new engine's cache")
+    }
+
+    func testEngineSwitchStaleCacheLackingManualBubbleIsIgnored() async {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let box1 = CGRect(x: 20, y: 0, width: 10, height: 10)
+        let drawnBox = CGRect(x: 40, y: 0, width: 10, height: 10)
+        let committed = [
+            makeTranslated(index: 0, box: box0, text: "a"),
+            makeTranslated(index: 1, box: box1, text: "b"),
+            makeTranslated(index: 2, box: drawnBox, text: "drawn", isManual: true)
+        ]
+        let cache = StubCacheService()
+        // Stale entry written before the user drew the third bubble.
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: box0, text: "a", translated: "stale"),
+            makeTranslated(index: 1, box: box1, text: "b", translated: "stale")
+        ])
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(translationCalled, "Stale cache layout must fall back to re-translation")
+        XCTAssertEqual(result.count, 3, "The drawn manual bubble must survive the engine switch")
+        XCTAssertEqual(result.map(\.bubble.isManual), [false, false, true])
+        XCTAssertEqual(cache.storedBubbleSets.count, 1, "Edited layout must overwrite the stale cache entry")
+    }
+
+    func testEngineSwitchReorderOnlyStaleCacheIsIgnored() async {
+        // Reorder-only edits flip no isManual flag — the stale entry differs
+        // only in index assignment. See design.md D2.
+        let boxA = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let boxB = CGRect(x: 20, y: 0, width: 10, height: 10)
+        let committed = [
+            makeTranslated(index: 0, box: boxB, text: "b"),
+            makeTranslated(index: 1, box: boxA, text: "a")
+        ]
+        let cache = StubCacheService()
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: boxA, text: "a", translated: "stale"),
+            makeTranslated(index: 1, box: boxB, text: "b", translated: "stale")
+        ])
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        }
+        XCTAssertTrue(translationCalled, "Reordered layout must fall back to re-translation")
+        XCTAssertEqual(
+            result.sorted { $0.index < $1.index }.map(\.bubble.text), ["b", "a"],
+            "The user's reading order must be preserved, not the stale cached order"
+        )
+    }
+
+    func testEngineSwitchOnPendingPageUsesCacheHit() async {
+        let cache = StubCacheService()
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "cached")
+        ])
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/engine-switch-pending.png"))
+        page.image = makeTestImage()
+        page.imageHash = "hash-pending"
+        vm.pages = [page] // state stays .pending
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated from cache hit on pending page, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["cached"])
+        XCTAssertFalse(translationCalled, "Pending-page cache hit must not call the translation service")
+    }
+
+    func testEngineSwitchOnPendingPageMissRunsFullOCR() async {
+        let cache = StubCacheService() // miss
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeRouter(recognizerText: "detected"),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/engine-switch-pending-miss.png"))
+        page.image = makeTestImage()
+        page.imageHash = "hash-pending-miss"
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated after full OCR fallback, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.bubble.text), ["detected"], "Pending page with cache miss must run the full OCR pipeline")
+        XCTAssertTrue(translationCalled)
+    }
+
+    func testEngineSwitchTranslationFailureRestoresPreviousState() async {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let committed = [makeTranslated(index: 0, box: box0, text: "a", translated: "old", isManual: true)]
+        let cache = StubCacheService() // miss → must re-translate
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: QueueingTranslationService(results: [.failure(URLError(.notConnectedToInternet))]),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.translatePage(at: 0, mode: .engineSwitch)
+
+        guard case .translated(let restored) = vm.pages[0].state else {
+            return XCTFail("Failed engine switch must restore previous .translated state, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(restored.map(\.translatedText), ["old"], "Previous translations must be restored on failure")
+        XCTAssertEqual(restored.map(\.bubble.isManual), [true], "isManual flags must survive the failed engine switch")
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty, "Failed translation must not write to the cache")
+    }
+
     // MARK: - Glossary selection
 
     func testCreateGlossarySelectsNewGlossary() throws {
@@ -88,7 +456,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         // OCR skipped → state is .translated, not .error
         guard case .translated(let bubbles) = vm.pages[0].state else {
@@ -116,7 +484,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         await logFixture.logger.flush()
 
         var filter = DebugLogFilter()
@@ -149,7 +517,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         await logFixture.logger.flush()
 
         var filter = DebugLogFilter()
@@ -186,7 +554,7 @@ final class TranslationViewModelTests: XCTestCase {
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/empty.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         guard case .translated(let bubbles) = vm.pages[0].state else {
             return XCTFail("Expected .translated, got \(vm.pages[0].state)")
         }
@@ -203,7 +571,7 @@ final class TranslationViewModelTests: XCTestCase {
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/punct.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         guard case .translated(let bubbles) = vm.pages[0].state else {
             return XCTFail("Expected .translated, got \(vm.pages[0].state)")
         }
@@ -222,7 +590,7 @@ final class TranslationViewModelTests: XCTestCase {
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/all-meaningless.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         // Current code passthroughs punct bubbles into .translated → this assert goes red first
         guard case .translated(let bubbles) = vm.pages[0].state else {
             return XCTFail("Expected .translated, got \(vm.pages[0].state)")
@@ -239,7 +607,7 @@ final class TranslationViewModelTests: XCTestCase {
         var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/mixed.jpg"))
         page.image = makeTestImage()
         vm.pages = [page]
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         guard case .translated(let bubbles) = vm.pages[0].state else {
             return XCTFail("Expected .translated, got \(vm.pages[0].state)")
         }
@@ -266,7 +634,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         guard case .error(let message) = vm.pages[0].state else {
             return XCTFail("Expected .error after sanitized provider API failure, got \(vm.pages[0].state)")
@@ -300,7 +668,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         guard case .translated(let firstBubbles) = vm.pages[0].state else {
             return XCTFail("Expected initial translation to succeed, got \(vm.pages[0].state)")
         }
@@ -484,7 +852,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
         await logFixture.logger.flush()
 
         guard case .translated = vm.pages[0].state else {
@@ -578,7 +946,7 @@ final class TranslationViewModelTests: XCTestCase {
         page.image = makeTestImage()
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         XCTAssertEqual(translationService.contexts.last?.glossaryTerms.first?.sourceTerm, "太郎")
         XCTAssertEqual(translationService.contexts.last?.glossaryTerms.first?.targetTerm, "太郎")
@@ -596,7 +964,7 @@ final class TranslationViewModelTests: XCTestCase {
         }
 
         for index in 0..<4 {
-            await vm.translatePage(at: index, bypassCache: true)
+            await vm.translatePage(at: index, mode: .retranslate)
         }
 
         XCTAssertEqual(translationService.contexts.count, 4)
@@ -620,7 +988,7 @@ final class TranslationViewModelTests: XCTestCase {
         }
 
         for index in 0..<4 {
-            await vm.translatePage(at: index, bypassCache: true)
+            await vm.translatePage(at: index, mode: .retranslate)
         }
 
         // Page 2 OCRs to empty text and is skipped, so only 3 pages reach
@@ -1903,7 +2271,7 @@ final class TranslationViewModelTests: XCTestCase {
         )
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         // OCR detector was never asked to detect.
         XCTAssertEqual(assertNoOCRDetector.detectCallCount, 0,
@@ -1955,7 +2323,7 @@ final class TranslationViewModelTests: XCTestCase {
         )
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         XCTAssertEqual(translator.translateCalls.last?.bubbles.map(\.id), [c.id, a.id, b.id])
         XCTAssertEqual(translator.translateCalls.last?.bubbles.map(\.index), [0, 1, 2])
@@ -3340,7 +3708,7 @@ final class BatchSchedulerTests: XCTestCase {
         page.image = NSImage(contentsOf: url)
         vm.pages = [page]
 
-        await vm.translatePage(at: 0, bypassCache: true)
+        await vm.translatePage(at: 0, mode: .retranslate)
 
         XCTAssertEqual(service.batchCalls.count, 0, "Single-page entry must not call translateBatch")
         XCTAssertEqual(service.perPageCalls.count, 1, "Single-page entry must call translate exactly once")
