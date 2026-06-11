@@ -1321,7 +1321,7 @@ final class TranslationViewModel: ObservableObject {
                 if !session.workingBubbles[idx].isManual {
                     session.workingBubbles[idx].isManual = true
                 }
-                // UI-only dirty marker for the sidebar "已修改" badge.
+                // UI-only dirty marker for the sidebar "Modified" badge.
                 session.dirtyBubbleIds.insert(id)
             }
 

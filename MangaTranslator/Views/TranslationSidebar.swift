@@ -313,7 +313,7 @@ struct TranslationCard: View {
     // sites render exactly as before.
     var decoration: EditCardDecoration = .unchanged
 
-    private var pendingPlaceholder: String { "待處理" }
+    private var pendingPlaceholder: String { "Pending" }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -343,7 +343,7 @@ struct TranslationCard: View {
                     HStack(spacing: 4) {
                         Image(systemName: "pencil.line")
                             .font(.system(size: 10))
-                        Text("已修改")
+                        Text("Modified")
                             .font(.system(size: 10, weight: .semibold))
                     }
                     .padding(.horizontal, 6)

@@ -593,8 +593,8 @@ struct ContentView: View {
                     .truncationMode(.middle)
                 Spacer()
             }
-            .padding(.horizontal, 20) // 增加左右邊距，避開圓角
-            .padding(.vertical, 8)   // 增加上下邊距，讓空間更開闊
+            .padding(.horizontal, 20) // Extra horizontal padding to clear the rounded corners
+            .padding(.vertical, 8)   // Extra vertical padding for breathing room
             .background(.ultraThinMaterial)
         }
     }

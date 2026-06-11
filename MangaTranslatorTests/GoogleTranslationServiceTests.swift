@@ -49,6 +49,28 @@ struct GoogleTranslationServiceTests {
         }
     }
 
+    // `preparePage` filters meaningless bubbles, so `bubble.index` can be
+    // non-contiguous (0, 2, …). The LLM path preserves those indices;
+    // Google must not renumber them or downstream index-based pairing breaks.
+    @Test("Google preserves original bubble indices instead of renumbering")
+    func googlePreservesBubbleIndices() async throws {
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"data":{"translations":[{"translatedText":"ok"}]}}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = [
+            BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [], index: 0),
+            BubbleCluster(boundingBox: .zero, text: "さようなら", observations: [], index: 2)
+        ]
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: bubbles, from: .ja, to: .zhHant, context: .empty)
+
+        #expect(output.bubbles.map(\.index) == [0, 2])
+    }
+
     @Test("Google PERMISSION_DENIED yields sanitized error with status as code")
     func googlePermissionDenied() async throws {
         let body = Data(#"""
@@ -117,5 +139,32 @@ struct GoogleTranslationServiceTests {
             #expect(!description.contains("AIzaSyA-secret-9876543210abcdefghijkl"))
             #expect(!description.contains("a@b.com"))
         }
+    }
+}
+
+// Terms that are substrings of other terms must not produce nested spans:
+// nested `translate="no"` spans survive revert as tag fragments.
+@Suite("GlossarySubstitution HTML")
+struct GlossarySubstitutionHTMLTests {
+    private let tower = GlossaryTerm(id: "t1", sourceTerm: "東京タワー", targetTerm: "Tokyo Tower", autoDetected: false)
+    private let tokyo = GlossaryTerm(id: "t2", sourceTerm: "東京", targetTerm: "Tokyo", autoDetected: false)
+
+    @Test("term that is a substring of a longer term does not nest spans")
+    func substringTermDoesNotNestSpans() {
+        let wrapped = GlossarySubstitution.applyHTML(to: "東京タワーが見える", terms: [tokyo, tower])
+        #expect(wrapped == "<span translate=\"no\">東京タワー</span>が見える")
+    }
+
+    @Test("standalone occurrence of the shorter term is still wrapped")
+    func standaloneShorterTermIsWrapped() {
+        let wrapped = GlossarySubstitution.applyHTML(to: "東京と東京タワー", terms: [tokyo, tower])
+        #expect(wrapped == "<span translate=\"no\">東京</span>と<span translate=\"no\">東京タワー</span>")
+    }
+
+    @Test("revert after apply leaves no span fragments")
+    func revertLeavesNoSpanFragments() {
+        let wrapped = GlossarySubstitution.applyHTML(to: "東京タワーと東京", terms: [tokyo, tower])
+        let reverted = GlossarySubstitution.revertHTML(wrapped, terms: [tokyo, tower])
+        #expect(reverted == "Tokyo TowerとTokyo")
     }
 }

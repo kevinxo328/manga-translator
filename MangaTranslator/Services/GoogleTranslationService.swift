@@ -31,7 +31,7 @@ struct GoogleTranslationService: TranslationService {
 
         let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
-        for (index, bubble) in bubbles.enumerated() {
+        for bubble in bubbles {
             let textToSend = GlossarySubstitution.applyHTML(to: bubble.text, terms: terms)
             var translated = try await translateText(
                 textToSend, from: source, to: target, apiKey: apiKey, useHTML: !terms.isEmpty
@@ -40,7 +40,7 @@ struct GoogleTranslationService: TranslationService {
             results.append(TranslatedBubble(
                 bubble: bubble,
                 translatedText: translated,
-                index: index
+                index: bubble.index
             ))
         }
         DebugLogger.shared.logAPIDiagnostic(

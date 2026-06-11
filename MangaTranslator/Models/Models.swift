@@ -227,7 +227,7 @@ indirect enum EditAction {
 // private @MainActor property. See
 // `openspec/changes/manual-bubble-editing/design.md` §D1.
 //
-// `dirtyBubbleIds` is a UI-only cache for rendering the sidebar's "已修改"
+// `dirtyBubbleIds` is a UI-only cache for rendering the sidebar's "Modified"
 // dirty visuals during the in-progress session. The commit pipeline derives
 // OCR-dirty classification from current `boundingBox` vs. originalSnapshot
 // `boundingBox` (§D3), NOT from this set; drift in `dirtyBubbleIds` affects
