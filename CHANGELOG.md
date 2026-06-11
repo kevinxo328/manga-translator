@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.5.2 (2026-06-11)
+
+### Bug Fixes
+
+- Fixed pages from different chapters or volumes getting mixed up when importing a manga folder that contains subdirectories.
+- Fixed translated text occasionally appearing in the wrong speech bubbles when using DeepL or Google Translate.
+- Fixed translation formatting bugs (like broken tags or garbled text) when glossary terms contained overlapping names (such as "Tokyo" and "Tokyo Tower").
+- Fixed translation quality degrading after encountering blank pages, covers, or action-only pages, by ensuring they do not push previous story context out of the translator's memory.
+- Fixed the app freezing or becoming unresponsive while verifying newly downloaded translation files.
+
+### Improvements
+
+- Added safety limits to translation requests to prevent the translator from getting stuck in repetitive loops and wasting API usage.
+- Optimized the translation cache to use significantly less disk space, while automatically cleaning up old data to reclaim storage.
+- Sped up glossary term lookups and made adding auto-detected names much faster.
+
 ## v1.5.1 (2026-06-05)
 
 ### Improvements
