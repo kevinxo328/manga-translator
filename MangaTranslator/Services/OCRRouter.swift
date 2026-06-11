@@ -125,32 +125,49 @@ final class OCRRouter {
     }
 
     func processWithPaddleOCR(image: NSImage) async throws -> MangaOCRPageResult {
+        try await withPaddleOCRInference(operationDescription: "PaddleOCR") {
+            let result = try await mangaOCRService.recognizeAndCluster(in: image)
+            let sorted = readingOrderSorter.sort(result.bubbles)
+            DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(sorted.count)", level: .info, category: .ocrPaddle)
+            return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
+        }
+    }
+
+    /// Runs `body` inside a PaddleOCR inference window: marks the router as
+    /// using PaddleOCR, lazily creates and installs the cached recognizer,
+    /// and pairs `beginInference`/`endInference` across the success and both
+    /// failure paths. Errors are logged with `operationDescription` as the
+    /// message prefix and non-PaddleOCR errors are wrapped in
+    /// `PaddleOCRError.inferenceFailed`.
+    ///
+    /// The inference window suspends any lifecycle mutation (e.g.
+    /// `ModelDownloadService.delete()`) until OCR finishes. The release uses
+    /// inline `await` rather than `defer { Task { ... } }` so the active
+    /// count drops before this function returns, matching the lifecycle
+    /// actor's handoff semantics.
+    private func withPaddleOCRInference<T>(
+        operationDescription: String,
+        _ body: @MainActor () async throws -> T
+    ) async throws -> T {
         usingPaddleOCR = true
         defer { paddleOCRCacheCleanup.clearGPUCache() }
 
-        // Register the inference window so any lifecycle mutation (e.g.
-        // `ModelDownloadService.delete()`) suspends until OCR finishes. The
-        // release uses inline `await` rather than `defer { Task { ... } }`
-        // so the active count drops before this function returns, matching
-        // the lifecycle actor's handoff semantics.
         await inferenceCoordinator?.beginInference()
         do {
             if cachedPaddleOCR == nil {
                 cachedPaddleOCR = try paddleOCRFactory()
             }
             await mangaOCRService.setRecognizer(cachedPaddleOCR)
-            let result = try await mangaOCRService.recognizeAndCluster(in: image)
-            let sorted = readingOrderSorter.sort(result.bubbles)
-            DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(sorted.count)", level: .info, category: .ocrPaddle)
+            let result = try await body()
             await inferenceCoordinator?.endInference()
-            return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
+            return result
         } catch let error as PaddleOCRError {
             await inferenceCoordinator?.endInference()
-            DebugLogger.shared.log("PaddleOCR failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
+            DebugLogger.shared.log("\(operationDescription) failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
             throw error
         } catch {
             await inferenceCoordinator?.endInference()
-            DebugLogger.shared.log("PaddleOCR failed with unexpected error: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
+            DebugLogger.shared.log("\(operationDescription) failed with unexpected error: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
             throw PaddleOCRError.inferenceFailed(error.localizedDescription)
         }
     }
@@ -242,25 +259,8 @@ extension OCRRouter: EditModeOCRPerforming {
         )
 
         if route.usesPaddleOCR {
-            usingPaddleOCR = true
-            defer { paddleOCRCacheCleanup.clearGPUCache() }
-            await inferenceCoordinator?.beginInference()
-            do {
-                if cachedPaddleOCR == nil {
-                    cachedPaddleOCR = try paddleOCRFactory()
-                }
-                await mangaOCRService.setRecognizer(cachedPaddleOCR)
-                let results = try await recognizeRegionsWithCurrentRecognizer(cgImage: cgImage, bubbles: bubbles)
-                await inferenceCoordinator?.endInference()
-                return results
-            } catch let error as PaddleOCRError {
-                await inferenceCoordinator?.endInference()
-                DebugLogger.shared.log("PaddleOCR region OCR failed: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
-                throw error
-            } catch {
-                await inferenceCoordinator?.endInference()
-                DebugLogger.shared.log("PaddleOCR region OCR failed with unexpected error: \(error.localizedDescription)", level: .error, category: .ocrPaddle)
-                throw PaddleOCRError.inferenceFailed(error.localizedDescription)
+            return try await withPaddleOCRInference(operationDescription: "PaddleOCR region OCR") {
+                try await recognizeRegionsWithCurrentRecognizer(cgImage: cgImage, bubbles: bubbles)
             }
         }
 
