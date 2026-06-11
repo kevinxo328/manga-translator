@@ -62,10 +62,16 @@ struct DebugLogEntry: Identifiable, Sendable {
         message.components(separatedBy: "\n").first ?? message
     }
 
-    var formattedTimestamp: String {
+    /// DateFormatter is expensive to create; cache one instance and never
+    /// mutate it after init (formatting itself is thread-safe).
+    private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
-        return f.string(from: timestamp)
+        return f
+    }()
+
+    var formattedTimestamp: String {
+        Self.timestampFormatter.string(from: timestamp)
     }
 }
 
@@ -263,8 +269,16 @@ final class DebugLogger: Sendable {
         return components?.string ?? endpoint.components(separatedBy: "?").first ?? endpoint
     }
 
+    /// One Logger per category, built once; Logger is Sendable so the
+    /// immutable dictionary is safe to read from any thread.
+    private static let osLoggers: [DebugLogCategory: Logger] = Dictionary(
+        uniqueKeysWithValues: DebugLogCategory.allCases.map {
+            ($0, Logger(subsystem: "MangaTranslator", category: $0.rawValue))
+        }
+    )
+
     private func emitToOSLogger(_ entry: DebugLogEntry) {
-        let logger = Logger(subsystem: "MangaTranslator", category: entry.category.rawValue)
+        guard let logger = Self.osLoggers[entry.category] else { return }
         let msg = entry.message
         switch entry.level {
         case .debug: logger.debug("\(msg, privacy: .public)")
