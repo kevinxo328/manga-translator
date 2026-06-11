@@ -195,7 +195,6 @@ struct MangaPage: Identifiable {
     var image: NSImage? = nil
     var imageHash: String? = nil
     var state: PageState = .pending
-    var textPixelMask: CGImage? = nil
 }
 
 // MARK: - Edit Mode

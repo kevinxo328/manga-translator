@@ -331,7 +331,7 @@ struct SettingsView: View {
                 cacheSizeBytes = 0
             }
         } message: {
-            Text("This will delete all cached translation results. This action cannot be undone.")
+            Text("This will delete all cached translation results, including manually edited bubbles. This action cannot be undone.")
         }
     }
 

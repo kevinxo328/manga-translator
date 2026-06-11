@@ -65,42 +65,6 @@ final class TranslationViewModelTests: XCTestCase {
         }
     }
 
-    // MARK: - textPixelMask cleared on non-OCR paths
-
-    func testSameLanguageClearsTextPixelMask() async {
-        let prefs = makePrefs(source: .ja, target: .ja)
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: makeEmptyRouter(), translationService: TrackingTranslationService())
-        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/same-lang-mask.jpg"))
-        page.image = makeTestImage()
-        page.textPixelMask = makeTestCGImage()
-        vm.pages = [page]
-
-        await vm.translatePage(at: 0, bypassCache: true)
-
-        XCTAssertNil(vm.pages[0].textPixelMask, "Same-language path must clear stale textPixelMask")
-    }
-
-    func testCacheHitClearsTextPixelMask() async {
-        let prefs = makePrefs(source: .ja, target: .zhHant)
-        let router = await makeRouter(recognizerText: "こんにちは")
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
-        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/cache-hit-mask.jpg"))
-        page.image = makeTestImage()
-        page.textPixelMask = makeTestCGImage()
-        vm.pages = [page]
-
-        // First pass populates the cache
-        await vm.translatePage(at: 0, bypassCache: true)
-
-        // Restore stale mask to simulate a second load scenario
-        vm.pages[0].textPixelMask = makeTestCGImage()
-
-        // Second pass hits the cache
-        await vm.translatePage(at: 0)
-
-        XCTAssertNil(vm.pages[0].textPixelMask, "Cache-hit path must clear stale textPixelMask")
-    }
-
     // MARK: - 2. TDD — Same-language OCR skip
 
     func testSameLanguageSkipsOCRAndTranslation() async {
@@ -352,7 +316,7 @@ final class TranslationViewModelTests: XCTestCase {
 
     // MARK: - 3. Cache failure routing (harden-cache-service-error-reporting)
 
-    // 3.1 clearAll failure → no page state changes, no textPixelMask cleared.
+    // 3.1 clearAll failure → no page state changes.
     func testViewModelDoesNotResetPagesWhenCacheClearFails() {
         let prefs = makePrefs(source: .ja, target: .zhHant)
         let mockCache = MockCacheService()
@@ -371,10 +335,8 @@ final class TranslationViewModelTests: XCTestCase {
                 index: 0
             )
         ])
-        translatedPage.textPixelMask = makeTestCGImage()
         var errorPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/preserve-2.jpg"))
         errorPage.state = .error("frozen error")
-        errorPage.textPixelMask = makeTestCGImage()
         vm.pages = [translatedPage, errorPage]
 
         vm.clearCacheAndResetPages()
@@ -383,12 +345,10 @@ final class TranslationViewModelTests: XCTestCase {
             return XCTFail("Expected page 0 state preserved as .translated, got \(vm.pages[0].state)")
         }
         XCTAssertEqual(preservedBubbles.first?.translatedText, "舊")
-        XCTAssertNotNil(vm.pages[0].textPixelMask)
         guard case .error(let preservedMessage) = vm.pages[1].state else {
             return XCTFail("Expected page 1 state preserved as .error, got \(vm.pages[1].state)")
         }
         XCTAssertEqual(preservedMessage, "frozen error")
-        XCTAssertNotNil(vm.pages[1].textPixelMask)
     }
 
     // 3.2 Generic error message set when clearAll fails.
@@ -488,10 +448,8 @@ final class TranslationViewModelTests: XCTestCase {
                 index: 0
             )
         ])
-        translatedPage.textPixelMask = makeTestCGImage()
         var errorPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/reset-2.jpg"))
         errorPage.state = .error("old error")
-        errorPage.textPixelMask = makeTestCGImage()
         vm.pages = [translatedPage, errorPage]
 
         vm.clearCacheAndResetPages()
@@ -500,7 +458,6 @@ final class TranslationViewModelTests: XCTestCase {
             guard case .pending = page.state else {
                 return XCTFail("Expected every page reset to .pending, got \(page.state)")
             }
-            XCTAssertNil(page.textPixelMask)
         }
     }
 
@@ -586,10 +543,8 @@ final class TranslationViewModelTests: XCTestCase {
                 index: 0
             )
         ])
-        translatedPage.textPixelMask = makeTestCGImage()
         var errorPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/page-2.jpg"))
         errorPage.state = .error("old error")
-        errorPage.textPixelMask = makeTestCGImage()
         vm.pages = [translatedPage, errorPage]
 
         vm.clearCacheAndResetPages()
@@ -598,7 +553,6 @@ final class TranslationViewModelTests: XCTestCase {
             guard case .pending = page.state else {
                 return XCTFail("Expected every loaded page to reset to pending, got \(page.state)")
             }
-            XCTAssertNil(page.textPixelMask)
         }
     }
 
@@ -2336,8 +2290,7 @@ private final class CapturingCacheService: CacheServiceProtocol, @unchecked Send
         source: Language,
         target: Language,
         engine: TranslationEngine,
-        bubbles: [TranslatedBubble],
-        textPixelMask: CGImage?
+        bubbles: [TranslatedBubble]
     ) throws {
         if let storeError { throw storeError }
         storedBubbleSets.append(bubbles)
@@ -2348,12 +2301,6 @@ private final class CapturingCacheService: CacheServiceProtocol, @unchecked Send
 }
 
 // MARK: - Helpers
-
-private func makeTestCGImage() -> CGImage {
-    let colorSpace = CGColorSpaceCreateDeviceGray()
-    let context = CGContext(data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 10, space: colorSpace, bitmapInfo: 0)!
-    return context.makeImage()!
-}
 
 private func makeTestImage() -> NSImage {
     let rep = NSBitmapImageRep(
@@ -2670,8 +2617,7 @@ private final class MockCacheService: CacheServiceProtocol {
         source: Language,
         target: Language,
         engine: TranslationEngine,
-        bubbles: [TranslatedBubble],
-        textPixelMask: CGImage?
+        bubbles: [TranslatedBubble]
     ) throws {
         storeCallCount += 1
         if let storeError { throw storeError }
@@ -3161,8 +3107,7 @@ final class BatchSchedulerTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [cachedBubble],
-            textPixelMask: nil
+            bubbles: [cachedBubble]
         )
 
         await vm.loadFolder(root)
@@ -3193,8 +3138,7 @@ final class BatchSchedulerTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [cachedBubble],
-            textPixelMask: nil
+            bubbles: [cachedBubble]
         )
 
         await vm.loadFolder(root)

@@ -28,7 +28,7 @@ The system SHALL display a "Clear Cache" button in the Settings view Preferences
 #### Scenario: User confirms clearing but clear fails
 - **WHEN** user confirms the clear cache alert
 - **AND** `CacheService.clearAll()` throws
-- **THEN** no page state SHALL be changed; every page SHALL retain its prior `state` and `textPixelMask`
+- **THEN** no page state SHALL be changed; every page SHALL retain its prior `state`
 - **THEN** `TranslationViewModel.errorMessage` SHALL be set to the fixed string `"Failed to clear cache. Translations may still be cached. Please restart the app if the problem persists."`
 - **THEN** the SQLite error message SHALL be recorded in `DebugLogger` and SHALL NOT appear in `errorMessage` or any other UI surface
 
@@ -42,13 +42,11 @@ The system SHALL reset all in-memory `MangaPage.state` values to `.pending` afte
 #### Scenario: Pages reset after successful cache clear
 - **WHEN** cache is cleared successfully while pages are loaded
 - **THEN** every page's state SHALL become `.pending`
-- **THEN** every page's `textPixelMask` SHALL become `nil`
 - **THEN** no automatic re-translation SHALL be triggered
 
 #### Scenario: Pages preserved when cache clear fails
 - **WHEN** `CacheService.clearAll()` throws while pages are loaded
 - **THEN** no page's state SHALL change
-- **THEN** no page's `textPixelMask` SHALL change
 
 ### Requirement: Cache service exposes availability and mutation failure
 The system SHALL expose a `CacheService.isAvailable` boolean that is `true` only when the underlying SQLite database has been opened successfully and `PRAGMA foreign_keys = ON` has been executed successfully during initialization. All `CacheService` mutation operations — `store`, `addHistory`, `clearAll`, and every `GlossaryService` mutation reached through `CacheService.glossaryService` — SHALL throw a structured error when the operation fails. When `isAvailable` is `false`, mutation operations SHALL throw `CacheError.unavailable` without touching the database. `CacheService.init` SHALL NOT throw; an unusable database SHALL be reported via `isAvailable == false` only.

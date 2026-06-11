@@ -7,7 +7,7 @@ import SQLite3
 final class CacheServiceTests: XCTestCase {
     // MARK: - Existing happy-path tests, migrated to throws API
 
-    func testLookupRoundTripsBubblePolarityAndMask() throws {
+    func testLookupRoundTripsBubblePolarity() throws {
         let cache = makeCache()
         try cache.clearAll()
 
@@ -19,7 +19,6 @@ final class CacheServiceTests: XCTestCase {
             isInverted: true
         )
         let translated = TranslatedBubble(bubble: bubble, translatedText: "hola", index: 7)
-        let mask = makeTestCGImage()
         let hash = "cache-test-\(UUID().uuidString)"
 
         try cache.store(
@@ -27,15 +26,49 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [translated],
-            textPixelMask: mask
+            bubbles: [translated]
         )
 
         let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot)
         XCTAssertNotNil(result)
         XCTAssertEqual(result?.bubbles.first?.bubble.isInverted, true)
         XCTAssertEqual(result?.bubbles.first?.bubble.text, "hello")
-        XCTAssertNotNil(result?.textPixelMask)
+    }
+
+    // Masks are recomputable by local detection and dominated cache size, so
+    // they are no longer persisted. Databases written by older versions must
+    // have their BLOBs purged on open to reclaim disk space, while the bubble
+    // data (translations, manual edits) in the same rows must survive.
+    func testReopeningCachePurgesLegacyMaskBlobsButKeepsBubbles() throws {
+        let path = tempDatabasePath()
+
+        // Simulate a database written before masks stopped being persisted.
+        do {
+            let legacy = CacheService(databasePath: path)
+            try legacy.store(
+                imageHash: "legacy-hash",
+                source: .ja,
+                target: .zhHant,
+                engine: .openAI,
+                bubbles: []
+            )
+            XCTAssertEqual(
+                legacy._executeSQL("ALTER TABLE translation_cache ADD COLUMN text_pixel_mask_png BLOB"),
+                SQLITE_OK
+            )
+            XCTAssertEqual(
+                legacy._executeSQL("UPDATE translation_cache SET text_pixel_mask_png = x'89504E47'"),
+                SQLITE_OK
+            )
+            XCTAssertEqual(legacy._legacyMaskBlobCount(), 1)
+        }
+
+        let reopened = CacheService(databasePath: path)
+        XCTAssertEqual(reopened._legacyMaskBlobCount(), 0, "Legacy mask BLOBs must be purged on open")
+        XCTAssertNotNil(
+            reopened.lookup(imageHash: "legacy-hash", source: .ja, target: .zhHant, engine: .openAI),
+            "Purging masks must not drop the cached bubble data in the same row"
+        )
     }
 
     func testClearAllRemovesPreviouslyCachedTranslations() throws {
@@ -56,8 +89,7 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [translated],
-            textPixelMask: nil
+            bubbles: [translated]
         )
         XCTAssertNotNil(cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot))
 
@@ -177,8 +209,7 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [translated],
-            textPixelMask: nil
+            bubbles: [translated]
         )
         let triggerResult = cache._executeSQL("""
             CREATE TRIGGER reject_translation_cache_delete
@@ -209,8 +240,8 @@ final class CacheServiceTests: XCTestCase {
             translatedText: "T",
             index: 0
         )
-        try cache.store(imageHash: hashA, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated], textPixelMask: nil)
-        try cache.store(imageHash: hashB, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated], textPixelMask: nil)
+        try cache.store(imageHash: hashA, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated])
+        try cache.store(imageHash: hashB, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated])
 
         try cache.clearAll()
 
@@ -240,8 +271,7 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .githubCopilot,
-            bubbles: [translated],
-            textPixelMask: nil
+            bubbles: [translated]
         )) { error in
             guard case .sqlite(let code, let message, _) = error as? CacheError else {
                 return XCTFail("Expected .sqlite error, got \(error)")
@@ -567,8 +597,7 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .openAI,
-            bubbles: [translated],
-            textPixelMask: nil
+            bubbles: [translated]
         )
 
         let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
@@ -602,8 +631,7 @@ final class CacheServiceTests: XCTestCase {
             bubbles: [
                 TranslatedBubble(bubble: bubbleA, translatedText: "自動", index: 0),
                 TranslatedBubble(bubble: bubbleB, translatedText: "手繪", index: 1)
-            ],
-            textPixelMask: nil
+            ]
         )
 
         let rawJSON = cache._rawBubblesJSON(
@@ -638,8 +666,7 @@ final class CacheServiceTests: XCTestCase {
             source: .ja,
             target: .zhHant,
             engine: .openAI,
-            bubbles: [TranslatedBubble(bubble: placeholder, translatedText: "x", index: 0)],
-            textPixelMask: nil
+            bubbles: [TranslatedBubble(bubble: placeholder, translatedText: "x", index: 0)]
         )
 
         // Overwrite the JSON with a legacy payload that omits `isManual`.
@@ -670,10 +697,4 @@ final class CacheServiceTests: XCTestCase {
     private func tempDatabasePath() -> String {
         return NSTemporaryDirectory() + "cache-test-\(UUID().uuidString).sqlite"
     }
-}
-
-private func makeTestCGImage() -> CGImage {
-    let colorSpace = CGColorSpaceCreateDeviceGray()
-    let context = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 8, space: colorSpace, bitmapInfo: 0)!
-    return context.makeImage()!
 }

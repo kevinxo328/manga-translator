@@ -213,9 +213,9 @@ final class TranslationViewModel: ObservableObject {
     private enum PagePreparation {
         case sameLanguageSkip
         case missingKey
-        case cacheHit(bubbles: [TranslatedBubble], textPixelMask: CGImage?)
-        case noMeaningfulBubbles(textPixelMask: CGImage?, imageHash: String)
-        case ready(meaningful: [BubbleCluster], textPixelMask: CGImage?, imageHash: String, restoreFrom: MangaPage?)
+        case cacheHit(bubbles: [TranslatedBubble])
+        case noMeaningfulBubbles(imageHash: String)
+        case ready(meaningful: [BubbleCluster], imageHash: String, restoreFrom: MangaPage?)
         case failed(message: String, restoreFrom: MangaPage?)
     }
 
@@ -231,7 +231,6 @@ final class TranslationViewModel: ObservableObject {
     private struct BatchPlanItem {
         let pageIndex: Int
         let meaningful: [BubbleCluster]
-        let textPixelMask: CGImage?
         let imageHash: String
         let restoreFrom: MangaPage?
     }
@@ -405,7 +404,7 @@ final class TranslationViewModel: ObservableObject {
                 if cancelled { break }
                 guard let prep = preparations[i] else { continue }
                 switch prep {
-                case .ready(let meaningful, let mask, let hash, let restore):
+                case .ready(let meaningful, let hash, let restore):
                     let wouldExceedBubbles = currentBubbleCount + meaningful.count > BatchSizingConfig.maxBubbles
                     let wouldExceedPages = currentGroup.count + 1 > BatchSizingConfig.maxPages
                     if !currentGroup.isEmpty && (wouldExceedBubbles || wouldExceedPages) {
@@ -417,7 +416,6 @@ final class TranslationViewModel: ObservableObject {
                     currentGroup.append(BatchPlanItem(
                         pageIndex: i,
                         meaningful: meaningful,
-                        textPixelMask: mask,
                         imageHash: hash,
                         restoreFrom: restore
                     ))
@@ -465,7 +463,6 @@ final class TranslationViewModel: ObservableObject {
 
         let previousPage = pages[index]
         pages[index].state = .processing
-        pages[index].textPixelMask = nil
 
         let restoreFrom: MangaPage?
         if bypassCache, case .translated = previousPage.state {
@@ -528,7 +525,7 @@ final class TranslationViewModel: ObservableObject {
             target: preferences.targetLanguage,
             engine: preferences.translationEngine
         ) {
-            return .cacheHit(bubbles: cached.bubbles, textPixelMask: cached.textPixelMask)
+            return .cacheHit(bubbles: cached.bubbles)
         }
 
         // Re-translate path: when the page already has a committed
@@ -556,7 +553,6 @@ final class TranslationViewModel: ObservableObject {
             )
             return .ready(
                 meaningful: preservedClusters,
-                textPixelMask: previousPage.textPixelMask,
                 imageHash: imageHash,
                 restoreFrom: restoreFrom
             )
@@ -586,11 +582,10 @@ final class TranslationViewModel: ObservableObject {
                     category: .pipeline,
                     metadata: ["page_index": "\(index + 1)", "reason": "all_bubbles_meaningless"]
                 )
-                return .noMeaningfulBubbles(textPixelMask: pageResult.textPixelMask, imageHash: imageHash)
+                return .noMeaningfulBubbles(imageHash: imageHash)
             }
             return .ready(
                 meaningful: meaningful,
-                textPixelMask: pageResult.textPixelMask,
                 imageHash: imageHash,
                 restoreFrom: restoreFrom
             )
@@ -658,7 +653,6 @@ final class TranslationViewModel: ObservableObject {
                     at: item.pageIndex,
                     preparation: .ready(
                         meaningful: item.meaningful,
-                        textPixelMask: item.textPixelMask,
                         imageHash: item.imageHash,
                         restoreFrom: item.restoreFrom
                     ),
@@ -686,13 +680,11 @@ final class TranslationViewModel: ObservableObject {
                 source: preferences.sourceLanguage,
                 target: preferences.targetLanguage,
                 engine: preferences.translationEngine,
-                bubbles: translated,
-                textPixelMask: item.textPixelMask
+                bubbles: translated
             )
         } catch {
             logCacheMutationFailure(error, operation: "CacheService.store")
         }
-        pages[item.pageIndex].textPixelMask = item.textPixelMask
         pages[item.pageIndex].state = .translated(translated)
         appendToRecentContextIfNeeded(translated, usesRecentContext: true)
     }
@@ -700,14 +692,12 @@ final class TranslationViewModel: ObservableObject {
     private func revertBatchPagesToPending(_ group: [BatchPlanItem]) {
         for item in group where pages.indices.contains(item.pageIndex) {
             pages[item.pageIndex].state = .pending
-            pages[item.pageIndex].textPixelMask = nil
         }
     }
 
     private func revertRemainingBatchPagesToPending(_ group: [BatchPlanItem], startingAt index: Int) {
         for item in group where item.pageIndex >= index && pages.indices.contains(item.pageIndex) {
             pages[item.pageIndex].state = .pending
-            pages[item.pageIndex].textPixelMask = nil
         }
     }
 
@@ -718,19 +708,16 @@ final class TranslationViewModel: ObservableObject {
 
         switch preparation {
         case .sameLanguageSkip:
-            pages[index].textPixelMask = nil
             pages[index].state = .translated([])
 
         case .missingKey:
             pages[index].state = .error("Missing API key for \(preferences.translationEngine.displayName)")
 
-        case .cacheHit(let bubbles, let textPixelMask):
-            pages[index].textPixelMask = textPixelMask
+        case .cacheHit(let bubbles):
             pages[index].state = .translated(bubbles)
             appendToRecentContextIfNeeded(bubbles, usesRecentContext: usesRecentContext)
 
-        case .noMeaningfulBubbles(let textPixelMask, let imageHash):
-            pages[index].textPixelMask = textPixelMask
+        case .noMeaningfulBubbles(let imageHash):
             pages[index].state = .translated([])
             do {
                 try cacheService.store(
@@ -738,15 +725,14 @@ final class TranslationViewModel: ObservableObject {
                     source: preferences.sourceLanguage,
                     target: preferences.targetLanguage,
                     engine: preferences.translationEngine,
-                    bubbles: [],
-                    textPixelMask: textPixelMask
+                    bubbles: []
                 )
             } catch {
                 logCacheMutationFailure(error, operation: "CacheService.store")
             }
             appendToRecentContextIfNeeded([], usesRecentContext: usesRecentContext)
 
-        case .ready(let meaningful, let textPixelMask, let imageHash, let restoreFrom):
+        case .ready(let meaningful, let imageHash, let restoreFrom):
             do {
                 let context = buildTranslationContext(usesRecentContext: usesRecentContext)
                 let output = try await service.translate(
@@ -770,19 +756,16 @@ final class TranslationViewModel: ObservableObject {
                         source: preferences.sourceLanguage,
                         target: preferences.targetLanguage,
                         engine: preferences.translationEngine,
-                        bubbles: translated,
-                        textPixelMask: textPixelMask
+                        bubbles: translated
                     )
                 } catch {
                     logCacheMutationFailure(error, operation: "CacheService.store")
                 }
-                pages[index].textPixelMask = textPixelMask
                 pages[index].state = .translated(translated)
                 appendToRecentContextIfNeeded(translated, usesRecentContext: usesRecentContext)
             } catch {
                 if let restoreFrom {
                     pages[index].state = restoreFrom.state
-                    pages[index].textPixelMask = restoreFrom.textPixelMask
                 } else {
                     pages[index].state = .error(error.localizedDescription)
                 }
@@ -791,7 +774,6 @@ final class TranslationViewModel: ObservableObject {
         case .failed(let message, let restoreFrom):
             if let restoreFrom {
                 pages[index].state = restoreFrom.state
-                pages[index].textPixelMask = restoreFrom.textPixelMask
             } else {
                 pages[index].state = .error(message)
             }
@@ -803,7 +785,6 @@ final class TranslationViewModel: ObservableObject {
             try cacheService.clearAll()
             for i in pages.indices {
                 pages[i].state = .pending
-                pages[i].textPixelMask = nil
             }
         } catch {
             errorMessage = "Failed to clear cache. Translations may still be cached. Please restart the app if the problem persists."
@@ -867,7 +848,6 @@ final class TranslationViewModel: ObservableObject {
 
     func dismissError(at index: Int) {
         guard pages.indices.contains(index), case .error = pages[index].state else { return }
-        pages[index].textPixelMask = nil
         pages[index].state = .pending
     }
 
@@ -1043,8 +1023,7 @@ final class TranslationViewModel: ObservableObject {
                         source: preferences.sourceLanguage,
                         target: preferences.targetLanguage,
                         engine: preferences.translationEngine,
-                        bubbles: [],
-                        textPixelMask: pages[pageIndex].textPixelMask
+                        bubbles: []
                     )
                 } catch {
                     logCacheMutationFailure(error, operation: "CacheService.store [edit commit empty]", level: .warning)
@@ -1129,8 +1108,7 @@ final class TranslationViewModel: ObservableObject {
                     source: preferences.sourceLanguage,
                     target: preferences.targetLanguage,
                     engine: preferences.translationEngine,
-                    bubbles: output.bubbles,
-                    textPixelMask: pages[pageIndex].textPixelMask
+                    bubbles: output.bubbles
                 )
             } catch {
                 logCacheMutationFailure(error, operation: "CacheService.store [edit commit]", level: .warning)

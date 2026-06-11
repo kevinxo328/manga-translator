@@ -20,7 +20,7 @@ The cache JSON encoder SHALL always emit an `isManual` key for every bubble entr
 
 The cache JSON decoder SHALL accept JSON entries that omit the `isManual` key by defaulting that field to `false`. Decoding SHALL NOT fail when reading entries written before this change.
 
-No cache schema version bump or migration SHALL be required. The `translation_cache` SQLite table schema SHALL remain unchanged.
+The `isManual` flag SHALL require no cache schema version bump or migration; it is carried inside `bubbles_json`.
 
 #### Scenario: Cached data completeness
 - **WHEN** a cache entry is retrieved
@@ -38,6 +38,20 @@ No cache schema version bump or migration SHALL be required. The `translation_ca
 #### Scenario: Round-trip preserves manual flag
 - **WHEN** a page containing a manual bubble (`isManual = true`) is written to cache and then read back
 - **THEN** the read-back bubble has `isManual = true`
+
+### Requirement: Text-pixel mask is not persisted
+The cache SHALL NOT persist the page-level text-pixel mask produced by the detector. Rationale: the mask is recomputable by local detection at no API cost, dominated cache size by an order of magnitude when stored, and goes stale once bubbles are manually edited. A future feature that needs the mask for a cached page (for example, compositing translated text onto the page image) SHALL regenerate it by re-running local detection.
+
+On opening a database written by an older version that persisted masks (legacy `text_pixel_mask_png` column), the system SHALL clear all legacy mask BLOBs and compact the database file, preserving the bubble data in the same rows.
+
+#### Scenario: Cache hit carries no mask
+- **WHEN** a cache entry is retrieved
+- **THEN** the result contains bubble data only; no mask is loaded from disk
+
+#### Scenario: Legacy mask BLOBs purged on open
+- **WHEN** the cache database contains rows with a non-NULL `text_pixel_mask_png` value written by an older version
+- **THEN** opening the cache SHALL set those BLOBs to NULL and reclaim the disk space
+- **AND** the `bubbles_json` of those rows SHALL remain readable
 
 ### Requirement: Cache auto-invalidation on image change
 The system SHALL use SHA256 hash of the image file contents as part of the cache key. If the image file is modified, the hash changes and the old cache entry is naturally bypassed.

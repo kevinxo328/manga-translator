@@ -36,8 +36,7 @@ protocol CacheServiceProtocol: AnyObject {
         source: Language,
         target: Language,
         engine: TranslationEngine,
-        bubbles: [TranslatedBubble],
-        textPixelMask: CGImage?
+        bubbles: [TranslatedBubble]
     ) throws
 
     func addHistory(path: String, pageCount: Int?) throws
@@ -124,7 +123,6 @@ final class CacheService: CacheServiceProtocol {
             target_lang TEXT NOT NULL,
             engine TEXT NOT NULL,
             bubbles_json TEXT NOT NULL,
-            text_pixel_mask_png BLOB,
             created_at REAL NOT NULL
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_lookup
@@ -158,7 +156,7 @@ final class CacheService: CacheServiceProtocol {
             ON glossary_terms(glossary_id);
         """
         sqlite3_exec(db, sql, nil, nil, nil)
-        ensureTranslationCacheColumns()
+        purgeLegacyMaskBlobs()
     }
 
     static func imageHash(data: Data) -> String {
@@ -168,7 +166,6 @@ final class CacheService: CacheServiceProtocol {
 
     struct CachedTranslationResult {
         let bubbles: [TranslatedBubble]
-        let textPixelMask: CGImage?
     }
 
     func lookup(
@@ -176,7 +173,7 @@ final class CacheService: CacheServiceProtocol {
     ) -> CachedTranslationResult? {
         guard isAvailable, let db else { return nil }
         let sql = """
-        SELECT bubbles_json, text_pixel_mask_png FROM translation_cache
+        SELECT bubbles_json FROM translation_cache
         WHERE image_hash = ? AND source_lang = ? AND target_lang = ? AND engine = ?
         """
 
@@ -193,20 +190,8 @@ final class CacheService: CacheServiceProtocol {
 
         guard let jsonCStr = sqlite3_column_text(stmt, 0) else { return nil }
         let jsonString = String(cString: jsonCStr)
-        let bubbles = decodeBubbles(from: jsonString)
-        let maskData: Data?
-        if let blob = sqlite3_column_blob(stmt, 1) {
-            let length = Int(sqlite3_column_bytes(stmt, 1))
-            maskData = Data(bytes: blob, count: length)
-        } else {
-            maskData = nil
-        }
-
-        guard let bubbles else { return nil }
-        return CachedTranslationResult(
-            bubbles: bubbles,
-            textPixelMask: decodeMask(from: maskData)
-        )
+        guard let bubbles = decodeBubbles(from: jsonString) else { return nil }
+        return CachedTranslationResult(bubbles: bubbles)
     }
 
     func store(
@@ -214,18 +199,22 @@ final class CacheService: CacheServiceProtocol {
         source: Language,
         target: Language,
         engine: TranslationEngine,
-        bubbles: [TranslatedBubble],
-        textPixelMask: CGImage?
+        bubbles: [TranslatedBubble]
     ) throws {
         guard isAvailable, let db else { throw CacheError.unavailable }
         guard let jsonString = encodeBubbles(bubbles) else {
             throw CacheError.sqlite(code: SQLITE_ERROR, message: "Failed to encode bubbles to JSON", operation: "CacheService.store")
         }
 
+        // The text-pixel mask is deliberately not persisted: it is recomputable
+        // by local detection, dominates cache size by an order of magnitude,
+        // and goes stale after manual bubble edits. The legacy
+        // `text_pixel_mask_png` column is left NULL; INSERT OR REPLACE also
+        // clears the BLOB on rows rewritten from older versions.
         let sql = """
         INSERT OR REPLACE INTO translation_cache
-            (image_hash, source_lang, target_lang, engine, bubbles_json, text_pixel_mask_png, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (image_hash, source_lang, target_lang, engine, bubbles_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """
 
         var stmt: OpaquePointer?
@@ -240,18 +229,7 @@ final class CacheService: CacheServiceProtocol {
         sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
         sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
         sqlite3_bind_text(stmt, 5, jsonString, -1, CacheService.sqliteTransient)
-        if let maskData = encodeMask(textPixelMask) {
-            maskData.withUnsafeBytes { bytes in
-                guard let baseAddress = bytes.baseAddress else {
-                    sqlite3_bind_null(stmt, 6)
-                    return
-                }
-                sqlite3_bind_blob(stmt, 6, baseAddress, Int32(maskData.count), CacheService.sqliteTransient)
-            }
-        } else {
-            sqlite3_bind_null(stmt, 6)
-        }
-        sqlite3_bind_double(stmt, 7, Date().timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 6, Date().timeIntervalSince1970)
 
         let stepResult = sqlite3_step(stmt)
         if stepResult != SQLITE_DONE {
@@ -265,6 +243,10 @@ final class CacheService: CacheServiceProtocol {
         if result != SQLITE_OK {
             throw CacheService.makeError(db: db, operation: "CacheService.clearAll")
         }
+        // Return the freed pages to the filesystem so the on-disk size matches
+        // what the user expects after clearing. Best-effort: a failed VACUUM
+        // leaves a correct (just larger) database.
+        sqlite3_exec(db, "VACUUM", nil, nil, nil)
     }
 
     func translationCacheSize() -> Int64 {
@@ -332,6 +314,18 @@ final class CacheService: CacheServiceProtocol {
         guard isAvailable, let db else { return nil }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "PRAGMA foreign_keys", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int(stmt, 0))
+    }
+
+    // Test-only helper that counts rows still carrying a legacy mask BLOB.
+    // Returns nil when the cache is unavailable or the legacy column is absent.
+    func _legacyMaskBlobCount() -> Int? {
+        guard isAvailable, let db, hasTranslationCacheColumn("text_pixel_mask_png") else { return nil }
+        var stmt: OpaquePointer?
+        let sql = "SELECT COUNT(*) FROM translation_cache WHERE text_pixel_mask_png IS NOT NULL"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
         return Int(sqlite3_column_int(stmt, 0))
@@ -492,35 +486,41 @@ final class CacheService: CacheServiceProtocol {
         }
     }
 
-    private func encodeMask(_ image: CGImage?) -> Data? {
-        guard let image else { return nil }
-        let rep = NSBitmapImageRep(cgImage: image)
-        return rep.representation(using: .png, properties: [:])
-    }
+    // One-time cleanup for databases written before masks stopped being
+    // persisted: clears the legacy `text_pixel_mask_png` BLOBs and compacts
+    // the file. The BLOBs dominated cache size, so without this the disk
+    // space would never be reclaimed. Steady-state launches pay only the
+    // column probe plus an indexed-free existence check.
+    private func purgeLegacyMaskBlobs() {
+        guard hasTranslationCacheColumn("text_pixel_mask_png") else { return }
 
-    private func decodeMask(from data: Data?) -> CGImage? {
-        guard let data,
-              let imageRep = NSBitmapImageRep(data: data) else { return nil }
-        return imageRep.cgImage
-    }
-
-    private func ensureTranslationCacheColumns() {
-        let sql = "PRAGMA table_info(translation_cache)"
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
+        let probe = "SELECT 1 FROM translation_cache WHERE text_pixel_mask_png IS NOT NULL LIMIT 1"
+        guard sqlite3_prepare_v2(db, probe, -1, &stmt, nil) == SQLITE_OK else { return }
+        let hasLegacyBlob = sqlite3_step(stmt) == SQLITE_ROW
+        sqlite3_finalize(stmt)
+        guard hasLegacyBlob else { return }
 
-        var hasMaskColumn = false
+        let result = sqlite3_exec(db, "UPDATE translation_cache SET text_pixel_mask_png = NULL", nil, nil, nil)
+        if result == SQLITE_OK {
+            sqlite3_exec(db, "VACUUM", nil, nil, nil)
+            DebugLogger.shared.log(
+                "Purged legacy text-pixel mask blobs from translation cache",
+                level: .info,
+                category: .cache
+            )
+        }
+    }
+
+    private func hasTranslationCacheColumn(_ name: String) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(translation_cache)", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
         while sqlite3_step(stmt) == SQLITE_ROW {
-            if let nameCStr = sqlite3_column_text(stmt, 1),
-               String(cString: nameCStr) == "text_pixel_mask_png" {
-                hasMaskColumn = true
-                break
+            if let nameCStr = sqlite3_column_text(stmt, 1), String(cString: nameCStr) == name {
+                return true
             }
         }
-
-        if !hasMaskColumn {
-            sqlite3_exec(db, "ALTER TABLE translation_cache ADD COLUMN text_pixel_mask_png BLOB", nil, nil, nil)
-        }
+        return false
     }
 }
