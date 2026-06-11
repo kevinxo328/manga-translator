@@ -24,6 +24,7 @@
 		A10000010000000000000011 /* DeepLTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000035 /* DeepLTranslationService.swift */; };
 		A10000010000000000000012 /* GoogleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000036 /* GoogleTranslationService.swift */; };
 		A10000010000000000000013 /* OpenAITranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000037 /* OpenAITranslationService.swift */; };
+		A100000100000000000000C1 /* ChatCompletionsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000C1 /* ChatCompletionsClient.swift */; };
 		A10000010000000000000015 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000039 /* CacheService.swift */; };
 		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* KeychainService.swift */; };
 		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* PreferencesService.swift */; };
@@ -196,6 +197,7 @@
 		A20000010000000000000035 /* DeepLTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLTranslationService.swift; sourceTree = "<group>"; };
 		A20000010000000000000036 /* GoogleTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleTranslationService.swift; sourceTree = "<group>"; };
 		A20000010000000000000037 /* OpenAITranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITranslationService.swift; sourceTree = "<group>"; };
+		A200000100000000000000C1 /* ChatCompletionsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCompletionsClient.swift; sourceTree = "<group>"; };
 		A20000010000000000000039 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
 		A20000010000000000000040 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
@@ -404,6 +406,7 @@
 				A20000010000000000000035 /* DeepLTranslationService.swift */,
 				A20000010000000000000036 /* GoogleTranslationService.swift */,
 				A20000010000000000000037 /* OpenAITranslationService.swift */,
+				A200000100000000000000C1 /* ChatCompletionsClient.swift */,
 				A20000010000000000000039 /* CacheService.swift */,
 				A20000010000000000000062 /* GlossaryService.swift */,
 				A20000010000000000000064 /* GlossarySubstitution.swift */,
@@ -760,6 +763,7 @@
 				A10000010000000000000011 /* DeepLTranslationService.swift in Sources */,
 				A10000010000000000000012 /* GoogleTranslationService.swift in Sources */,
 				A10000010000000000000013 /* OpenAITranslationService.swift in Sources */,
+				A100000100000000000000C1 /* ChatCompletionsClient.swift in Sources */,
 				A10000010000000000000015 /* CacheService.swift in Sources */,
 				A10000010000000000000016 /* KeychainService.swift in Sources */,
 				A10000010000000000000017 /* PreferencesService.swift in Sources */,
