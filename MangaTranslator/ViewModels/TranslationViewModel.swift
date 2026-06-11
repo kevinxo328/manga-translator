@@ -154,6 +154,9 @@ final class TranslationViewModel: ObservableObject {
                 .sorted { $0.index < $1.index }
                 .map { $0.translatedText }
                 .joined(separator: " ")
+            // Skip pages with no meaningful text (e.g. `.translated([])` from
+            // the no-meaningful-bubbles path) so they don't occupy a slot.
+            guard !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             qualifying.append(summary)
         }
         if qualifying.count <= count {
@@ -194,6 +197,10 @@ final class TranslationViewModel: ObservableObject {
             .sorted { $0.index < $1.index }
             .map { $0.translatedText }
             .joined(separator: " ")
+        // Pages with no meaningful text (title pages, pure artwork) must not
+        // consume a slot in the rolling window — an empty summary evicts a
+        // real one and degrades consistency on later pages.
+        guard !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         recentPageTranslations.append(summary)
         if recentPageTranslations.count > 3 {
             recentPageTranslations.removeFirst()

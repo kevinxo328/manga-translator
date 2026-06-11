@@ -650,6 +650,32 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(translationService.contexts[3].recentPageSummaries, ["T:p1", "T:p2", "T:p3"])
     }
 
+    // A page with no meaningful bubbles (title page, pure artwork) must not
+    // push an empty summary into the rolling 3-page context window — empty
+    // entries evict real summaries and degrade translation consistency on
+    // later pages.
+    func testPageWithNoMeaningfulBubblesDoesNotConsumeRecentContextWindow() async {
+        let router = await makeSingleRegionRouterSequential(texts: ["p1", "", "p3", "p4"])
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let translationService = CapturingTranslationService()
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService)
+        vm.pages = (0..<4).map { index in
+            var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/empty-context-\(index).jpg"))
+            page.image = makeTestImage()
+            return page
+        }
+
+        for index in 0..<4 {
+            await vm.translatePage(at: index, bypassCache: true)
+        }
+
+        // Page 2 OCRs to empty text and is skipped, so only 3 pages reach
+        // the translation service. Page 4's context must contain both real
+        // summaries with no empty placeholder between them.
+        XCTAssertEqual(translationService.contexts.count, 3)
+        XCTAssertEqual(translationService.contexts.last?.recentPageSummaries, ["T:p1", "T:p3"])
+    }
+
     // MARK: - File input and batch navigation
 
     func testScanFolderFindsNestedImagesInNaturalFilenameOrderAndSkipsMetadata() throws {
