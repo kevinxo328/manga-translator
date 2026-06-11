@@ -537,9 +537,10 @@ final class TranslationViewModel: ObservableObject {
         // See `openspec/changes/manual-bubble-editing/specs/retranslate/spec.md`
         // (MODIFIED requirement) and `design.md` §D5.
         if bypassCache, case .translated(let existing) = previousPage.state, !existing.isEmpty {
-            let preservedClusters = existing
+            var preservedClusters = existing
                 .sorted { $0.index < $1.index }
                 .map { $0.bubble }
+            EditAction.redensifyIndices(&preservedClusters)
             pipelineLogger.log(
                 "Page \(index + 1): re-translate preserving \(preservedClusters.count) committed bubble(s); skipping OCR",
                 level: .info,

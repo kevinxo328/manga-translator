@@ -1923,6 +1923,50 @@ final class TranslationViewModelTests: XCTestCase {
         }
     }
 
+    func testRetranslatePreservesCommittedOrderWhenBubbleIndicesAreStale() async {
+        // Re-translate preserves the committed TranslatedBubble order, not a
+        // stale BubbleCluster.index that may predate a manual sidebar reorder.
+        let a = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "A", observations: [], index: 0
+        )
+        let b = BubbleCluster(
+            boundingBox: CGRect(x: 30, y: 0, width: 20, height: 20),
+            text: "B", observations: [], index: 1
+        )
+        let c = BubbleCluster(
+            boundingBox: CGRect(x: 60, y: 0, width: 20, height: 20),
+            text: "C", observations: [], index: 2
+        )
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/preserve-order-\(UUID().uuidString).jpg"))
+        page.image = makeTestImage()
+        page.imageHash = "preserve-order-\(UUID().uuidString)"
+        page.state = .translated([
+            TranslatedBubble(bubble: c, translatedText: "T:C", index: 0),
+            TranslatedBubble(bubble: a, translatedText: "T:A", index: 1),
+            TranslatedBubble(bubble: b, translatedText: "T:B", index: 2)
+        ])
+
+        let translator = RecordingTranslationService()
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            translationService: translator
+        )
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, bypassCache: true)
+
+        XCTAssertEqual(translator.translateCalls.last?.bubbles.map(\.id), [c.id, a.id, b.id])
+        XCTAssertEqual(translator.translateCalls.last?.bubbles.map(\.index), [0, 1, 2])
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Re-translate should land in .translated")
+        }
+        XCTAssertEqual(result.map(\.bubble.id), [c.id, a.id, b.id])
+        XCTAssertEqual(result.map(\.index), [0, 1, 2])
+        XCTAssertEqual(result.map(\.bubble.index), [0, 1, 2])
+    }
+
     func testIsCommittingEditSessionFlipsForTheDurationOfCommit() async {
         let b = BubbleCluster(
             boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
