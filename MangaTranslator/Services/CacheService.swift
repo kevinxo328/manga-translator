@@ -39,8 +39,6 @@ protocol CacheServiceProtocol: AnyObject {
         bubbles: [TranslatedBubble]
     ) throws
 
-    func addHistory(path: String, pageCount: Int?) throws
-
     func clearAll() throws
 }
 
@@ -128,13 +126,6 @@ final class CacheService: CacheServiceProtocol {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_lookup
             ON translation_cache(image_hash, source_lang, target_lang, engine);
 
-        CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT NOT NULL,
-            page_count INTEGER,
-            last_opened REAL NOT NULL
-        );
-
         CREATE TABLE IF NOT EXISTS glossaries (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -156,6 +147,10 @@ final class CacheService: CacheServiceProtocol {
             ON glossary_terms(glossary_id);
         """
         sqlite3_exec(db, sql, nil, nil, nil)
+        // Legacy table written by older versions for a recent-files feature
+        // that was never built: nothing reads it, and rows accumulated on
+        // every folder open. Drop it to reclaim the dead data.
+        sqlite3_exec(db, "DROP TABLE IF EXISTS history", nil, nil, nil)
         purgeLegacyMaskBlobs()
     }
 
@@ -256,34 +251,6 @@ final class CacheService: CacheServiceProtocol {
         defer { sqlite3_finalize(stmt) }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
         return sqlite3_column_int64(stmt, 0)
-    }
-
-    func addHistory(path: String, pageCount: Int?) throws {
-        guard isAvailable, let db else { throw CacheError.unavailable }
-        let sql = """
-        INSERT OR REPLACE INTO history (file_path, page_count, last_opened)
-        VALUES (?, ?, ?)
-        """
-
-        var stmt: OpaquePointer?
-        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
-        if prepareResult != SQLITE_OK {
-            throw CacheService.makeError(db: db, operation: "CacheService.addHistory.prepare")
-        }
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_text(stmt, 1, path, -1, CacheService.sqliteTransient)
-        if let pageCount {
-            sqlite3_bind_int(stmt, 2, Int32(pageCount))
-        } else {
-            sqlite3_bind_null(stmt, 2)
-        }
-        sqlite3_bind_double(stmt, 3, Date().timeIntervalSince1970)
-
-        let stepResult = sqlite3_step(stmt)
-        if stepResult != SQLITE_DONE {
-            throw CacheService.makeError(db: db, operation: "CacheService.addHistory")
-        }
     }
 
     // MARK: - SQLite error helpers

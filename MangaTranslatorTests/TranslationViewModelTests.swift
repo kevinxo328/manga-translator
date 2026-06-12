@@ -147,7 +147,6 @@ final class TranslationViewModelTests: XCTestCase {
         ) throws {
             storedBubbleSets.append(bubbles)
         }
-        func addHistory(path: String, pageCount: Int?) throws {}
         func clearAll() throws {}
     }
 
@@ -866,35 +865,6 @@ final class TranslationViewModelTests: XCTestCase {
             entries.contains { $0.message.contains("CacheService.store") },
             "DebugLogger must record the store failure"
         )
-    }
-
-    // 3.7 Archive-load path continues when addHistory throws.
-    func testLoadFilesContinuesWhenAddHistoryThrows() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        try writeTestPNG(at: root.appendingPathComponent("page_1.png"))
-        try writeTestPNG(at: root.appendingPathComponent("page_2.png"))
-
-        let mockCache = MockCacheService()
-        mockCache.addHistoryError = CacheError.sqlite(
-            code: 5,
-            message: "database is locked",
-            operation: "CacheService.addHistory"
-        )
-        let prefs = makePrefs(source: .ja, target: .zhHant)
-        let router = await makeSingleRegionRouterSequential(texts: ["page"])
-        let vm = TranslationViewModel(
-            preferences: prefs,
-            ocrRouter: router,
-            translationService: TrackingTranslationService(),
-            cacheService: mockCache
-        )
-
-        await vm.loadFolder(root)
-
-        XCTAssertEqual(vm.pages.count, 2)
-        XCTAssertNil(vm.errorMessage, "addHistory failure must not present an alert")
     }
 
     // MARK: - Cache management
@@ -2755,7 +2725,6 @@ private final class CapturingCacheService: CacheServiceProtocol, @unchecked Send
         storedBubbleSets.append(bubbles)
     }
 
-    func addHistory(path: String, pageCount: Int?) throws {}
     func clearAll() throws {}
 }
 
@@ -3051,10 +3020,8 @@ private actor ConcurrencyCounter {
 private final class MockCacheService: CacheServiceProtocol {
     var isAvailable: Bool = true
     var storeError: Error?
-    var addHistoryError: Error?
     var clearAllError: Error?
     private(set) var storeCallCount = 0
-    private(set) var addHistoryCallCount = 0
     private(set) var clearAllCallCount = 0
     let glossaryService: GlossaryService
 
@@ -3080,11 +3047,6 @@ private final class MockCacheService: CacheServiceProtocol {
     ) throws {
         storeCallCount += 1
         if let storeError { throw storeError }
-    }
-
-    func addHistory(path: String, pageCount: Int?) throws {
-        addHistoryCallCount += 1
-        if let addHistoryError { throw addHistoryError }
     }
 
     func clearAll() throws {

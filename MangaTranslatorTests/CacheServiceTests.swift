@@ -281,25 +281,36 @@ final class CacheServiceTests: XCTestCase {
         }
     }
 
-    // 1.6 addHistory failure throws CacheError with code + message.
-    func testAddHistoryFailureThrowsCacheError() throws {
-        let cache = makeCache()
-        let triggerResult = cache._executeSQL("""
-            CREATE TRIGGER reject_history_insert
-            BEFORE INSERT ON history
-            BEGIN
-                SELECT RAISE(FAIL, 'denied');
-            END;
-            """)
-        XCTAssertEqual(triggerResult, SQLITE_OK)
+    // 1.6 The history table backed a recent-files feature that was never
+    // built: nothing reads it, and rows accumulated on every folder open.
+    // Databases written by older versions must have it dropped on open.
+    func testReopeningCacheDropsLegacyHistoryTable() throws {
+        let path = tempDatabasePath()
 
-        XCTAssertThrowsError(try cache.addHistory(path: "/tmp/x", pageCount: 2)) { error in
-            guard case .sqlite(let code, let message, _) = error as? CacheError else {
-                return XCTFail("Expected .sqlite error, got \(error)")
-            }
-            XCTAssertNotEqual(code, SQLITE_OK)
-            XCTAssertFalse(message.isEmpty)
+        // Simulate a database written before the history table was removed.
+        do {
+            let legacy = CacheService(databasePath: path)
+            XCTAssertEqual(
+                legacy._executeSQL("""
+                    CREATE TABLE IF NOT EXISTS history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        file_path TEXT NOT NULL,
+                        page_count INTEGER,
+                        last_opened REAL NOT NULL
+                    );
+                    INSERT INTO history (file_path, page_count, last_opened)
+                    VALUES ('/tmp/manga', 12, 0);
+                    """),
+                SQLITE_OK
+            )
         }
+
+        let reopened = CacheService(databasePath: path)
+        XCTAssertNotEqual(
+            reopened._executeSQL("SELECT 1 FROM history LIMIT 1"),
+            SQLITE_OK,
+            "Legacy history table must be dropped on open"
+        )
     }
 
     // 1.7 PRAGMA foreign_keys is enabled after a successful open.

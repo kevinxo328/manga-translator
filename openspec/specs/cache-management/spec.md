@@ -49,7 +49,7 @@ The system SHALL reset all in-memory `MangaPage.state` values to `.pending` afte
 - **THEN** no page's state SHALL change
 
 ### Requirement: Cache service exposes availability and mutation failure
-The system SHALL expose a `CacheService.isAvailable` boolean that is `true` only when the underlying SQLite database has been opened successfully and `PRAGMA foreign_keys = ON` has been executed successfully during initialization. All `CacheService` mutation operations — `store`, `addHistory`, `clearAll`, and every `GlossaryService` mutation reached through `CacheService.glossaryService` — SHALL throw a structured error when the operation fails. When `isAvailable` is `false`, mutation operations SHALL throw `CacheError.unavailable` without touching the database. `CacheService.init` SHALL NOT throw; an unusable database SHALL be reported via `isAvailable == false` only.
+The system SHALL expose a `CacheService.isAvailable` boolean that is `true` only when the underlying SQLite database has been opened successfully and `PRAGMA foreign_keys = ON` has been executed successfully during initialization. All `CacheService` mutation operations — `store`, `clearAll`, and every `GlossaryService` mutation reached through `CacheService.glossaryService` — SHALL throw a structured error when the operation fails. When `isAvailable` is `false`, mutation operations SHALL throw `CacheError.unavailable` without touching the database. `CacheService.init` SHALL NOT throw; an unusable database SHALL be reported via `isAvailable == false` only.
 
 #### Scenario: Database opens cleanly
 - **WHEN** `CacheService.init()` runs and `sqlite3_open_v2` succeeds and `PRAGMA foreign_keys = ON` succeeds
@@ -108,16 +108,10 @@ The system SHALL forward the raw `sqlite3_errmsg` value of any thrown cache erro
 - **THEN** the UI SHALL NOT display the string `"database is locked"`
 
 ### Requirement: Translation pipeline tolerates unavailable cache
-The system SHALL allow the translation pipeline to continue when `CacheService` mutation operations (`store`, `addHistory`) fail or when `isAvailable == false`. Translation results SHALL still be returned to the user even when they cannot be persisted.
+The system SHALL allow the translation pipeline to continue when the `CacheService.store` mutation fails or when `isAvailable == false`. Translation results SHALL still be returned to the user even when they cannot be persisted.
 
 #### Scenario: Store fails mid-translation
 - **WHEN** the translation pipeline calls `CacheService.store(...)` and the call throws
 - **THEN** the pipeline SHALL log the failure to `DebugLogger`
 - **THEN** the pipeline SHALL still return the translated page to the user
 - **THEN** the page state SHALL transition to `.translated`, not `.error`
-
-#### Scenario: addHistory fails after archive load
-- **WHEN** `CacheService.addHistory(path:, pageCount:)` throws
-- **THEN** the archive loading flow SHALL log the failure to `DebugLogger`
-- **THEN** the user SHALL still see the loaded pages
-- **THEN** no error alert SHALL be presented

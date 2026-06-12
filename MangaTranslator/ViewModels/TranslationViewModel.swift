@@ -354,11 +354,6 @@ final class TranslationViewModel: ObservableObject {
         }
         resetRecentContext()
         currentPageIndex = 0
-        do {
-            try cacheService.addHistory(path: url.path, pageCount: pages.count)
-        } catch {
-            logCacheMutationFailure(error, operation: "CacheService.addHistory")
-        }
         await translateBatch()
     }
 
@@ -847,8 +842,8 @@ final class TranslationViewModel: ObservableObject {
 
     // Centralises the SQLite-message → DebugLogger routing so UI surfaces never
     // see raw database internals. Mutation callers that must keep working (e.g.
-    // store/addHistory during translation) call this with try/catch and never
-    // alter the page state machine.
+    // store during translation) call this with try/catch and never alter the
+    // page state machine.
     private func logCacheMutationFailure(_ error: Error, operation: String) {
         logCacheMutationFailure(error, operation: operation, level: .error)
     }
