@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.5.3 (2026-06-12)
+
+### Bug Fixes
+
+- Fixed translation failures by adding automatic retries for single-page translations.
+- Fixed custom reading order of speech bubbles being lost when re-translating a page.
+
+### Improvements
+
+- Reuses cached translations when switching translation engines so that you don't have to wait or spend credits to re-translate the same page.
+- Batched translation requests for DeepL and Google Translate so that translating multiple pages is significantly faster.
+- Improved glossary processing to only load relevant terms for the current page, making translations faster and reducing translation costs.
+
 ## v1.5.2 (2026-06-11)
 
 ### Bug Fixes
