@@ -952,6 +952,44 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(translationService.contexts.last?.glossaryTerms.first?.targetTerm, "太郎")
     }
 
+    // The glossary accumulates auto-detected terms over a whole series; sending
+    // all of them with every page makes prompt token cost grow linearly. Only
+    // terms whose source occurs in the page's OCR text may reach the context.
+    func testTranslationContextOmitsGlossaryTermsAbsentFromPage() async {
+        let router = await makeRouter(recognizerText: "太郎")
+        let prefs = makePrefs(source: .ja, target: .zhHant)
+        let translationService = CapturingTranslationService()
+        let cache = makeTempCache()
+        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: translationService, cacheService: cache)
+        let glossary = try? vm.glossaryServiceForView.createGlossary(name: "Names")
+        XCTAssertNotNil(glossary)
+        _ = try? vm.glossaryServiceForView.addTerm(
+            glossaryID: glossary!.id,
+            sourceTerm: "太郎",
+            targetTerm: "Taro",
+            autoDetected: false
+        )
+        _ = try? vm.glossaryServiceForView.addTerm(
+            glossaryID: glossary!.id,
+            sourceTerm: "花子",
+            targetTerm: "Hanako",
+            autoDetected: true
+        )
+        vm.loadGlossaries()
+        vm.activeGlossaryID = glossary?.id
+        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/glossary-filter.jpg"))
+        page.image = makeTestImage()
+        vm.pages = [page]
+
+        await vm.translatePage(at: 0, mode: .retranslate)
+
+        XCTAssertEqual(
+            translationService.contexts.last?.glossaryTerms.map(\.sourceTerm),
+            ["太郎"],
+            "Terms absent from the page's source text must not be sent to the service"
+        )
+    }
+
     func testRecentTranslationContextKeepsOnlyPreviousThreePages() async {
         let router = await makeSingleRegionRouterSequential(texts: ["p1", "p2", "p3", "p4"])
         let prefs = makePrefs(source: .ja, target: .zhHant)
@@ -1193,8 +1231,17 @@ final class TranslationViewModelTests: XCTestCase {
             let ctx = translationService.context(forInput: input)
             XCTAssertNotNil(ctx, "Missing context for \(input)")
             XCTAssertEqual(ctx?.recentPageSummaries, [], "DeepL/Google must receive empty recentPageSummaries for \(input)")
-            XCTAssertEqual(ctx?.glossaryTerms.first?.sourceTerm, "q1", "Glossary must still flow for \(input)")
-            XCTAssertEqual(ctx?.glossaryTerms.first?.targetTerm, "Q1", "Glossary must still flow for \(input)")
+        }
+        // Glossary still flows to non-LLM engines, filtered per page: only the
+        // page whose source text contains "q1" carries the term.
+        XCTAssertEqual(translationService.context(forInput: "q1")?.glossaryTerms.map(\.sourceTerm), ["q1"])
+        XCTAssertEqual(translationService.context(forInput: "q1")?.glossaryTerms.map(\.targetTerm), ["Q1"])
+        for input in ["q2", "q3", "q4"] {
+            XCTAssertEqual(
+                translationService.context(forInput: input)?.glossaryTerms.isEmpty,
+                true,
+                "Pages without the term must not carry it (\(input))"
+            )
         }
     }
 
@@ -3318,7 +3365,7 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
     var engine: TranslationEngine { engineKind }
 
     private let lock = NSLock()
-    private var _batchCalls: [(pageIds: [String], summaries: [String])] = []
+    private var _batchCalls: [(pageIds: [String], summaries: [String], glossarySources: [String])] = []
     private var _perPageCalls: [(input: String, summaries: [String])] = []
     var failBatchForPageIds: Set<String> = []
     var suspendBatchUntilCancel: Bool = false
@@ -3331,7 +3378,7 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
         self.engineKind = engine
     }
 
-    var batchCalls: [(pageIds: [String], summaries: [String])] {
+    var batchCalls: [(pageIds: [String], summaries: [String], glossarySources: [String])] {
         lock.lock(); defer { lock.unlock() }
         return _batchCalls
     }
@@ -3361,7 +3408,13 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
         priorContext: TranslationContext
     ) async throws -> [BatchPageOutput] {
         let pageIds = pageInputs.map { $0.pageId }
-        lock.withLock { _batchCalls.append((pageIds: pageIds, summaries: priorContext.recentPageSummaries)) }
+        lock.withLock {
+            _batchCalls.append((
+                pageIds: pageIds,
+                summaries: priorContext.recentPageSummaries,
+                glossarySources: priorContext.glossaryTerms.map { $0.sourceTerm }
+            ))
+        }
 
         if suspendBatchUntilCancel {
             while !Task.isCancelled {
@@ -3441,6 +3494,36 @@ private func makeBatchSchedulerFixture(
 
 @MainActor
 final class BatchSchedulerTests: XCTestCase {
+
+    // The batch shares one system prompt across all pages, so a glossary term
+    // appearing in ANY page of the batch must survive filtering — while terms
+    // appearing in no page of the batch must be dropped.
+    func testBatchContextKeepsGlossaryTermsFromAnyPageInBatch() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [1, 1]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Page index 0 OCRs as "w300b0", page index 1 as "w301b0".
+        let glossary = try XCTUnwrap(try? vm.glossaryServiceForView.createGlossary(name: "Names"))
+        _ = try? vm.glossaryServiceForView.addTerm(
+            glossaryID: glossary.id, sourceTerm: "w301b0", targetTerm: "P2", autoDetected: false
+        )
+        _ = try? vm.glossaryServiceForView.addTerm(
+            glossaryID: glossary.id, sourceTerm: "absent", targetTerm: "X", autoDetected: true
+        )
+        vm.loadGlossaries()
+        vm.activeGlossaryID = glossary.id
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.count, 1)
+        XCTAssertEqual(
+            service.batchCalls.first?.glossarySources,
+            ["w301b0"],
+            "Term from the batch's second page must be kept; term absent from every page must be dropped"
+        )
+    }
 
     // 6.1
     func testRunBatchPipelineGroupsFiveLowBubblePagesIntoOneBatch() async throws {

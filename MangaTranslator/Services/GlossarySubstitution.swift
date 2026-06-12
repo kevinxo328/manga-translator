@@ -1,6 +1,18 @@
 import Foundation
 
 enum GlossarySubstitution {
+    /// Returns the terms whose source occurs in at least one of `texts`,
+    /// preserving the original term order. The glossary accumulates
+    /// auto-detected terms across a whole series; prompts must only carry
+    /// the subset relevant to the texts being translated. Japanese has no
+    /// word boundaries, so substring containment is the criterion — the
+    /// same matching `wrapTerms` uses.
+    static func relevantTerms(_ terms: [GlossaryTerm], in texts: [String]) -> [GlossaryTerm] {
+        guard !terms.isEmpty else { return [] }
+        let combined = texts.joined(separator: "\n")
+        return terms.filter { combined.contains($0.sourceTerm) }
+    }
+
     // Single left-to-right scan: at each position wrap the longest matching
     // term and continue after it. Replacing term-by-term over the whole text
     // would re-match a term that is a substring of an already-wrapped longer

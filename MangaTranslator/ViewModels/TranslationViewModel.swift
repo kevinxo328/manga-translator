@@ -164,15 +164,23 @@ final class TranslationViewModel: ObservableObject {
     // When `precedingPageIndex` is non-nil, sources `recentPageSummaries`
     // from `summariesPreceding(pageIndex:)` — the Edit Mode Commit path.
     // When nil, returns today's rolling-buffer behaviour used by initial
-    // and batch translation. Glossary terms are unaffected. Non-context
-    // engines (DeepL, Google) always receive empty summaries regardless.
+    // and batch translation. Non-context engines (DeepL, Google) always
+    // receive empty summaries regardless.
+    // Glossary terms are filtered to those occurring in `bubbles`' source
+    // text, so prompt cost does not grow with the whole accumulated
+    // glossary. The LLM may then re-report a filtered-out term as newly
+    // detected; insertDetectedTerms dedupes against the full glossary.
     private func buildTranslationContext(
+        matching bubbles: [BubbleCluster],
         usesRecentContext: Bool,
         precedingPageIndex: Int? = nil
     ) -> TranslationContext {
         let terms: [GlossaryTerm]
         if let id = activeGlossaryID {
-            terms = glossaryService.listTerms(glossaryID: id)
+            terms = GlossarySubstitution.relevantTerms(
+                glossaryService.listTerms(glossaryID: id),
+                in: bubbles.map { $0.text }
+            )
         } else {
             terms = []
         }
@@ -645,7 +653,10 @@ final class TranslationViewModel: ObservableObject {
         let pageInputs = group.map {
             BatchPageInput(pageId: String($0.pageIndex), bubbles: $0.meaningful)
         }
-        let priorContext = buildTranslationContext(usesRecentContext: true)
+        let priorContext = buildTranslationContext(
+            matching: group.flatMap { $0.meaningful },
+            usesRecentContext: true
+        )
         let itemByPageId = Dictionary(uniqueKeysWithValues: group.map { (String($0.pageIndex), $0) })
 
         do {
@@ -776,7 +787,7 @@ final class TranslationViewModel: ObservableObject {
 
         case .ready(let meaningful, let imageHash, let restoreFrom):
             do {
-                let context = buildTranslationContext(usesRecentContext: usesRecentContext)
+                let context = buildTranslationContext(matching: meaningful, usesRecentContext: usesRecentContext)
                 let output = try await service.translate(
                     bubbles: meaningful,
                     from: preferences.sourceLanguage,
@@ -1133,6 +1144,7 @@ final class TranslationViewModel: ObservableObject {
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
         let context = buildTranslationContext(
+            matching: merged,
             usesRecentContext: usesContext,
             precedingPageIndex: pageIndex
         )

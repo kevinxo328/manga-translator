@@ -196,6 +196,41 @@ struct DeepLTranslationServiceTests {
     }
 }
 
+// The LLM prompt must not carry the whole accumulated glossary — only terms
+// whose source actually occurs in the texts being translated. Japanese has no
+// word boundaries, so substring containment is the relevance criterion.
+@Suite("GlossarySubstitution relevance filter")
+struct GlossaryRelevanceFilterTests {
+    private let taro = GlossaryTerm(id: "t1", sourceTerm: "太郎", targetTerm: "Taro", autoDetected: false)
+    private let hanako = GlossaryTerm(id: "t2", sourceTerm: "花子", targetTerm: "Hanako", autoDetected: true)
+    private let tower = GlossaryTerm(id: "t3", sourceTerm: "東京タワー", targetTerm: "Tokyo Tower", autoDetected: true)
+
+    @Test("a term is kept when its source occurs in any of the texts")
+    func keepsTermOccurringInAnyText() {
+        let kept = GlossarySubstitution.relevantTerms(
+            [taro, hanako, tower],
+            in: ["太郎です", "東京タワーが見える"]
+        )
+        #expect(kept.map(\.sourceTerm) == ["太郎", "東京タワー"])
+    }
+
+    @Test("terms absent from every text are dropped")
+    func dropsTermsAbsentFromAllTexts() {
+        let kept = GlossarySubstitution.relevantTerms([taro, hanako], in: ["こんにちは"])
+        #expect(kept.isEmpty)
+    }
+
+    // Prompt lines follow glossary order; filtering must not reorder terms.
+    @Test("filtering preserves the original term order")
+    func preservesTermOrder() {
+        let kept = GlossarySubstitution.relevantTerms(
+            [tower, hanako, taro],
+            in: ["花子と太郎と東京タワー"]
+        )
+        #expect(kept.map(\.sourceTerm) == ["東京タワー", "花子", "太郎"])
+    }
+}
+
 // Terms that are substrings of other terms must not produce nested tags:
 // `<x>…<x>短</x>…</x>` survives revert as tag fragments in the final text.
 @Suite("GlossarySubstitution XML")
