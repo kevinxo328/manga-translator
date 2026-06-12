@@ -441,82 +441,16 @@ final class TranslationViewModel: ObservableObject {
         await finalizePage(at: index, preparation: preparation, service: service, usesRecentContext: usesContext)
     }
 
-    // Phase A: bounded-concurrency preparation that does not consume or mutate recentPageTranslations.
-    // Phase B: finalize translation either page-ordered (LLM engines) or concurrently (DeepL/Google).
-    //
-    // For context-consuming LLM engines this is the conservative "prep-all-then-finalize" shape.
-    // A throughput-friendlier producer/consumer pipeline is deferred. See the
-    // "Deferred Optimization: Producer/Consumer LLM Pipeline" section in
-    // fix-batch-recent-context-order/design.md for the trade-offs.
+    // Context-consuming LLM engines run a pipelined producer/consumer (below);
+    // DeepL/Google keep their per-page parallel pipeline, which already starts
+    // translating after each page's own preparation.
     private func runBatchPipeline(mode: PageTranslationMode) async {
         isProcessing = true
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
 
         if usesContext {
-            var preparations: [PagePreparation?] = Array(repeating: nil, count: pages.count)
-            await withTaskGroup(of: (Int, PagePreparation).self) { group in
-                let maxConcurrent = 3
-                var started = 0
-                for i in pages.indices {
-                    if started >= maxConcurrent {
-                        if let result = await group.next() {
-                            preparations[result.0] = result.1
-                        }
-                    }
-                    started += 1
-                    group.addTask { [weak self] in
-                        guard let self else {
-                            return (i, .failed(message: "view model deallocated", restoreFrom: nil))
-                        }
-                        let prep = await self.preparePage(at: i, mode: mode, service: service)
-                        return (i, prep)
-                    }
-                }
-                while let result = await group.next() {
-                    preparations[result.0] = result.1
-                }
-            }
-
-            // Phase B: iterate over prepared pages in page-index order, grouping consecutive
-            // .ready pages into multi-page LLM batches while respecting maxBubbles/maxPages.
-            // Cache hits, skips, and failures act as batch boundaries.
-            var currentGroup: [BatchPlanItem] = []
-            var currentBubbleCount = 0
-            var cancelled = false
-            for i in pages.indices {
-                if cancelled { break }
-                guard let prep = preparations[i] else { continue }
-                switch prep {
-                case .ready(let meaningful, let hash, let restore):
-                    let wouldExceedBubbles = currentBubbleCount + meaningful.count > BatchSizingConfig.maxBubbles
-                    let wouldExceedPages = currentGroup.count + 1 > BatchSizingConfig.maxPages
-                    if !currentGroup.isEmpty && (wouldExceedBubbles || wouldExceedPages) {
-                        cancelled = await runBatch(currentGroup, service: service)
-                        currentGroup.removeAll()
-                        currentBubbleCount = 0
-                        if cancelled { break }
-                    }
-                    currentGroup.append(BatchPlanItem(
-                        pageIndex: i,
-                        meaningful: meaningful,
-                        imageHash: hash,
-                        restoreFrom: restore
-                    ))
-                    currentBubbleCount += meaningful.count
-                default:
-                    if !currentGroup.isEmpty {
-                        cancelled = await runBatch(currentGroup, service: service)
-                        currentGroup.removeAll()
-                        currentBubbleCount = 0
-                        if cancelled { break }
-                    }
-                    await finalizePage(at: i, preparation: prep, service: service, usesRecentContext: true)
-                }
-            }
-            if !cancelled && !currentGroup.isEmpty {
-                _ = await runBatch(currentGroup, service: service)
-            }
+            await runPipelinedLLMBatch(mode: mode, service: service)
         } else {
             await withTaskGroup(of: Void.self) { group in
                 let maxConcurrent = 3
@@ -537,6 +471,136 @@ final class TranslationViewModel: ObservableObject {
         isProcessing = false
     }
 
+    // Ramp-up page caps for the pipelined LLM batch scheduler: the first group
+    // ships after one page (time-to-first-page), the second after three, and
+    // steady state uses the full cap — bounding the extra LLM calls versus
+    // full-cap grouping to 2 per run. Group composition depends only on page
+    // order, bubble counts, and preparation outcomes, never on OCR/LLM timing.
+    // See producer-consumer-llm-pipeline/design.md D2.
+    private func rampPageCap(forGroupOrdinal ordinal: Int) -> Int {
+        switch ordinal {
+        case 0: return 1
+        case 1: return 3
+        default: return BatchSizingConfig.maxPages
+        }
+    }
+
+    // Pipelined producer/consumer for context-consuming LLM engines: the
+    // bounded task group prepares pages (OCR, cache lookup) while a consumer
+    // woven into the same loop drains results strictly in ascending page
+    // index, so rolling-window observations keep the page-ordered guarantees
+    // of contextual-translation. The first LLM request leaves as soon as
+    // page 1's preparation is consumable; preparations continue while LLM
+    // requests are in flight. See producer-consumer-llm-pipeline/design.md D1.
+    private func runPipelinedLLMBatch(mode: PageTranslationMode, service: any TranslationService) async {
+        var buffer: [Int: PagePreparation] = [:]
+        var nextIndex = 0
+        var currentGroup: [BatchPlanItem] = []
+        var currentBubbleCount = 0
+        var dispatchedGroupCount = 0
+        var cancelled = false
+
+        // Dispatches the accumulated group and advances the ramp ordinal.
+        // Returns true when the run was cancelled.
+        func dispatchCurrentGroup() async -> Bool {
+            guard !currentGroup.isEmpty else { return false }
+            let wasCancelled = await runBatch(currentGroup, service: service)
+            currentGroup.removeAll()
+            currentBubbleCount = 0
+            dispatchedGroupCount += 1
+            return wasCancelled
+        }
+
+        // Consumes buffered preparations in ascending page index. A missing
+        // buffer entry for `nextIndex` stops the drain — later results stay
+        // buffered until the gap fills, which is what keeps consumption
+        // page-ordered regardless of preparation completion order.
+        func consumeBuffered() async {
+            while !cancelled, let prep = buffer[nextIndex] {
+                buffer[nextIndex] = nil
+                switch prep {
+                case .ready(let meaningful, let hash, let restore):
+                    let wouldExceedBubbles = currentBubbleCount + meaningful.count > BatchSizingConfig.maxBubbles
+                    if !currentGroup.isEmpty && wouldExceedBubbles {
+                        cancelled = await dispatchCurrentGroup()
+                        if cancelled { return }
+                    }
+                    currentGroup.append(BatchPlanItem(
+                        pageIndex: nextIndex,
+                        meaningful: meaningful,
+                        imageHash: hash,
+                        restoreFrom: restore
+                    ))
+                    currentBubbleCount += meaningful.count
+                    nextIndex += 1
+                    if currentGroup.count >= rampPageCap(forGroupOrdinal: dispatchedGroupCount) {
+                        cancelled = await dispatchCurrentGroup()
+                    }
+                default:
+                    // Cache hits, skips, and failures finalize individually,
+                    // act as group boundaries, and do not consume a ramp slot.
+                    if !currentGroup.isEmpty {
+                        cancelled = await dispatchCurrentGroup()
+                        if cancelled { return }
+                    }
+                    await finalizePage(at: nextIndex, preparation: prep, service: service, usesRecentContext: true)
+                    nextIndex += 1
+                }
+            }
+        }
+
+        await withTaskGroup(of: (Int, PagePreparation).self) { group in
+            let maxConcurrent = 3
+            var started = 0
+            for i in pages.indices {
+                if cancelled { break }
+                if started >= maxConcurrent {
+                    if let result = await group.next() {
+                        buffer[result.0] = result.1
+                        await consumeBuffered()
+                    }
+                }
+                started += 1
+                group.addTask { [weak self] in
+                    guard let self, !Task.isCancelled else {
+                        return (i, .failed(message: "view model deallocated", restoreFrom: nil))
+                    }
+                    let prep = await self.preparePage(at: i, mode: mode, service: service)
+                    return (i, prep)
+                }
+            }
+            if cancelled {
+                group.cancelAll()
+            }
+            while let result = await group.next() {
+                buffer[result.0] = result.1
+                if !cancelled {
+                    await consumeBuffered()
+                    if cancelled {
+                        group.cancelAll()
+                    }
+                }
+            }
+        }
+
+        if !cancelled {
+            // Page list exhausted: ship the final partial group.
+            _ = await dispatchCurrentGroup()
+        } else {
+            // Post-quiescence revert sweep: the producer group has fully
+            // drained above, so no late preparation can overwrite these
+            // transitions. Every page that has not finalized — in the
+            // cancelled batch (already reverted by runBatch), prepared but
+            // unconsumed, or still mid-preparation — returns to .pending.
+            // Pages finalized before the cancel keep their state.
+            for i in pages.indices {
+                if case .processing = pages[i].state {
+                    pages[i].state = .pending
+                }
+            }
+        }
+    }
+
     // Page preparation: does everything up to (but not including) the translation API call.
     // Returns intermediate state so the finalize phase can serialize translation calls
     // for context-consuming engines without holding up OCR work for other pages.
@@ -552,7 +616,11 @@ final class TranslationViewModel: ObservableObject {
             }
         }
 
-        let previousPage = pages[index]
+        // Snapshot for restore-on-failure, with the decoded bitmap stripped:
+        // the restore path reads only `.state`, and a retained image would pin
+        // bitmaps inside the pipelined prep buffer for the whole batch run.
+        var previousPage = pages[index]
+        previousPage.image = nil
         pages[index].state = .processing
 
         let restoreFrom: MangaPage?
