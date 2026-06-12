@@ -47,7 +47,7 @@ Gating:
 
 Edit Mode and batch are mutually exclusive in both directions, which is what makes the per-page sidebar gating safe. Batch → edit: the `isProcessing` term above disables Edit for the entire batch, including `.translated` pages the retranslate-all pass has not reached yet — otherwise an edit session opened on such a page would be stomped by `preparePage` when its turn came. Edit → batch: Re-translate All, Open, and the drag-and-drop handler are already inert while `isEditing` (existing behavior, now pinned by the batch-processing delta spec), so a batch can never start and later collide with an open session. Single-page flows on other pages are the only concurrency left, and they never visit the edited page.
 
-Side effect to accept: cache-hit pages pass through `.processing` briefly, so the toolbar may flicker disabled for a moment on cache-served single-page actions. Harmless.
+Side effects to accept: cache-hit pages pass through `.processing` briefly, so the toolbar may flicker disabled for a moment on cache-served single-page actions. And the sidebar Re-translate button renders a spinner whenever its `isProcessing` parameter is true, so during batch it now spins for the whole run even when the current page is already translated — a truthful "translation running" signal. Both harmless.
 
 Trade-off noted: a page stuck in `.processing` (e.g. hung network call) locks the toolbar until it resolves to `.translated`/`.error`. Translation calls have timeouts, so the lock always clears; this is preferable to allowing mid-flight settings mutation.
 

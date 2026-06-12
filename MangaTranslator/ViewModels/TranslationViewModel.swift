@@ -286,6 +286,16 @@ final class TranslationViewModel: ObservableObject {
         return true
     }
 
+    // Unified lock for pipeline-affecting controls (Open, glossary, languages,
+    // engine, Re-translate All). `isProcessing` covers the batch pipeline;
+    // the page scan covers single-page flows (initial single image, sidebar
+    // Re-translate, engine switch, Edit Mode commit), which mark only the
+    // page itself `.processing`. See lock-controls-during-batch/design.md D1.
+    var isTranslationInFlight: Bool {
+        if isProcessing { return true }
+        return pages.contains { if case .processing = $0.state { return true } else { return false } }
+    }
+
     var translationService: any TranslationService {
         if let override = translationServiceOverride { return override }
         switch preferences.translationEngine {
@@ -909,6 +919,12 @@ final class TranslationViewModel: ObservableObject {
     // back to a previously used engine is free when the layout still matches.
     func switchEngineForCurrentPage() async {
         guard editSession == nil else { return }
+        // The toolbar engine picker is disabled while translation is in
+        // flight, but the Settings window mutates the same preference and
+        // fires the same onChange, so the guard must live here. The ignored
+        // switch is not replayed; the next translation picks up the new
+        // engine. See lock-controls-during-batch/design.md D2/D3.
+        guard !isTranslationInFlight else { return }
         await translatePage(at: currentPageIndex, mode: .engineSwitch)
     }
 

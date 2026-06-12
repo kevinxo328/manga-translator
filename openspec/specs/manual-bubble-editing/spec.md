@@ -7,7 +7,7 @@ TBD - created by archiving change manual-bubble-editing. Update Purpose after ar
 
 The system SHALL expose a single per-page **Edit Mode** entered and exited only through explicit user actions surfaced in `TranslationSidebar`. An Edit Mode session SHALL be bound to exactly one page (identified by `MangaPage.id`).
 
-The system SHALL render the Edit button as **enabled if and only if** the page's `PageState` is `.translated`. For `.pending`, `.processing`, and `.error` states the button SHALL be disabled (rendered but not interactive).
+The system SHALL render the Edit button as **enabled if and only if** the page's `PageState` is `.translated` AND no batch translation is running (the view model's `isProcessing` flag is false; see `batch-processing` — Pipeline-affecting controls locked while translation is in flight). For `.pending`, `.processing`, and `.error` states, and while batch translation is running, the button SHALL be disabled (rendered but not interactive).
 
 Entering Edit Mode SHALL capture an immutable snapshot of the current page's `[TranslatedBubble]` and instantiate a working copy used for all in-session mutations. The original `[TranslatedBubble]` SHALL not be mutated during the session.
 
@@ -30,7 +30,7 @@ While Edit Mode is active the system SHALL disable page-switching: next/previous
 The system SHALL NOT display a modal alert for blocked page switches.
 
 #### Scenario: Edit button gated by page state
-- **WHEN** the user views a page whose state is `.translated`
+- **WHEN** the user views a page whose state is `.translated` and no batch translation is running
 - **THEN** the Edit button in the sidebar header is enabled
 - **AND** clicking it opens an Edit Mode session for that page
 
@@ -38,6 +38,11 @@ The system SHALL NOT display a modal alert for blocked page switches.
 - **WHEN** the page state is `.pending`, `.processing`, or `.error`
 - **THEN** the Edit button is rendered but disabled
 - **AND** no Edit Mode session can be opened
+
+#### Scenario: Edit button disabled during batch translation
+- **WHEN** batch translation is running and the currently viewed page has already reached `.translated`
+- **THEN** the Edit button is rendered but disabled
+- **AND** it re-enables when the batch finishes (the page still being `.translated`)
 
 #### Scenario: Cancel restores pre-edit state byte-for-byte
 - **WHEN** the user enters Edit Mode and performs add, delete, move, and reorder actions

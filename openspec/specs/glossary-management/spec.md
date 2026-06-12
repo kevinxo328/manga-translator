@@ -157,7 +157,7 @@ The system SHALL parse `detected_terms` from LLM translation responses and inser
 - **THEN** the existing entry is not overwritten
 
 ### Requirement: Glossary picker in main UI
-The system SHALL display a glossary selector in the main window toolbar that shows the active glossary name (or "Glossary" as the label when nothing is selected). Users SHALL be able to switch glossaries or clear the selection ("No Glossary") at any time without leaving the main window. The selection is session-only and resets to no glossary on app launch.
+The system SHALL display a glossary selector in the main window toolbar that shows the active glossary name (or "Glossary" as the label when nothing is selected). Users SHALL be able to switch glossaries or clear the selection ("No Glossary") at any time without leaving the main window, except while translation is in flight (batch or single-page), during which the picker SHALL be disabled (see `batch-processing` — Pipeline-affecting controls locked while translation is in flight). The selection is session-only and resets to no glossary on app launch.
 
 #### Scenario: User selects a glossary
 - **WHEN** user opens the glossary picker and selects a named glossary
@@ -166,6 +166,10 @@ The system SHALL display a glossary selector in the main window toolbar that sho
 #### Scenario: User clears glossary selection
 - **WHEN** user selects "No Glossary" in the glossary picker
 - **THEN** subsequent translations proceed without glossary injection
+
+#### Scenario: Glossary picker disabled while translation is in flight
+- **WHEN** batch translation is running, or any page is in `.processing` from a single-page translation flow
+- **THEN** the glossary picker is disabled and the active glossary cannot change until no translation remains in flight
 
 ### Requirement: Glossary management settings tab
 The system SHALL provide a Glossary tab in the Settings window (positioned between Preferences and Debug) for managing glossaries. The Glossary tab SHALL display in `.formStyle(.grouped)` matching the visual style of other Settings tabs. It SHALL show a single-row glossary selector (Menu showing the active glossary name, or "Select a Glossary…" as placeholder when none is selected) with inline rename, new, and delete action buttons. Rename is confirmed via a sheet pre-filled with the current name. Create and rename sheets SHALL use the same glossary-name rules as `GlossaryService`: trimmed names must be non-empty, no longer than 20 Swift `Character` values, and not duplicate another glossary's persisted name. The sheets SHALL NOT enable confirmation when the current input is invalid. Empty-name validation feedback SHALL NOT be shown before the user edits the sheet field; after user interaction, empty input SHALL show specific validation feedback. Over-20-character and duplicate-name feedback SHALL be shown immediately for non-empty invalid input. The terms list SHALL display in a separate section ordered newest first, with a button in the section header to add terms. Each term row SHALL show source to target text, an auto-detected badge where applicable, and edit/delete action buttons.

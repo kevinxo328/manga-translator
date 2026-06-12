@@ -51,7 +51,10 @@ struct ContentView: View {
                 translations: viewModel.currentTranslations,
                 highlightedBubbleId: $viewModel.highlightedBubbleId,
                 pageId: viewModel.currentPage?.id,
-                isProcessing: viewModel.isCurrentPageProcessing,
+                // Batch flag, not isTranslationInFlight: a single-page flow on
+                // another page must not lock this page's Re-translate/Edit.
+                // See lock-controls-during-batch/design.md D1.
+                isProcessing: viewModel.isProcessing || viewModel.isCurrentPageProcessing,
                 onRetranslate: {
                     Task { await viewModel.retranslateCurrentPage() }
                 },
@@ -403,7 +406,7 @@ struct ContentView: View {
             }
             .help("Open image, folder or archive")
             .keyboardShortcut("o", modifiers: .command)
-            .disabled(isEditing)
+            .disabled(viewModel.isTranslationInFlight || isEditing)
         }
 
         if viewModel.pages.count > 1 {
@@ -473,6 +476,7 @@ struct ContentView: View {
             .menuStyle(.borderlessButton)
             .padding(.horizontal, 8)
             .controlSize(.small)
+            .disabled(viewModel.isTranslationInFlight)
             .help(viewModel.activeGlossaryID != nil ? "Active glossary: \(viewModel.activeGlossary?.name ?? "")" : "No glossary selected")
         }
 
@@ -513,6 +517,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 8)
             .controlSize(.small)
+            .disabled(viewModel.isTranslationInFlight)
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -538,6 +543,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 8)
             .controlSize(.small)
+            .disabled(viewModel.isTranslationInFlight)
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -550,7 +556,7 @@ struct ContentView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(viewModel.isProcessing || isEditing)
+            .disabled(viewModel.isTranslationInFlight || isEditing)
             .help("Re-translate all pages using current settings")
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 guard !isEditing else { return }

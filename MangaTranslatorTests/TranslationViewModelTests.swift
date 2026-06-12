@@ -232,6 +232,131 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(cache.storedBubbleSets.count, 1, "Result must be written to the new engine's cache")
     }
 
+    // MARK: - Translation-in-flight lock (lock-controls-during-batch)
+
+    func testIsTranslationInFlightFalseWhenIdle() {
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: StubCacheService()
+        )
+        vm.pages = [makeCommittedPage([makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")])]
+        XCTAssertFalse(
+            vm.isTranslationInFlight,
+            "No batch and no .processing page — settings controls must stay unlocked"
+        )
+    }
+
+    func testIsTranslationInFlightTrueWhileBatchFlagSet() {
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: StubCacheService()
+        )
+        vm.isProcessing = true
+        XCTAssertTrue(
+            vm.isTranslationInFlight,
+            "Batch pipeline running must lock settings controls even with no page yet in .processing"
+        )
+    }
+
+    func testIsTranslationInFlightTrueWhileAnyPageProcessing() {
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: makeEmptyRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: StubCacheService()
+        )
+        var processingPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/in-flight-test.png"))
+        processingPage.state = .processing
+        vm.pages = [
+            makeCommittedPage([makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a")]),
+            processingPage
+        ]
+        XCTAssertFalse(vm.isProcessing, "Precondition: single-page flows never set the batch flag")
+        XCTAssertTrue(
+            vm.isTranslationInFlight,
+            "A single-page flow (.processing page) must lock settings controls — it reads live preferences mid-flight"
+        )
+    }
+
+    func testEngineSwitchIgnoredWhileBatchRunning() async {
+        let committed = [makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "old A")]
+        let cache = StubCacheService()
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "cached B")
+        ])
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+        vm.isProcessing = true
+
+        await vm.switchEngineForCurrentPage()
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Engine switch during batch must not touch page state, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["old A"], "Page must keep its pre-switch translations")
+        XCTAssertEqual(cache.lookupCount, 0, "Suppressed switch must not consult the cache")
+        XCTAssertFalse(translationCalled, "Suppressed switch must not call the translation service")
+        XCTAssertTrue(cache.storedBubbleSets.isEmpty, "Suppressed switch must not write to the cache")
+    }
+
+    func testEngineSwitchIgnoredWhileAnotherPageProcessing() async {
+        let committed = [makeTranslated(index: 0, box: CGRect(x: 0, y: 0, width: 10, height: 10), text: "a", translated: "old A")]
+        let cache = StubCacheService()
+        var translationCalled = false
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(onTranslate: { translationCalled = true }),
+            cacheService: cache
+        )
+        var processingPage = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/in-flight-test.png"))
+        processingPage.state = .processing
+        vm.pages = [makeCommittedPage(committed), processingPage]
+
+        await vm.switchEngineForCurrentPage()
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Engine switch during a single-page flow must not touch page state, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["old A"], "Page must keep its pre-switch translations")
+        XCTAssertEqual(cache.lookupCount, 0, "Suppressed switch must not consult the cache")
+        XCTAssertFalse(translationCalled, "Suppressed switch must not call the translation service")
+    }
+
+    func testEngineSwitchProceedsWhenNoTranslationInFlight() async {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let committed = [makeTranslated(index: 0, box: box0, text: "a", translated: "old A")]
+        let cache = StubCacheService()
+        cache.lookupResult = CacheService.CachedTranslationResult(bubbles: [
+            makeTranslated(index: 0, box: box0, text: "a", translated: "cached B")
+        ])
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: TrackingTranslationService(),
+            cacheService: cache
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        await vm.switchEngineForCurrentPage()
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Expected .translated from cache hit, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["cached B"], "Idle engine switch must behave exactly as before the guard")
+        XCTAssertEqual(cache.lookupCount, 1, "Idle engine switch must consult the new engine's cache")
+    }
+
     func testEngineSwitchStaleCacheLackingManualBubbleIsIgnored() async {
         let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
         let box1 = CGRect(x: 20, y: 0, width: 10, height: 10)
