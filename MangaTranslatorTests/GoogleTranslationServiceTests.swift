@@ -56,7 +56,7 @@ struct GoogleTranslationServiceTests {
     func googlePreservesBubbleIndices() async throws {
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            let data = Data(#"{"data":{"translations":[{"translatedText":"ok"}]}}"#.utf8)
+            let data = Data(#"{"data":{"translations":[{"translatedText":"hello"},{"translatedText":"goodbye"}]}}"#.utf8)
             return (response, data)
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
@@ -69,6 +69,88 @@ struct GoogleTranslationServiceTests {
         let output = try await service.translate(bubbles: bubbles, from: .ja, to: .zhHant, context: .empty)
 
         #expect(output.bubbles.map(\.index) == [0, 2])
+    }
+
+    // Google v2's `q` field accepts up to 128 strings per request, so a page
+    // of N bubbles must cost 1 round-trip, not N. The response `translations`
+    // list corresponds positionally to the `q` entries.
+    @Test("Google sends all bubbles of a page in a single request, in order")
+    func googleBatchesPageIntoSingleRequest() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(
+                #"{"data":{"translations":[{"translatedText":"one"},{"translatedText":"two"},{"translatedText":"three"}]}}"#.utf8
+            )
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = [
+            BubbleCluster(boundingBox: .zero, text: "壱", observations: [], index: 0),
+            BubbleCluster(boundingBox: .zero, text: "弐", observations: [], index: 1),
+            BubbleCluster(boundingBox: .zero, text: "参", observations: [], index: 2)
+        ]
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: bubbles, from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 1)
+        let body = try JSONSerialization.jsonObject(with: #require(counter.capturedBodies.first)) as? [String: Any]
+        #expect(body?["q"] as? [String] == ["壱", "弐", "参"])
+        #expect(output.bubbles.map(\.translatedText) == ["one", "two", "three"])
+    }
+
+    @Test("Google throws invalidResponse when translation count mismatches request")
+    func googleThrowsOnTranslationCountMismatch() async throws {
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"data":{"translations":[{"translatedText":"only-one"}]}}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = [
+            BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [], index: 0),
+            BubbleCluster(boundingBox: .zero, text: "さようなら", observations: [], index: 1)
+        ]
+        let service = makeService(session: session)
+        do {
+            _ = try await service.translate(bubbles: bubbles, from: .ja, to: .zhHant, context: .empty)
+            Issue.record("Expected throw")
+        } catch TranslationError.invalidResponse {
+            // expected
+        } catch {
+            Issue.record("Expected TranslationError.invalidResponse, got \(error)")
+        }
+    }
+
+    // Google caps `q` at 128 strings per request; 129 bubbles must split
+    // into two requests of 128 + 1 instead of one oversized (rejected) call.
+    @Test("Google chunks pages with more than 128 bubbles into multiple requests")
+    func googleChunksBeyondLimit() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let body = request.jsonMockBody()
+            let texts = body["q"] as? [String] ?? []
+            let translations = texts.map { #"{"translatedText":"t-\#($0)"}"# }.joined(separator: ",")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(#"{"data":{"translations":[\#(translations)]}}"#.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = (0..<129).map {
+            BubbleCluster(boundingBox: .zero, text: "b\($0)", observations: [], index: $0)
+        }
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: bubbles, from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 2)
+        let firstBody = try JSONSerialization.jsonObject(with: #require(counter.capturedBodies.first)) as? [String: Any]
+        #expect((firstBody?["q"] as? [String])?.count == 128)
+        #expect(output.bubbles.map(\.translatedText) == (0..<129).map { "t-b\($0)" })
+        #expect(output.bubbles.map(\.index) == Array(0..<129))
     }
 
     @Test("Google PERMISSION_DENIED yields sanitized error with status as code")

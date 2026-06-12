@@ -2,6 +2,8 @@ import Foundation
 
 struct DeepLTranslationService: TranslationService {
     let engine = TranslationEngine.deepL
+    /// DeepL `/v2/translate` accepts at most 50 entries in the `text` array.
+    private static let maxTextsPerRequest = 50
     private let keychainService: KeychainService
     private let urlSession: URLSession
 
@@ -31,17 +33,19 @@ struct DeepLTranslationService: TranslationService {
 
         let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
-        for bubble in bubbles {
-            let textToSend = GlossarySubstitution.applyXML(to: bubble.text, terms: terms)
-            var translated = try await translateText(
-                textToSend, from: source, to: target, apiKey: apiKey, useXML: !terms.isEmpty
+        for chunkStart in stride(from: 0, to: bubbles.count, by: Self.maxTextsPerRequest) {
+            let chunk = bubbles[chunkStart..<min(chunkStart + Self.maxTextsPerRequest, bubbles.count)]
+            let textsToSend = chunk.map { GlossarySubstitution.applyXML(to: $0.text, terms: terms) }
+            let translatedTexts = try await translateTexts(
+                textsToSend, from: source, to: target, apiKey: apiKey, useXML: !terms.isEmpty
             )
-            translated = GlossarySubstitution.revertXML(translated, terms: terms)
-            results.append(TranslatedBubble(
-                bubble: bubble,
-                translatedText: translated,
-                index: bubble.index
-            ))
+            for (bubble, translated) in zip(chunk, translatedTexts) {
+                results.append(TranslatedBubble(
+                    bubble: bubble,
+                    translatedText: GlossarySubstitution.revertXML(translated, terms: terms),
+                    index: bubble.index
+                ))
+            }
         }
         DebugLogger.shared.logAPIDiagnostic(
             "Translation completed: bubbles=\(results.count)",
@@ -50,9 +54,11 @@ struct DeepLTranslationService: TranslationService {
         return TranslationOutput(bubbles: results, detectedTerms: [])
     }
 
-    private func translateText(
-        _ text: String, from source: Language, to target: Language, apiKey: String, useXML: Bool
-    ) async throws -> String {
+    /// Translates up to ``maxTextsPerRequest`` texts in one API call.
+    /// DeepL returns translations in the same order as they are requested.
+    private func translateTexts(
+        _ texts: [String], from source: Language, to target: Language, apiKey: String, useXML: Bool
+    ) async throws -> [String] {
         let host = apiKey.hasSuffix(":fx") ? "api-free.deepl.com" : "api.deepl.com"
         let url = URL(string: "https://\(host)/v2/translate")!
         var request = URLRequest(url: url)
@@ -61,7 +67,7 @@ struct DeepLTranslationService: TranslationService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         var body: [String: Any] = [
-            "text": [text],
+            "text": texts,
             "source_lang": deepLLanguageCode(source),
             "target_lang": deepLLanguageCode(target)
         ]
@@ -91,11 +97,12 @@ struct DeepLTranslationService: TranslationService {
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let translations = json?["translations"] as? [[String: Any]]
-        guard let translatedText = translations?.first?["text"] as? String else {
+        let translatedTexts = translations?.compactMap { $0["text"] as? String }
+        guard let translatedTexts, translatedTexts.count == texts.count else {
             throw TranslationError.invalidResponse
         }
 
-        return translatedText
+        return translatedTexts
     }
 
     private func deepLLanguageCode(_ language: Language) -> String {

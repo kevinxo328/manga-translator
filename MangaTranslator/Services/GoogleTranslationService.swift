@@ -2,6 +2,8 @@ import Foundation
 
 struct GoogleTranslationService: TranslationService {
     let engine = TranslationEngine.google
+    /// Cloud Translation v2 accepts at most 128 strings in the `q` array.
+    private static let maxTextsPerRequest = 128
     private let keychainService: KeychainService
     private let urlSession: URLSession
 
@@ -31,17 +33,19 @@ struct GoogleTranslationService: TranslationService {
 
         let terms = context.glossaryTerms
         var results: [TranslatedBubble] = []
-        for bubble in bubbles {
-            let textToSend = GlossarySubstitution.applyHTML(to: bubble.text, terms: terms)
-            var translated = try await translateText(
-                textToSend, from: source, to: target, apiKey: apiKey, useHTML: !terms.isEmpty
+        for chunkStart in stride(from: 0, to: bubbles.count, by: Self.maxTextsPerRequest) {
+            let chunk = bubbles[chunkStart..<min(chunkStart + Self.maxTextsPerRequest, bubbles.count)]
+            let textsToSend = chunk.map { GlossarySubstitution.applyHTML(to: $0.text, terms: terms) }
+            let translatedTexts = try await translateTexts(
+                textsToSend, from: source, to: target, apiKey: apiKey, useHTML: !terms.isEmpty
             )
-            translated = GlossarySubstitution.revertHTML(translated, terms: terms)
-            results.append(TranslatedBubble(
-                bubble: bubble,
-                translatedText: translated,
-                index: bubble.index
-            ))
+            for (bubble, translated) in zip(chunk, translatedTexts) {
+                results.append(TranslatedBubble(
+                    bubble: bubble,
+                    translatedText: GlossarySubstitution.revertHTML(translated, terms: terms),
+                    index: bubble.index
+                ))
+            }
         }
         DebugLogger.shared.logAPIDiagnostic(
             "Translation completed: bubbles=\(results.count)",
@@ -50,9 +54,11 @@ struct GoogleTranslationService: TranslationService {
         return TranslationOutput(bubbles: results, detectedTerms: [])
     }
 
-    private func translateText(
-        _ text: String, from source: Language, to target: Language, apiKey: String, useHTML: Bool
-    ) async throws -> String {
+    /// Translates up to ``maxTextsPerRequest`` texts in one API call.
+    /// The response `translations` list corresponds positionally to `q`.
+    private func translateTexts(
+        _ texts: [String], from source: Language, to target: Language, apiKey: String, useHTML: Bool
+    ) async throws -> [String] {
         var components = URLComponents(string: "https://translation.googleapis.com/language/translate/v2")!
         components.queryItems = [
             URLQueryItem(name: "key", value: apiKey)
@@ -63,7 +69,7 @@ struct GoogleTranslationService: TranslationService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "q": text,
+            "q": texts,
             "source": googleLanguageCode(source),
             "target": googleLanguageCode(target),
             "format": useHTML ? "html" : "text"
@@ -91,11 +97,12 @@ struct GoogleTranslationService: TranslationService {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let dataObj = json?["data"] as? [String: Any]
         let translations = dataObj?["translations"] as? [[String: Any]]
-        guard let translatedText = translations?.first?["translatedText"] as? String else {
+        let translatedTexts = translations?.compactMap { $0["translatedText"] as? String }
+        guard let translatedTexts, translatedTexts.count == texts.count else {
             throw TranslationError.invalidResponse
         }
 
-        return translatedText
+        return translatedTexts
     }
 
     private func googleLanguageCode(_ language: Language) -> String {

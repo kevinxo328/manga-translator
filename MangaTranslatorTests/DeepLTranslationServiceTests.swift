@@ -56,7 +56,7 @@ struct DeepLTranslationServiceTests {
     func deepLPreservesBubbleIndices() async throws {
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            let data = Data(#"{"translations":[{"text":"ok"}]}"#.utf8)
+            let data = Data(#"{"translations":[{"text":"hello"},{"text":"goodbye"}]}"#.utf8)
             return (response, data)
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
@@ -69,6 +69,86 @@ struct DeepLTranslationServiceTests {
         let output = try await service.translate(bubbles: bubbles, from: .ja, to: .zhHant, context: .empty)
 
         #expect(output.bubbles.map(\.index) == [0, 2])
+    }
+
+    // DeepL's `text` field accepts up to 50 texts per request, so a page of
+    // N bubbles must cost 1 round-trip, not N. Response order is guaranteed
+    // by DeepL to match request order, so pairing back is positional.
+    @Test("DeepL sends all bubbles of a page in a single request, in order")
+    func deepLBatchesPageIntoSingleRequest() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"translations":[{"text":"one"},{"text":"two"},{"text":"three"}]}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = [
+            BubbleCluster(boundingBox: .zero, text: "壱", observations: [], index: 0),
+            BubbleCluster(boundingBox: .zero, text: "弐", observations: [], index: 1),
+            BubbleCluster(boundingBox: .zero, text: "参", observations: [], index: 2)
+        ]
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: bubbles, from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 1)
+        let body = try JSONSerialization.jsonObject(with: #require(counter.capturedBodies.first)) as? [String: Any]
+        #expect(body?["text"] as? [String] == ["壱", "弐", "参"])
+        #expect(output.bubbles.map(\.translatedText) == ["one", "two", "three"])
+    }
+
+    @Test("DeepL throws invalidResponse when translation count mismatches request")
+    func deepLThrowsOnTranslationCountMismatch() async throws {
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"translations":[{"text":"only-one"}]}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = [
+            BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [], index: 0),
+            BubbleCluster(boundingBox: .zero, text: "さようなら", observations: [], index: 1)
+        ]
+        let service = makeService(session: session)
+        do {
+            _ = try await service.translate(bubbles: bubbles, from: .ja, to: .zhHant, context: .empty)
+            Issue.record("Expected throw")
+        } catch TranslationError.invalidResponse {
+            // expected
+        } catch {
+            Issue.record("Expected TranslationError.invalidResponse, got \(error)")
+        }
+    }
+
+    // DeepL caps `text` at 50 entries per request; 51 bubbles must split
+    // into two requests of 50 + 1 instead of one oversized (rejected) call.
+    @Test("DeepL chunks pages with more than 50 bubbles into multiple requests")
+    func deepLChunksBeyondFiftyTexts() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let body = request.jsonMockBody()
+            let texts = body["text"] as? [String] ?? []
+            let translations = texts.map { #"{"text":"t-\#($0)"}"# }.joined(separator: ",")
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(#"{"translations":[\#(translations)]}"#.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let bubbles = (0..<51).map {
+            BubbleCluster(boundingBox: .zero, text: "b\($0)", observations: [], index: $0)
+        }
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: bubbles, from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 2)
+        let firstBody = try JSONSerialization.jsonObject(with: #require(counter.capturedBodies.first)) as? [String: Any]
+        #expect((firstBody?["text"] as? [String])?.count == 50)
+        #expect(output.bubbles.map(\.translatedText) == (0..<51).map { "t-b\($0)" })
+        #expect(output.bubbles.map(\.index) == Array(0..<51))
     }
 
     @Test("DeepL 456 with top-level message yields sanitized error")
