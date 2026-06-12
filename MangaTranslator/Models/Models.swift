@@ -93,18 +93,6 @@ struct CopilotModel: Identifiable, Hashable {
     }
 }
 
-struct LLMModel: Identifiable, Hashable, Codable {
-    let id: String
-    let displayName: String
-    let apiIdentifier: String
-    
-    init(displayName: String, apiIdentifier: String) {
-        self.id = apiIdentifier
-        self.displayName = displayName
-        self.apiIdentifier = apiIdentifier
-    }
-}
-
 struct TextObservation: Identifiable {
     let id = UUID()
     let boundingBox: CGRect

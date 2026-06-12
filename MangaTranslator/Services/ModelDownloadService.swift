@@ -246,7 +246,6 @@ final class ModelDownloadService: ObservableObject, ModelDownloadServicing {
     // MARK: - Public API
 
     func download() async {
-        guard state != .downloading(progress: 0) else { return }
         if case .downloading = state { return }
 
         currentTask = Task {

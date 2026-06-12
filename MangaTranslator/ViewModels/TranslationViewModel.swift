@@ -906,8 +906,6 @@ final class TranslationViewModel: ObservableObject {
             } catch {
                 logCacheMutationFailure(error, operation: "CacheService.store")
             }
-            appendToRecentContextIfNeeded([], usesRecentContext: usesRecentContext)
-
         case .ready(let meaningful, let imageHash, let restoreFrom):
             do {
                 let context = buildTranslationContext(matching: meaningful, usesRecentContext: usesRecentContext)
