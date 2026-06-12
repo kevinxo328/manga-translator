@@ -3,7 +3,9 @@
 Manga image display, bubble overlays, sidebar translations, and user interaction.
 ## Requirements
 ### Requirement: Display manga image with bubble overlays
-The system SHALL display the loaded manga image on the left side of a split view. Detected bubble regions SHALL be marked with numbered indicators on the image. The image data SHALL be pre-loaded by the ViewModel before `ImageViewer` is instantiated; `ImageViewer` SHALL NOT perform any synchronous or asynchronous disk I/O.
+The system SHALL display the loaded manga image on the left side of a split view. Detected bubble regions SHALL be marked with numbered indicators on the image. The image data for the displayed page SHALL be pre-loaded by the ViewModel before `ImageViewer` renders it; `ImageViewer` SHALL NOT perform any synchronous or asynchronous disk I/O.
+
+The ViewModel SHALL keep decoded page images resident only for a sliding window of pages: the current page, its immediate neighbors (current ± 1), and any page with an open Edit Mode session. Pages outside the window MAY hold a nil image; their translated state and image hash SHALL be retained, and their image SHALL be reloaded from `imageURL` when the window reaches them (e.g., via page navigation).
 
 The image MUST be scaled to fill the maximum available area (zoom-to-fit) regardless of the DPI metadata embedded in the image file. Scale calculations MUST use the image's pixel dimensions (from `NSBitmapImageRep.pixelsWide` / `pixelsHigh`), not `NSImage.size` (which is DPI-adjusted points). Bubble overlay positions MUST be computed using the same pixel dimensions as the reference coordinate space.
 
@@ -12,8 +14,13 @@ The image MUST be scaled to fill the maximum available area (zoom-to-fit) regard
 - **THEN** the image is displayed with numbered bubble indicators overlaid at each detected bubble position
 
 #### Scenario: Image pre-loaded before display
-- **WHEN** the ViewModel transitions a page from pending to translated state
+- **WHEN** a page becomes the current page (on load or via next/previous navigation)
 - **THEN** `page.image` is non-nil before `ImageViewer` renders the page
+
+#### Scenario: Pages outside the sliding window release their bitmaps
+- **WHEN** batch translation completes for a page outside the sliding window
+- **THEN** that page's `page.image` is nil while its translated state and image hash are retained
+- **AND** navigating to that page reloads the image before `ImageViewer` renders it
 
 #### Scenario: High-DPI image fills viewer
 - **WHEN** a 600 DPI image with pixel dimensions 1114×1600 is displayed in a 500×700 pt viewer area

@@ -1227,6 +1227,72 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertLessThanOrEqual(maxConcurrent, 3)
     }
 
+    // Decoded bitmaps are the dominant per-page memory cost (a 1MB JPEG can
+    // decode to tens of MB). The viewer only ever shows the current page, so
+    // after a batch run only the sliding window (current ± 1) may stay
+    // resident; every other page must hold just its URL and reload lazily.
+    func testLoadFolderKeepsOnlyImageWindowResidentAfterBatch() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 1...6 {
+            try writeTestPNG(at: root.appendingPathComponent("page_\(index).png"))
+        }
+
+        let router = await makeSingleRegionRouterSequential(texts: ["page"])
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: router,
+            translationService: TrackingTranslationService()
+        )
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(vm.currentPageIndex, 0)
+        XCTAssertNotNil(vm.pages[0].image, "current page must stay resident for the viewer")
+        XCTAssertNotNil(vm.pages[1].image, "next page is preloaded so page-flip is instant")
+        for index in 2...5 {
+            XCTAssertNil(vm.pages[index].image, "page \(index) is outside the window and must be evicted after OCR")
+        }
+        // Eviction must drop only the decoded bitmap — translation results and
+        // the cache key survive so no work is redone when the page is revisited.
+        for index in 2...5 {
+            XCTAssertNotNil(vm.pages[index].imageHash)
+            guard case .translated = vm.pages[index].state else {
+                XCTFail("page \(index) should remain translated after eviction")
+                continue
+            }
+        }
+    }
+
+    func testNavigationSlidesImageWindowAndReloadsLazily() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 1...6 {
+            try writeTestPNG(at: root.appendingPathComponent("page_\(index).png"))
+        }
+
+        let router = await makeSingleRegionRouterSequential(texts: ["page"])
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: router,
+            translationService: TrackingTranslationService()
+        )
+        await vm.loadFolder(root)
+
+        vm.nextPage()
+        vm.nextPage()
+
+        XCTAssertEqual(vm.currentPageIndex, 2)
+        XCTAssertNil(vm.pages[0].image, "page left behind the window must be released")
+        XCTAssertNotNil(vm.pages[1].image)
+        XCTAssertNotNil(vm.pages[2].image)
+        XCTAssertNotNil(vm.pages[3].image, "evicted page ahead must reload when the window reaches it")
+        XCTAssertNil(vm.pages[4].image)
+        XCTAssertNil(vm.pages[5].image)
+    }
+
     func testLoadArchiveUsesOriginalSourcePathAndLoadsExtractedImages() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

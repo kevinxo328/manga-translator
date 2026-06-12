@@ -326,6 +326,9 @@ final class TranslationViewModel: ObservableObject {
 
     func loadImage(_ url: URL) async {
         guard editSession == nil else { return }
+        // Single images are copied to temp below, so no lasting scope is
+        // needed — but the folder the previous pages came from can let go.
+        releaseSecurityScopedSource()
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         self.sourcePath = url.path
         // Copy to temp to ensure accessibility after security scope is revoked
@@ -351,19 +354,21 @@ final class TranslationViewModel: ObservableObject {
 
     func loadFolder(_ url: URL, displayPath: String? = nil) async {
         guard editSession == nil else { return }
-        let isSecurityScoped = url.startAccessingSecurityScopedResource()
+        // Pages hold only their URL; bitmaps load lazily (OCR in preparePage,
+        // viewing via updateImageWindow). Reads happen long after this method
+        // returns, so the folder's security scope must stay active for the
+        // lifetime of the loaded pages — released when other content replaces
+        // them — instead of ending here.
+        releaseSecurityScopedSource()
+        if url.startAccessingSecurityScopedResource() {
+            securityScopedSourceURL = url
+        }
         self.sourcePath = displayPath ?? url.path
         let imageURLs = FileInputService.scanFolder(url)
-        pages = imageURLs.map { imageURL in
-            var page = MangaPage(imageURL: imageURL)
-            page.image = NSImage(contentsOf: imageURL)
-            return page
-        }
-        if isSecurityScoped {
-            url.stopAccessingSecurityScopedResource()
-        }
+        pages = imageURLs.map { MangaPage(imageURL: $0) }
         resetRecentContext()
         currentPageIndex = 0
+        updateImageWindow()
         await translateBatch()
     }
 
@@ -386,6 +391,44 @@ final class TranslationViewModel: ObservableObject {
 
     private func translateBatch() async {
         await runBatchPipeline(mode: .standard)
+    }
+
+    // MARK: - Image memory window & source security scope
+
+    // Security scope of the user-selected folder whose pages are currently
+    // loaded. Lazy bitmap loads and hash reads occur long after loadFolder
+    // returns and are only permitted while the scope is active.
+    private var securityScopedSourceURL: URL?
+
+    private func releaseSecurityScopedSource() {
+        securityScopedSourceURL?.stopAccessingSecurityScopedResource()
+        securityScopedSourceURL = nil
+    }
+
+    // Sliding window of decoded page images: only the current page, its
+    // immediate neighbors, and an open Edit Mode page stay resident; other
+    // pages keep just their URL and reload lazily when the window reaches
+    // them. Bounds memory by window size instead of page count.
+    private static let imageWindowRadius = 1
+
+    private func isWithinImageWindow(_ index: Int) -> Bool {
+        if abs(index - currentPageIndex) <= Self.imageWindowRadius { return true }
+        // Edit Mode reads the page bitmap (commit OCR, pixel-size clamping);
+        // never evict it while a session is open.
+        if let sessionPageId = editSession?.pageId, pages[index].id == sessionPageId { return true }
+        return false
+    }
+
+    private func updateImageWindow() {
+        for index in pages.indices {
+            if isWithinImageWindow(index) {
+                if pages[index].image == nil {
+                    pages[index].image = NSImage(contentsOf: pages[index].imageURL)
+                }
+            } else if pages[index].image != nil {
+                pages[index].image = nil
+            }
+        }
     }
 
     // MARK: - Translation pipeline
@@ -500,6 +543,13 @@ final class TranslationViewModel: ObservableObject {
     private func preparePage(at index: Int, mode: PageTranslationMode, service: any TranslationService) async -> PagePreparation {
         guard pages.indices.contains(index) else {
             return .failed(message: "invalid page index", restoreFrom: nil)
+        }
+        // Window membership is evaluated at exit so a page the user navigated
+        // to while its OCR was in flight stays resident.
+        defer {
+            if pages.indices.contains(index), !isWithinImageWindow(index) {
+                pages[index].image = nil
+            }
         }
 
         let previousPage = pages[index]
@@ -941,6 +991,7 @@ final class TranslationViewModel: ObservableObject {
         if currentPageIndex < pages.count - 1 {
             currentPageIndex += 1
             highlightedBubbleId = nil
+            updateImageWindow()
         }
     }
 
@@ -949,6 +1000,7 @@ final class TranslationViewModel: ObservableObject {
         if currentPageIndex > 0 {
             currentPageIndex -= 1
             highlightedBubbleId = nil
+            updateImageWindow()
         }
     }
 
