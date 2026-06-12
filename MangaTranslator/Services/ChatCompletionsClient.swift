@@ -14,8 +14,15 @@ struct ChatCompletionsClient {
     let category: DebugLogCategory
     let urlSession: URLSession
 
-    private let maxRetries = 2
+    /// Both translate paths share the same retry budget: one retry with
+    /// backoff, applied to API/network failures and parse failures alike.
+    private let maxAttempts = 2
     private var endpointDescription: String { endpoint.absoluteString }
+
+    // 500ms backoff * 2^(attempt-1); only one retry per design.
+    private static func backoffNanos(afterAttempt attempt: Int) -> UInt64 {
+        500_000_000 * UInt64(1 << (attempt - 1))
+    }
 
     /// Shared sampling temperature for all LLM translation requests.
     static let temperature: Double = 0.3
@@ -69,31 +76,58 @@ struct ChatCompletionsClient {
         let systemPrompt = LLMPrompt.systemPrompt(from: source, to: target, context: context)
         let userPrompt = LLMPrompt.userPrompt(bubbles: bubbles)
 
-        for attempt in 0...maxRetries {
-            let responseText = try await callAPI(
-                systemPrompt: systemPrompt,
-                userPrompt: userPrompt,
-                authToken: authToken,
-                maxTokens: Self.estimatedMaxTokens(bubbleCount: bubbles.count, pageCount: 1)
-            )
-
-            if let (parsed, detected) = try? LLMResponseParser.parse(responseText, bubbles: bubbles) {
-                DebugLogger.shared.logAPIDiagnostic(
-                    "Translation completed: bubbles=\(parsed.count)",
-                    category: category, statusCode: 200, model: model
+        var lastResponseText: String?
+        var lastError: Error?
+        for attempt in 1...maxAttempts {
+            try Task.checkCancellation()
+            do {
+                let responseText = try await callAPI(
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt,
+                    authToken: authToken,
+                    maxTokens: Self.estimatedMaxTokens(bubbleCount: bubbles.count, pageCount: 1)
                 )
-                return TranslationOutput(bubbles: parsed, detectedTerms: detected)
+                do {
+                    let (parsed, detected) = try LLMResponseParser.parse(responseText, bubbles: bubbles)
+                    DebugLogger.shared.logAPIDiagnostic(
+                        "Translation completed: bubbles=\(parsed.count)",
+                        category: category, statusCode: 200, model: model
+                    )
+                    return TranslationOutput(bubbles: parsed, detectedTerms: detected)
+                } catch {
+                    lastResponseText = responseText
+                    lastError = error
+                    // Log error type and response length only; response content
+                    // may carry user text and stays out of the logs.
+                    DebugLogger.shared.log(
+                        "Translation attempt \(attempt)/\(maxAttempts) parse failed: \(type(of: error)), response length \(responseText.count)",
+                        level: .warning, category: category
+                    )
+                }
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw urlError
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+                DebugLogger.shared.log(
+                    "Translation attempt \(attempt)/\(maxAttempts) API call failed",
+                    level: .warning, category: category
+                )
             }
-
-            if attempt == maxRetries {
-                DebugLogger.shared.log("Translation response parse failed after \(maxRetries + 1) attempts, using fallback", level: .warning, category: category)
-                let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
-                return TranslationOutput(bubbles: fallback, detectedTerms: [])
+            if attempt < maxAttempts {
+                try? await Task.sleep(nanoseconds: Self.backoffNanos(afterAttempt: attempt))
             }
         }
 
-        let (fallback, _) = LLMResponseParser.fallbackParse("", bubbles: bubbles)
-        return TranslationOutput(bubbles: fallback, detectedTerms: [])
+        // Parse failures degrade to line-based fallback so the page still
+        // renders; API/network failures have nothing to fall back on.
+        if let responseText = lastResponseText {
+            DebugLogger.shared.log("Translation response parse failed after \(maxAttempts) attempts, using fallback", level: .warning, category: category)
+            let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
+            return TranslationOutput(bubbles: fallback, detectedTerms: [])
+        }
+        throw lastError ?? TranslationError.invalidResponse
     }
 
     func translateBatch(
@@ -111,7 +145,6 @@ struct ChatCompletionsClient {
         let systemPrompt = LLMPrompt.multiPageSystemPrompt(from: source, to: target, context: priorContext)
         let userPrompt = LLMPrompt.multiPageUserPrompt(pageInputs: pageInputs)
 
-        let maxAttempts = 2
         var lastError: Error?
         for attempt in 1...maxAttempts {
             try Task.checkCancellation()
@@ -138,9 +171,7 @@ struct ChatCompletionsClient {
             } catch {
                 lastError = error
                 if attempt < maxAttempts {
-                    // 500ms backoff * 2^(attempt-1); only one retry per design.
-                    let nanos: UInt64 = 500_000_000 * UInt64(1 << (attempt - 1))
-                    try? await Task.sleep(nanoseconds: nanos)
+                    try? await Task.sleep(nanoseconds: Self.backoffNanos(afterAttempt: attempt))
                     continue
                 }
                 throw error

@@ -332,3 +332,148 @@ struct OpenAITranslationServiceBatchTests {
         #expect(urlError.code == .cancelled)
     }
 }
+
+// MARK: - Single-page retry tests (unified with batch semantics)
+
+@Suite("OpenAITranslationService translate retry")
+struct OpenAITranslationServiceRetryTests {
+
+    private func makeService(session: URLSession) -> OpenAITranslationService {
+        OpenAITranslationService(
+            model: "gpt-5",
+            baseURL: "https://api.openai.com/v1",
+            keychainService: .mocked(returning: "sk-test-key"),
+            urlSession: session
+        )
+    }
+
+    private func makeBubble() -> BubbleCluster {
+        var b = BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
+        b.index = 0
+        return b
+    }
+
+    private func validResponseBody(translation: String) -> Data {
+        let content = "[{\"index\":0,\"translation\":\"\(translation)\"}]"
+        let escaped = content
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return Data("{\"choices\":[{\"message\":{\"content\":\"\(escaped)\"}}]}".utf8)
+    }
+
+    private func unparseableResponseBody(content: String) -> Data {
+        Data("{\"choices\":[{\"message\":{\"content\":\"\(content)\"}}]}".utf8)
+    }
+
+    @Test("translate retries once on HTTP 500 then succeeds")
+    func retriesOnceOnHTTP500() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let attempt = counter.record(body: request.readMockBody())
+            if attempt == 1 {
+                let resp = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+                return (resp, Data("internal error".utf8))
+            } else {
+                let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (resp, self.validResponseBody(translation: "T1"))
+            }
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 2)
+        #expect(output.bubbles.first?.translatedText == "T1")
+    }
+
+    @Test("translate throws sanitized API error after second HTTP 500")
+    func throwsAfterSecondHTTP500() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            return (resp, Data("internal error".utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        var caught: Error?
+        do {
+            _ = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+            Issue.record("Expected throw")
+        } catch {
+            caught = error
+        }
+
+        #expect(counter.count == 2)
+        let error = try #require(caught as? TranslationError)
+        if case .apiError(let sanitized) = error {
+            #expect(sanitized.statusCode == 500)
+        } else {
+            Issue.record("Expected TranslationError.apiError, got \(error)")
+        }
+    }
+
+    @Test("translate retries on parse failure then succeeds")
+    func retriesOnParseFailureThenSucceeds() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let attempt = counter.record(body: request.readMockBody())
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            if attempt == 1 {
+                return (resp, self.unparseableResponseBody(content: "not json at all"))
+            } else {
+                return (resp, self.validResponseBody(translation: "T1"))
+            }
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 2)
+        #expect(output.bubbles.first?.translatedText == "T1")
+    }
+
+    @Test("translate falls back to line parsing after second parse failure")
+    func fallsBackAfterSecondParseFailure() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: request.readMockBody())
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, self.unparseableResponseBody(content: "plain translation line"))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+
+        #expect(counter.count == 2)
+        #expect(output.bubbles.first?.translatedText == "plain translation line")
+        #expect(output.detectedTerms.isEmpty)
+    }
+
+    @Test("translate propagates cancellation without retry or fallback")
+    func doesNotRetryOrFallbackOnCancellation() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request -> Result<(HTTPURLResponse, Data), URLError> in
+            _ = counter.record(body: request.readMockBody())
+            return .failure(URLError(.cancelled))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        var caught: Error?
+        do {
+            _ = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+            Issue.record("Expected throw")
+        } catch {
+            caught = error
+        }
+
+        #expect(counter.count == 1)
+        let urlError = try #require(caught as? URLError)
+        #expect(urlError.code == .cancelled)
+    }
+}
