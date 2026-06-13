@@ -123,10 +123,7 @@ final class TranslationViewModel: ObservableObject {
     // Engine boundary: only OpenAI-compatible and GitHub Copilot consume recent-page summaries.
     // DeepL and Google receive glossary terms but never recent-page context.
     private func usesRecentPageContext(_ engine: TranslationEngine) -> Bool {
-        switch engine {
-        case .openAI, .githubCopilot: return true
-        case .deepL, .google: return false
-        }
+        engine.isLLM
     }
 
     // Returns up to `count` summaries from translated pages whose index is
