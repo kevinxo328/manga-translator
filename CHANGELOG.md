@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.4 (2026-06-14)
+
+### Bug Fixes
+
+- Fixed app updates failing to install when sandbox restrictions are active.
+
+### Improvements
+
+- Locked settings controls while translation is in progress so that configuration cannot be changed mid-process.
+- Optimized memory usage by freeing page images that are outside the viewing window so that the app remains fast and responsive during long reading sessions.
+
 ## v1.5.3 (2026-06-12)
 
 ### Bug Fixes
