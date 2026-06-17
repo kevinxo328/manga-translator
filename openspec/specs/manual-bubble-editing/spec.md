@@ -412,7 +412,7 @@ After Cancel, the sidebar SHALL render the original snapshot with no dirty decor
 
 For an Edit Mode Commit that targets page N, the `TranslationContext.recentPageSummaries` passed to `TranslationService.translate(...)` SHALL be sourced from `summariesPreceding(pageIndex: N, count: 3)` when the active engine is a context-consuming LLM engine.
 
-`summariesPreceding(pageIndex: N, count: K)` SHALL return up to K page summaries, drawn from pages whose page index is strictly less than N, taking the K closest such pages in ascending page-index order. A page SHALL contribute a summary if and only if it is currently in `.translated` state. Each summary SHALL be the concatenation of that page's `TranslatedBubble.translatedText` strings ordered by `TranslatedBubble.index`, joined by a single space.
+`summariesPreceding(pageIndex: N, count: K)` SHALL return up to K page summaries, drawn from pages whose page index is strictly less than N, taking the K closest such pages in ascending page-index order. A page SHALL contribute a summary if and only if it is currently in `.translated` state and its concatenated summary is non-empty after trimming whitespace. Pages in `.translated` state with an empty summary (e.g. `.translated([])` from the no-meaningful-bubbles path) SHALL NOT occupy a slot. Each summary SHALL be the concatenation of that page's `TranslatedBubble.translatedText` strings ordered by `TranslatedBubble.index`, joined by a single space.
 
 For non-context engines (DeepL, Google), `recentPageSummaries` on the Commit path SHALL be empty.
 
@@ -430,6 +430,12 @@ The Commit-path `summariesPreceding` lookup SHALL NOT mutate the existing rollin
 #### Scenario: Edit skips untranslated preceding pages
 - **WHEN** the user commits an edit on page 6 with an LLM engine, and pages 3, 5 are translated but page 4 is in `.error`
 - **THEN** `recentPageSummaries` contains exactly two entries, in order: page 3's summary, page 5's summary
+
+#### Scenario: Edit skips empty-summary preceding pages
+- **WHEN** the user commits an edit on page 5 with an LLM engine, and pages 2, 3, 4 are in `.translated` state
+- **AND** page 3 is `.translated([])` (empty summary, e.g. a title page)
+- **THEN** `recentPageSummaries` contains exactly two entries, in order: page 2's summary, page 4's summary
+- **AND** page 3 does not occupy a slot
 
 #### Scenario: Edit with DeepL has empty context
 - **WHEN** the user commits an edit with DeepL as the active engine

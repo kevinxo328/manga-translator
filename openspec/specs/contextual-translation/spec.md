@@ -13,7 +13,7 @@ For a multi-page LLM batch request containing pages F through L (inclusive, with
 
 After a multi-page batch successfully completes, the system SHALL append each translated page in the batch to the rolling window in ascending page-index order, then trim the window to the most recent 3 entries. The rolling window is observed only at the start of the next batch or per-page request, not during the in-flight LLM call.
 
-Pages that fail during image loading, OCR, cache lookup, translation, or cache storage SHALL NOT contribute to the rolling context window. Later pages SHALL continue when their own prerequisites succeed. A page whose final translated result comes from the translation cache is a successful translated page for rolling-context purposes and SHALL contribute its cached translated text to later LLM pages without re-running OCR or translation.
+Pages that fail during image loading, OCR, cache lookup, translation, or cache storage SHALL NOT contribute to the rolling context window. A page in `.translated` state whose summary is empty after trimming whitespace (e.g. `.translated([])` from the no-meaningful-bubbles path, or a title page whose bubbles contain only whitespace) SHALL NOT occupy a context-window slot. Later pages SHALL continue when their own prerequisites succeed. A page whose final translated result comes from the translation cache is a successful translated page for rolling-context purposes and SHALL contribute its cached translated text to later LLM pages without re-running OCR or translation.
 
 #### Scenario: Context window accumulates across pages
 - **WHEN** user translates pages 1, 2, and 3 in sequence
@@ -47,6 +47,13 @@ Pages that fail during image loading, OCR, cache lookup, translation, or cache s
 - **THEN** page 1 contributes no recent-page summary
 - **AND** page 2 still translates successfully
 - **AND** page 2's recent-page summaries exclude page 1
+
+#### Scenario: Empty-summary page does not occupy a context slot
+- **WHEN** user batch-translates pages 1, 2, 3, 4, and 5 with a context-consuming LLM engine
+- **AND** pages 1, 2, and 4 produce non-empty translated text
+- **AND** page 3 finishes as `.translated([])` (e.g. a title page with no meaningful bubbles)
+- **THEN** page 5's recent-page summaries contain entries for pages 1, 2, and 4 (not page 3)
+- **AND** page 3 does not consume one of the 3 available context slots
 
 #### Scenario: Batch re-translate uses page-ordered context
 - **WHEN** user re-translates all pages with a context-consuming LLM engine
