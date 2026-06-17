@@ -257,8 +257,8 @@ final class GlossaryService {
     func insertDetectedTerms(_ terms: [GlossaryTerm], glossaryID: String) throws {
         guard isAvailable, let db else { throw CacheError.unavailable }
         let existing = listTerms(glossaryID: glossaryID)
-        let existingSources = Set(existing.map { $0.sourceTerm })
-        let newTerms = terms.filter { !existingSources.contains($0.sourceTerm) }
+        var seenSources = Set(existing.map { $0.sourceTerm })
+        let newTerms = terms.filter { seenSources.insert($0.sourceTerm).inserted }
         guard !newTerms.isEmpty else { return }
 
         let beginResult = sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil)

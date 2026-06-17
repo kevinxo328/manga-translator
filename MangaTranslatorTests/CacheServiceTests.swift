@@ -161,6 +161,23 @@ final class CacheServiceTests: XCTestCase {
         XCTAssertTrue(terms.contains { $0.sourceTerm == "学校" && $0.autoDetected })
     }
 
+    func testInsertDetectedTermsDeduplicatesWithinSameResponse() throws {
+        let cache = makeCache()
+        let service = cache.glossaryService
+        let glossary = try service.createGlossary(name: "Detected")
+
+        try service.insertDetectedTerms([
+            GlossaryTerm(id: "detected-1", sourceTerm: "炭治郎", targetTerm: "Tanjiro", autoDetected: true),
+            GlossaryTerm(id: "detected-2", sourceTerm: "炭治郎", targetTerm: "Tanjirou", autoDetected: true),
+            GlossaryTerm(id: "detected-3", sourceTerm: "禰豆子", targetTerm: "Nezuko", autoDetected: true)
+        ], glossaryID: glossary.id)
+
+        let terms = service.listTerms(glossaryID: glossary.id)
+        XCTAssertEqual(terms.filter { $0.sourceTerm == "炭治郎" }.count, 1)
+        XCTAssertTrue(terms.contains { $0.sourceTerm == "炭治郎" && $0.targetTerm == "Tanjiro" })
+        XCTAssertTrue(terms.contains { $0.sourceTerm == "禰豆子" && $0.autoDetected })
+    }
+
     // MARK: - 1. CacheService availability + mutation throws
 
     // 1.1 Open failure → service unavailable, mutations throw, reads degrade.
