@@ -292,8 +292,6 @@ private extension PaddleOCRCapability {
         switch self {
         case .supported:
             return "supported"
-        case .supportedWithWarning(let ram):
-            return "supportedWithWarning(ram:\(ram)GB)"
         case .unsupported:
             return "unsupported"
         }

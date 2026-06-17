@@ -262,13 +262,13 @@ The system SHALL display a "High-Accuracy OCR" section in SettingsView exclusive
 - **WHEN** the app runs on an Intel Mac
 - **THEN** the High-Accuracy OCR section is not visible in Settings
 
-#### Scenario: Apple Silicon, not downloaded
-- **WHEN** the device is Apple Silicon and the model has not been downloaded
+#### Scenario: Supported Apple Silicon, not downloaded
+- **WHEN** the device is Apple Silicon with at least 16GB RAM and the model has not been downloaded
 - **THEN** the section shows a "Download and Enable" button
 
 #### Scenario: Apple Silicon 8GB, not downloaded
 - **WHEN** the device is Apple Silicon with 8GB RAM and the model has not been downloaded
-- **THEN** the section shows the "Download and Enable" button and a warning label about RAM
+- **THEN** the section does not show download or enable controls and explains that high-accuracy OCR requires Apple Silicon with at least 16GB unified memory
 
 #### Scenario: Download in progress
 - **WHEN** model download is in progress

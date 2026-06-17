@@ -38,19 +38,17 @@ final class PaddleOCRSettingsViewModel: ObservableObject {
 
     // MARK: - Capability properties for view binding
 
-    var shouldShowRAMWarning: Bool {
-        if case .supportedWithWarning = capability { return true }
-        return false
-    }
-
-    var ramWarningGB: Int? {
-        if case .supportedWithWarning(let ram) = capability { return ram }
-        return nil
+    var isCapabilitySupported: Bool {
+        capability == .supported
     }
 
     // MARK: - Download actions
 
     func downloadModel() async {
+        guard isCapabilitySupported else {
+            enableRejectionMessage = "High-accuracy OCR requires Apple Silicon with at least 16GB unified memory."
+            return
+        }
         await downloadService.download()
     }
 
@@ -77,6 +75,10 @@ final class PaddleOCRSettingsViewModel: ObservableObject {
     // MARK: - Enable/disable actions
 
     func enablePaddleOCR() {
+        guard isCapabilitySupported else {
+            enableRejectionMessage = "High-accuracy OCR requires Apple Silicon with at least 16GB unified memory."
+            return
+        }
         guard downloadService.state == .downloaded else {
             enableRejectionMessage = "Download model first to use high-accuracy OCR."
             return

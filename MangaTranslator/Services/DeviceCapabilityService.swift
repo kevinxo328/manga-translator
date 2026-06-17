@@ -2,7 +2,6 @@ import Foundation
 
 enum PaddleOCRCapability: Equatable {
     case supported
-    case supportedWithWarning(ram: Int)
     case unsupported
 }
 

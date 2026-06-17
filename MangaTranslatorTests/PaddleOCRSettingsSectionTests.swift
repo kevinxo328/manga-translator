@@ -70,28 +70,38 @@ private func makeViewModel(
 @Suite("PaddleOCRSettings - Task 7.1: DeviceCapabilityService integration")
 struct PaddleOCRSettingsCapabilityTests {
 
-    @Test("shouldShowRAMWarning is false for .supported capability")
+    @Test("High-accuracy OCR is available for supported capability")
     @MainActor
-    func noWarningForSupported() {
+    func supportedCapabilityCanUsePaddleOCR() {
         let (vm, _) = makeViewModel(capability: .supported)
-        #expect(vm.shouldShowRAMWarning == false)
-        #expect(vm.ramWarningGB == nil)
+        #expect(vm.isCapabilitySupported == true)
     }
 
-    @Test("shouldShowRAMWarning is true with ram=8 for .supportedWithWarning(ram:8)")
+    @Test("8GB Apple Silicon is unsupported and cannot use high-accuracy OCR")
     @MainActor
-    func warningShownFor8GB() {
-        let (vm, _) = makeViewModel(capability: .supportedWithWarning(ram: 8))
-        #expect(vm.shouldShowRAMWarning == true)
-        #expect(vm.ramWarningGB == 8)
-    }
-
-    @Test("shouldShowRAMWarning is false for .unsupported (Intel equivalent)")
-    @MainActor
-    func noWarningForUnsupported() {
+    func unsupportedCapabilityCannotUsePaddleOCR() {
         let (vm, _) = makeViewModel(capability: .unsupported)
-        #expect(vm.shouldShowRAMWarning == false)
-        #expect(vm.ramWarningGB == nil)
+        #expect(vm.isCapabilitySupported == false)
+    }
+
+    @Test("High-accuracy OCR cannot be enabled on unsupported capability")
+    @MainActor
+    func enableRejectedForUnsupportedCapability() {
+        let (vm, service) = makeViewModel(capability: .unsupported, state: .downloaded)
+        vm.enablePaddleOCR()
+
+        #expect(service.setEnabledHistory.isEmpty)
+        #expect(vm.enableRejectionMessage == "High-accuracy OCR requires Apple Silicon with at least 16GB unified memory.")
+    }
+
+    @Test("High-accuracy OCR model cannot be downloaded on unsupported capability")
+    @MainActor
+    func downloadRejectedForUnsupportedCapability() async {
+        let (vm, service) = makeViewModel(capability: .unsupported, state: .notDownloaded)
+        await vm.downloadModel()
+
+        #expect(service.downloadCalled == false)
+        #expect(vm.enableRejectionMessage == "High-accuracy OCR requires Apple Silicon with at least 16GB unified memory.")
     }
 
     @Test("Capability is .unsupported on Intel device info")

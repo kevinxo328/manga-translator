@@ -10,12 +10,6 @@ struct PaddleOCRSettingsSection: View {
             content
         } header: {
             Label("High-Accuracy OCR (PaddleOCR)", systemImage: "wand.and.stars")
-        } footer: {
-            if viewModel.shouldShowRAMWarning, let ram = viewModel.ramWarningGB {
-                Text("Your Mac has \(ram)GB RAM. High-accuracy OCR may impact performance on other apps.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
         }
         .confirmationDialog(
             "Delete Model Data",
@@ -35,16 +29,26 @@ struct PaddleOCRSettingsSection: View {
 
     @ViewBuilder
     private var content: some View {
-        switch viewModel.downloadState {
-        case .notDownloaded:
-            notDownloadedView
-        case .downloading(let progress):
-            downloadingView(progress: progress)
-        case .downloaded:
-            downloadedView
-        case .failed(let error):
-            failedView(error: error)
+        if viewModel.isCapabilitySupported {
+            switch viewModel.downloadState {
+            case .notDownloaded:
+                notDownloadedView
+            case .downloading(let progress):
+                downloadingView(progress: progress)
+            case .downloaded:
+                downloadedView
+            case .failed(let error):
+                failedView(error: error)
+            }
+        } else {
+            unsupportedView
         }
+    }
+
+    private var unsupportedView: some View {
+        Text("High-accuracy OCR requires Apple Silicon with at least 16GB unified memory.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private var notDownloadedView: some View {
@@ -165,6 +169,6 @@ private func makePaddleOCRPreview(
 #Preview("Downloading") { makePaddleOCRPreview(configuration: .previewDownloading) }
 #Preview("Downloaded + Enabled") { makePaddleOCRPreview(configuration: .previewDownloadedEnabled) }
 #Preview("Downloaded + Disabled") { makePaddleOCRPreview(configuration: .previewDownloadedDisabled) }
-#Preview("Downloading + 8GB Warning") { makePaddleOCRPreview(configuration: .previewDownloading, capability: .supportedWithWarning(ram: 8)) }
+#Preview("Unsupported") { makePaddleOCRPreview(configuration: .previewNotDownloaded, capability: .unsupported) }
 
 #endif
