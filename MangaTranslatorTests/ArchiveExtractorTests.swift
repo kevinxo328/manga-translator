@@ -196,6 +196,18 @@ final class ArchiveExtractorTests: XCTestCase {
 
     // MARK: - Section 3: Limit Tests
 
+    func test_processCaptureDrainsLargeOutputBeforeWaitingForExit() throws {
+        let data = try ArchiveExtractor.runProcessCapturingStandardOutput(
+            executable: URL(fileURLWithPath: "/bin/dd"),
+            arguments: ["if=/dev/zero", "bs=1024", "count=256"],
+            spawnFailureLogCategory: "test_dd_spawn_failed",
+            nonzeroExitLogCategory: "test_dd_nonzero_exit",
+            archiveTag: "large-output"
+        )
+
+        XCTAssertEqual(data.count, 256 * 1024)
+    }
+
     func test_rejectsTooManyFiles() throws { // Task 3.1
         var entries: [TestZipWriter.Entry] = []
         for i in 0..<(ArchiveExtractor.Limits.default.maxFiles + 1) {

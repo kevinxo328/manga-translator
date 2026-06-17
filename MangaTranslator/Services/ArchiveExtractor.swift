@@ -85,35 +85,53 @@ enum ArchiveExtractor {
     // MARK: - Entry listing
 
     private static func listEntries(archiveURL: URL, archiveTag: String) throws -> [ParsedEntry] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zipinfo")
-        process.arguments = ["-l", archiveURL.path]
+        let data = try runProcessCapturingStandardOutput(
+            executable: URL(fileURLWithPath: "/usr/bin/zipinfo"),
+            arguments: ["-l", archiveURL.path],
+            spawnFailureLogCategory: "listing_spawn_failed",
+            nonzeroExitLogCategory: "listing_nonzero_exit",
+            archiveTag: archiveTag
+        )
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        do {
-            try process.run()
-        } catch {
-            logRejection(category: "listing_spawn_failed", archiveTag: archiveTag)
-            throw Error.extractionProcessFailed
-        }
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            logRejection(category: "listing_nonzero_exit", archiveTag: archiveTag)
-            throw Error.extractionProcessFailed
-        }
-
-        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else {
             logRejection(category: "listing_non_utf8", archiveTag: archiveTag)
             throw Error.unparseableMetadata
         }
 
         return try parseZipInfoOutput(output, archiveTag: archiveTag)
+    }
+
+    static func runProcessCapturingStandardOutput(
+        executable: URL,
+        arguments: [String],
+        spawnFailureLogCategory: String,
+        nonzeroExitLogCategory: String,
+        archiveTag: String
+    ) throws -> Data {
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = arguments
+
+        let stdoutPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            logRejection(category: spawnFailureLogCategory, archiveTag: archiveTag)
+            throw Error.extractionProcessFailed
+        }
+
+        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            logRejection(category: nonzeroExitLogCategory, archiveTag: archiveTag)
+            throw Error.extractionProcessFailed
+        }
+
+        return data
     }
 
     /// Parses `zipinfo -l` output. Entry lines start with a 10-character
