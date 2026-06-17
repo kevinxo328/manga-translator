@@ -73,14 +73,14 @@ The system SHALL support GitHub Copilot as a translation backend. The engine SHA
 - **THEN** the system throws `TranslationError.missingAPIKey(.githubCopilot)`
 
 ### Requirement: LLM JSON response parsing with retry
-The system SHALL parse LLM translation responses as JSON arrays. The parser SHALL use a dictionary keyed by `bubble.index` to match response items to original bubbles, rather than using the index as a direct array offset. If parsing fails, the system SHALL retry the request up to 2 times. If all retries fail, the system SHALL fall back to line-by-line text parsing.
+The system SHALL parse LLM translation responses as JSON arrays. The parser SHALL use a dictionary keyed by `bubble.index` to match response items to original bubbles, rather than using the index as a direct array offset. If parsing fails, the system SHALL retry the request once, for a total of 2 attempts. If both attempts fail, the system SHALL fall back to line-by-line text parsing.
 
 #### Scenario: Malformed JSON response
 - **WHEN** the LLM returns invalid JSON on first attempt
 - **THEN** the system retries, and if the retry returns valid JSON, uses that result
 
 #### Scenario: All retries fail
-- **WHEN** the LLM returns invalid JSON on all 3 attempts
+- **WHEN** the LLM returns invalid JSON on both attempts
 - **THEN** the system falls back to splitting the response by newlines and matching to bubbles by position
 
 #### Scenario: Parser uses dictionary lookup
