@@ -5,7 +5,7 @@ Generic settings infrastructure: UserDefaults storage policy, Keychain serviceNa
 ## Requirements
 
 ### Requirement: Store user preferences in UserDefaults
-The system SHALL persist cross-capability user preferences (default source language, default target language, default translation engine, concurrent translation limit) using UserDefaults. Capability-specific preference keys are persisted by their owner capability specs and not enumerated here.
+The system SHALL persist cross-capability user preferences (default source language, default target language, default translation engine) using UserDefaults. Capability-specific preference keys are persisted by their owner capability specs and not enumerated here.
 
 #### Scenario: Preferences persist across launches
 - **WHEN** user sets default language pair to Japanese → Traditional Chinese and quits the app

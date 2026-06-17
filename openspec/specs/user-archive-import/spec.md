@@ -90,7 +90,7 @@ The system SHALL create a unique per-import temporary directory for each user ZI
 - **THEN** no file is created or overwritten outside the per-import destination root
 
 ### Requirement: Preserve valid CBZ image scanning behavior
-The system SHALL preserve existing valid CBZ import behavior after safe extraction. Valid archive imports SHALL continue to use `FileInputService.scanFolder(_:)` for image discovery. Image discovery SHALL recursively scan subdirectories, skip entries whose path components contain `__MACOSX`, include only files with extensions `jpg`, `jpeg`, `png`, `gif`, `webp`, `bmp`, `tiff`, or `tif` case-insensitively, and return image URLs sorted by `lastPathComponent.localizedStandardCompare`.
+The system SHALL preserve existing valid CBZ import behavior after safe extraction. Valid archive imports SHALL continue to use `FileInputService.scanFolder(_:)` for image discovery. Image discovery SHALL recursively scan subdirectories, skip entries whose path components contain `__MACOSX`, include only files with extensions `jpg`, `jpeg`, `png`, `gif`, `webp`, `bmp`, `tiff`, or `tif` case-insensitively, and return image URLs sorted by each image path relative to the scanned root using `localizedStandardCompare`.
 
 #### Scenario: Import valid CBZ with supported image extensions
 - **WHEN** a user imports a valid CBZ containing files with supported image extensions
@@ -104,9 +104,9 @@ The system SHALL preserve existing valid CBZ import behavior after safe extracti
 - **WHEN** a user imports a valid CBZ containing images under a `__MACOSX` path component
 - **THEN** the system excludes those `__MACOSX` images from the scan result
 
-#### Scenario: Sort valid CBZ images by existing filename behavior
+#### Scenario: Sort valid CBZ images by relative path
 - **WHEN** a user imports a valid CBZ containing multiple supported images
-- **THEN** the returned image URLs are sorted using `lastPathComponent.localizedStandardCompare`
+- **THEN** the returned image URLs are sorted by their paths relative to the scanned root using `localizedStandardCompare`
 
 ### Requirement: Preserve external archive import error behavior
 The system SHALL keep the external archive import error contract unchanged. `FileInputService.extractArchive(_:)` SHALL map archive extraction failures to `FileInputError.extractionFailed`. The system SHALL NOT introduce detailed user-facing archive rejection reasons as part of this change.
