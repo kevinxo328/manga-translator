@@ -548,19 +548,30 @@ struct ContentView: View {
 
         ToolbarItem(placement: .primaryAction) {
             // Re-translate All
-            Button {
-                guard !isEditing else { return }
-                Task { await viewModel.retranslateAllPages() }
-            } label: {
-                Image(systemName: "arrow.trianglehead.2.counterclockwise")
+            Group {
+                if viewModel.canCancelTranslation {
+                    Button {
+                        viewModel.cancelTranslation()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .help("Cancel batch translation")
+                } else {
+                    Button {
+                        guard !isEditing else { return }
+                        viewModel.startRetranslateAllPages()
+                    } label: {
+                        Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                    }
+                    .disabled(viewModel.isTranslationInFlight || isEditing)
+                    .help("Re-translate all pages using current settings")
+                }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(viewModel.isTranslationInFlight || isEditing)
-            .help("Re-translate all pages using current settings")
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 guard !isEditing else { return }
-                Task { await viewModel.switchEngineForCurrentPage() }
+                viewModel.startSwitchEngineForCurrentPage()
             }
         }
     }

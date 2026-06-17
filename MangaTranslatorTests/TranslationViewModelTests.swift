@@ -357,6 +357,35 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(cache.lookupCount, 1, "Idle engine switch must consult the new engine's cache")
     }
 
+    func testToolbarEngineSwitchCanBeCancelled() async throws {
+        let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
+        let committed = [makeTranslated(index: 0, box: box0, text: "a", translated: "old A")]
+        let service = SuspendingTranslationService()
+        let vm = TranslationViewModel(
+            preferences: makePrefs(source: .ja, target: .zhHant),
+            ocrRouter: await makeThrowingOCRRouter(),
+            translationService: service,
+            cacheService: StubCacheService()
+        )
+        vm.pages = [makeCommittedPage(committed)]
+
+        let task = try XCTUnwrap(vm.startSwitchEngineForCurrentPage())
+        for _ in 0..<200 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if service.translateCallCount > 0 { break }
+        }
+
+        XCTAssertTrue(vm.canCancelTranslation, "Engine switch launched from the toolbar must expose the same cancel action")
+        vm.cancelTranslation()
+        await task.value
+
+        guard case .translated(let result) = vm.pages[0].state else {
+            return XCTFail("Cancelled engine switch must restore the previous translation, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(result.map(\.translatedText), ["old A"])
+        XCTAssertFalse(vm.canCancelTranslation, "Cancel action must clear when the engine-switch task exits")
+    }
+
     func testEngineSwitchStaleCacheLackingManualBubbleIsIgnored() async {
         let box0 = CGRect(x: 0, y: 0, width: 10, height: 10)
         let box1 = CGRect(x: 20, y: 0, width: 10, height: 10)
@@ -3259,6 +3288,30 @@ private final class TrackingTranslationService: TranslationService {
     }
 }
 
+private final class SuspendingTranslationService: @unchecked Sendable, TranslationService {
+    var engine: TranslationEngine { .githubCopilot }
+    private let lock = NSLock()
+    private var _translateCallCount = 0
+    var translateCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _translateCallCount
+    }
+
+    func translate(
+        bubbles: [BubbleCluster],
+        from source: Language,
+        to target: Language,
+        context: TranslationContext
+    ) async throws -> TranslationOutput {
+        lock.lock()
+        _translateCallCount += 1
+        lock.unlock()
+        while true {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+}
+
 private final class QueueingTranslationService: TranslationService {
     var engine: TranslationEngine { .githubCopilot }
     private var results: [Result<String, Error>]
@@ -4138,6 +4191,38 @@ final class BatchSchedulerTests: XCTestCase {
         await task.value
 
         XCTAssertEqual(service.perPageCalls.count, 0, "Cancellation must not trigger per-page fallback")
+    }
+
+    func testCancelBatchCancelsViewModelOwnedRetranslateTask() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let pageURLs = (1...3).map { root.appendingPathComponent("page_\($0).png") }
+        vm.pages = pageURLs.map { url in
+            var page = MangaPage(imageURL: url)
+            page.image = NSImage(contentsOf: url)
+            return page
+        }
+        service.suspendBatchUntilCancel = true
+
+        let task = try XCTUnwrap(vm.startRetranslateAllPages())
+        for _ in 0..<200 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            if service.batchCalls.count >= 1 { break }
+        }
+
+        XCTAssertTrue(vm.canCancelTranslation, "The toolbar must have a live cancel action while a ViewModel-owned batch is running")
+        vm.cancelTranslation()
+        await task.value
+
+        XCTAssertEqual(service.batchCalls.count, 1, "The user cancel action must cancel the in-flight batch task")
+        XCTAssertFalse(vm.isProcessing, "isProcessing must clear after the owned batch task exits")
+        for i in vm.pages.indices {
+            if case .pending = vm.pages[i].state { continue }
+            XCTFail("Page \(i) must return to .pending after UI-driven cancel, got \(vm.pages[i].state)")
+        }
     }
 
     // 6.11

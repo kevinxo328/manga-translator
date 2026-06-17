@@ -65,6 +65,7 @@ final class TranslationViewModel: ObservableObject {
     private var glossaryService: GlossaryService { cacheService.glossaryService }
     var glossaryServiceForView: GlossaryService { cacheService.glossaryService }
     private var recentPageTranslations: [String] = []
+    private var cancellableTranslationTask: Task<Void, Never>?
 
     init(
         preferences: PreferencesService,
@@ -293,6 +294,10 @@ final class TranslationViewModel: ObservableObject {
         return pages.contains { if case .processing = $0.state { return true } else { return false } }
     }
 
+    var canCancelTranslation: Bool {
+        cancellableTranslationTask != nil && isTranslationInFlight
+    }
+
     var translationService: any TranslationService {
         if let override = translationServiceOverride { return override }
         switch preferences.translationEngine {
@@ -387,7 +392,51 @@ final class TranslationViewModel: ObservableObject {
     }
 
     private func translateBatch() async {
-        await runBatchPipeline(mode: .standard)
+        await runBatchPipelineInCancellableTask(mode: .standard)
+    }
+
+    @discardableResult
+    func startRetranslateAllPages() -> Task<Void, Never>? {
+        guard cancellableTranslationTask == nil, !isTranslationInFlight, editSession == nil else { return nil }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.cancellableTranslationTask = nil }
+            self.resetRecentContext()
+            await self.runBatchPipeline(mode: .retranslate)
+        }
+        cancellableTranslationTask = task
+        return task
+    }
+
+    @discardableResult
+    func startSwitchEngineForCurrentPage() -> Task<Void, Never>? {
+        guard cancellableTranslationTask == nil, !isTranslationInFlight, editSession == nil else { return nil }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.cancellableTranslationTask = nil }
+            await self.switchEngineForCurrentPage()
+        }
+        cancellableTranslationTask = task
+        return task
+    }
+
+    func cancelTranslation() {
+        cancellableTranslationTask?.cancel()
+    }
+
+    private func runBatchPipelineInCancellableTask(mode: PageTranslationMode) async {
+        guard cancellableTranslationTask == nil else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runBatchPipeline(mode: mode)
+        }
+        cancellableTranslationTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        cancellableTranslationTask = nil
     }
 
     // MARK: - Image memory window & source security scope
@@ -443,6 +492,7 @@ final class TranslationViewModel: ObservableObject {
     // translating after each page's own preparation.
     private func runBatchPipeline(mode: PageTranslationMode) async {
         isProcessing = true
+        defer { isProcessing = false }
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
 
@@ -465,7 +515,6 @@ final class TranslationViewModel: ObservableObject {
                 }
             }
         }
-        isProcessing = false
     }
 
     // Ramp-up page caps for the pipelined LLM batch scheduler: the first group
@@ -1044,7 +1093,7 @@ final class TranslationViewModel: ObservableObject {
     func retranslateAllPages() async {
         guard editSession == nil else { return }
         resetRecentContext()
-        await runBatchPipeline(mode: .retranslate)
+        await runBatchPipelineInCancellableTask(mode: .retranslate)
     }
 
     // MARK: - Navigation
