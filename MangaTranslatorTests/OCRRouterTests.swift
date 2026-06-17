@@ -272,54 +272,44 @@ final class OCRRouterTests: XCTestCase {
         XCTAssertEqual(cleanup.clearCount, 0, "MangaOCR path must not invoke PaddleOCR GPU cache cleanup")
     }
 
-    // MARK: - Task 6.3: Reset tests
+    // MARK: - Lazy reset tests
 
-    func testResetPaddleOCRRecognizerClearsRecognizer() async {
-        let service = MangaOCRService()
+    func testPaddleOCRRecognizerLazilyResetsWhenRouteSwitchesToMangaOCR() async throws {
+        let paddleRecognizer = UnloadTrackingOCRRecognizer(name: "paddle-active")
+        let service = MangaOCRService(detector: MockComicTextDetector(returnsEmpty: true))
+        let downloadManager = MutableMockDownloadManager(state: .downloaded, enabled: true)
         let router = OCRRouter(
             mangaOCRService: service,
             capabilityChecker: MockCapabilityChecker(.supported),
-            downloadManager: MockDownloadManager(state: .downloaded, enabled: true)
+            downloadManager: downloadManager,
+            paddleOCRFactory: { paddleRecognizer }
+        )
+        let bubble = BubbleCluster(
+            boundingBox: CGRect(x: 0, y: 0, width: 20, height: 20),
+            text: "", observations: [], index: 0
         )
 
-        await service.setRecognizer(MockOCRRecognizer(name: "active"))
-        var r = await service.recognizer
-        XCTAssertNotNil(r)
-
-        await router.resetPaddleOCRRecognizer()
-        r = await service.recognizer
-        XCTAssertNil(r, "resetPaddleOCRRecognizer() must clear the active recognizer")
-    }
-
-    func testRecognizerResetsWhenPreferenceToggledViaResetMethod() async {
-        // Simulates the preference-toggle path: caller toggles preference then calls reset.
-        let service = MangaOCRService()
-        let router = OCRRouter(
-            mangaOCRService: service,
-            capabilityChecker: MockCapabilityChecker(.supported),
-            downloadManager: MockDownloadManager(state: .downloaded, enabled: true)
+        _ = try await router.recognizeRegions(
+            image: makeTestImage(width: 100, height: 100),
+            bubbles: [bubble],
+            sourceLanguage: .ja
         )
 
-        await service.setRecognizer(MockOCRRecognizer(name: "paddle-active"))
-        await router.resetPaddleOCRRecognizer()
-        let r = await service.recognizer
-        XCTAssertNil(r)
-    }
+        var active = await service.recognizer
+        XCTAssertTrue(active === paddleRecognizer)
 
-    func testRecognizerResetsWhenModelDeletedViaResetMethod() async {
-        // Simulates the model-delete path: ModelDownloadService calls reset on the router.
-        let service = MangaOCRService()
-        let router = OCRRouter(
-            mangaOCRService: service,
-            capabilityChecker: MockCapabilityChecker(.supported),
-            downloadManager: MockDownloadManager(state: .downloaded, enabled: true)
+        downloadManager.enabled = false
+        _ = try await router.recognizeRegions(
+            image: makeTestImage(width: 100, height: 100),
+            bubbles: [],
+            sourceLanguage: .ja
         )
 
-        await service.setRecognizer(MockOCRRecognizer(name: "paddle-active"))
-        await router.resetPaddleOCRRecognizer()
-        let r = await service.recognizer
-        XCTAssertNil(r, "Recognizer must be released after model deletion")
+        active = await service.recognizer
+        XCTAssertNil(active, "Switching away from PaddleOCR should lazy-reset before the next MangaOCR region inference")
+        XCTAssertEqual(paddleRecognizer.unloadCount, 1, "Lazy reset must unload the previously active PaddleOCR recognizer")
     }
+
     func testMainActorResponsivenessDuringOCR() async throws {
         let recognizer = SlowMockOCRRecognizer()
         let service = MangaOCRService(detector: MockComicTextDetector())
@@ -676,6 +666,18 @@ private final class MockDownloadManager: ModelDownloadManaging {
     var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
 }
 
+private final class MutableMockDownloadManager: ModelDownloadManaging {
+    var state: ModelDownloadState
+    var enabled: Bool
+
+    init(state: ModelDownloadState, enabled: Bool = false) {
+        self.state = state
+        self.enabled = enabled
+    }
+
+    var isPaddleOCREnabled: Bool { state == .downloaded && enabled }
+}
+
 // Conforms to both protocols so resolver tests can assert that a
 // dual-conforming downloadManager is preferred over the supplied fallback.
 @MainActor
@@ -702,6 +704,21 @@ private final class MockOCRRecognizer: OCRRecognizing {
     init(name: String = "mock") { self.name = name }
     func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
         return (name, 1.0)
+    }
+}
+
+private final class UnloadTrackingOCRRecognizer: OCRRecognizing {
+    let name: String
+    private(set) var unloadCount = 0
+
+    init(name: String = "tracking") { self.name = name }
+
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        return (name, 1.0)
+    }
+
+    func unload() {
+        unloadCount += 1
     }
 }
 

@@ -119,11 +119,6 @@ final class OCRRouter {
         return try await processWithMangaOCR(image: image)
     }
 
-    func resetPaddleOCRRecognizer() async {
-        await mangaOCRService.resetRecognizer()
-        usingPaddleOCR = false
-    }
-
     func processWithPaddleOCR(image: NSImage) async throws -> MangaOCRPageResult {
         try await withPaddleOCRInference(operationDescription: "PaddleOCR") {
             let result = try await mangaOCRService.recognizeAndCluster(in: image)
