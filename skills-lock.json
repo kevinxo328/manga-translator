@@ -11,7 +11,7 @@
       "source": "kevinxo328/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/commit-message/SKILL.md",
-      "computedHash": "55528d1f494ddf2ee8d0b11939bfa80ddd70cda40ef6ec7c1ceb4b3b5e1e35f4"
+      "computedHash": "293a8d4456ee3aa52fa8de60c28d04978b9e2215842d63ed7c9241dc72e3c6ff"
     },
     "diagnose": {
       "source": "mattpocock/skills",
@@ -29,7 +29,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
-      "computedHash": "a5c65e76275008b469962f7bee8b34866f1c9b0709f4886e71c8e731735640e4"
+      "computedHash": "eb0e91e84277283dc2b23ed544399e53afd6b5287e5b6929f25fe8aa608e164b"
     },
     "handoff": {
       "source": "mattpocock/skills",
@@ -71,7 +71,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-prd/SKILL.md",
-      "computedHash": "6d741474efd4bc3db55fabc2722ed78ca9c374cabcb6212936d79d4fd4a30fcb"
+      "computedHash": "a6d6d475f1d01c201937fa0c306e55b7056b02023ad615bc92f57514e831dd31"
     },
     "triage": {
       "source": "mattpocock/skills",
