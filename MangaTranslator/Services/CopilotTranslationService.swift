@@ -4,14 +4,17 @@ struct CopilotTranslationService: TranslationService {
     let engine = TranslationEngine.githubCopilot
     private let model: String
     private let urlSession: URLSession
-    private let baseURL = "https://api.individual.githubcopilot.com"
+    private let baseURLs = [
+        "https://api.individual.githubcopilot.com",
+        "https://api.githubcopilot.com"
+    ]
 
     init(model: String, urlSession: URLSession = .shared) {
         self.model = model
         self.urlSession = urlSession
     }
 
-    private var client: ChatCompletionsClient {
+    private func makeClient(baseURL: String) -> ChatCompletionsClient {
         ChatCompletionsClient(
             endpoint: URL(string: baseURL)!,
             model: model,
@@ -21,6 +24,24 @@ struct CopilotTranslationService: TranslationService {
             category: .translationCopilot,
             urlSession: urlSession
         )
+    }
+
+    private func withEndpointFallback<T>(
+        _ operation: (ChatCompletionsClient) async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for baseURL in baseURLs {
+            do {
+                return try await operation(makeClient(baseURL: baseURL))
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw urlError
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? TranslationError.invalidResponse
     }
 
     func translate(
@@ -34,13 +55,32 @@ struct CopilotTranslationService: TranslationService {
             throw TranslationError.missingAPIKey(.githubCopilot)
         }
 
-        return try await client.translate(
+        return try await translate(
             bubbles: bubbles,
             from: source,
             to: target,
             context: context,
-            authToken: token
+            token: token
         )
+    }
+
+    /// Internal entry point used by tests so they can bypass `CopilotEnvironment.check()`.
+    func translate(
+        bubbles: [BubbleCluster],
+        from source: Language,
+        to target: Language,
+        context: TranslationContext,
+        token: String
+    ) async throws -> TranslationOutput {
+        try await withEndpointFallback { client in
+            try await client.translate(
+                bubbles: bubbles,
+                from: source,
+                to: target,
+                context: context,
+                authToken: token
+            )
+        }
     }
 
     func translateBatch(
@@ -71,19 +111,21 @@ struct CopilotTranslationService: TranslationService {
         priorContext: TranslationContext,
         token: String
     ) async throws -> [BatchPageOutput] {
-        try await client.translateBatch(
-            pageInputs: pageInputs,
-            from: source,
-            to: target,
-            priorContext: priorContext,
-            authToken: token
-        )
+        try await withEndpointFallback { client in
+            try await client.translateBatch(
+                pageInputs: pageInputs,
+                from: source,
+                to: target,
+                priorContext: priorContext,
+                authToken: token
+            )
+        }
     }
 
     /// Internal access so provider error tests can drive the non-2xx path
     /// without requiring `CopilotEnvironment.check()` to succeed in CI.
     func callAPI(systemPrompt: String, userPrompt: String, token: String) async throws -> String {
-        try await client.callAPI(
+        try await makeClient(baseURL: baseURLs[0]).callAPI(
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             authToken: token,

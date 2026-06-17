@@ -117,6 +117,7 @@ final class BatchRequestCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var _count = 0
     private var _capturedBodies: [Data] = []
+    private var _capturedRequests: [URLRequest] = []
     var count: Int {
         lock.lock(); defer { lock.unlock() }
         return _count
@@ -125,12 +126,32 @@ final class BatchRequestCounter: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return _capturedBodies
     }
-    func record(body: Data) -> Int {
+    var capturedRequests: [URLRequest] {
+        lock.lock(); defer { lock.unlock() }
+        return _capturedRequests
+    }
+    func record(request: URLRequest) -> Int {
+        record(body: request.readMockBody(), request: request)
+    }
+    func record(body: Data, request: URLRequest? = nil) -> Int {
         lock.lock(); defer { lock.unlock() }
         _count += 1
         _capturedBodies.append(body)
+        if let request {
+            _capturedRequests.append(request)
+        }
         return _count
     }
+}
+
+private func makeSingleBubble(index: Int = 0, text: String = "こんにちは") -> BubbleCluster {
+    var b = BubbleCluster(
+        boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10),
+        text: text,
+        observations: []
+    )
+    b.index = index
+    return b
 }
 
 private func makeBatchBubble(index: Int, text: String = "src") -> BubbleCluster {
@@ -145,6 +166,14 @@ private func makeBatchBubble(index: Int, text: String = "src") -> BubbleCluster 
 
 private func makeBatchInputs(_ pageIds: [String]) -> [BatchPageInput] {
     pageIds.map { BatchPageInput(pageId: $0, bubbles: [makeBatchBubble(index: 0, text: "src-\($0)")]) }
+}
+
+private func validSinglePageResponseBody(translation: String) -> Data {
+    let content = "[{\"index\":0,\"translation\":\"\(translation)\"}]"
+    let escaped = content
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+    return Data("{\"choices\":[{\"message\":{\"content\":\"\(escaped)\"}}]}".utf8)
 }
 
 private func validMultiPageResponseBody(translations: [(pageId: String, text: String)]) -> Data {
@@ -164,6 +193,73 @@ struct CopilotTranslationServiceBatchTests {
 
     private func makeService(session: URLSession) -> CopilotTranslationService {
         CopilotTranslationService(model: "gpt-5-mini", urlSession: session)
+    }
+
+    @Test("translate falls back from individual to business endpoint")
+    func translateFallsBackToBusinessEndpoint() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let attempt = counter.record(request: request)
+            if request.url?.host == "api.individual.githubcopilot.com" {
+                let resp = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+                return (resp, Data("individual unavailable".utf8))
+            }
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            #expect(attempt == 3)
+            return (resp, validSinglePageResponseBody(translation: "Business OK"))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let output = try await service.translate(
+            bubbles: [makeSingleBubble()],
+            from: .ja,
+            to: .en,
+            context: .empty,
+            token: "copilot-token-test"
+        )
+
+        #expect(output.bubbles.first?.translatedText == "Business OK")
+        #expect(counter.capturedRequests.compactMap { $0.url?.host } == [
+            "api.individual.githubcopilot.com",
+            "api.individual.githubcopilot.com",
+            "api.githubcopilot.com"
+        ])
+        let fallbackRequest = try #require(counter.capturedRequests.last)
+        #expect(fallbackRequest.value(forHTTPHeaderField: "Copilot-Integration-Id") == "copilot-developer-cli")
+        #expect(fallbackRequest.value(forHTTPHeaderField: "X-GitHub-Api-Version") == nil)
+    }
+
+    @Test("translateBatch falls back from individual to business endpoint")
+    func translateBatchFallsBackToBusinessEndpoint() async throws {
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let attempt = counter.record(request: request)
+            if request.url?.host == "api.individual.githubcopilot.com" {
+                let resp = HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!
+                return (resp, Data("individual unavailable".utf8))
+            }
+            let resp = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            #expect(attempt == 3)
+            return (resp, validMultiPageResponseBody(translations: [("1", "T1")]))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let outputs = try await service.translateBatch(
+            pageInputs: makeBatchInputs(["1"]),
+            from: .ja,
+            to: .en,
+            priorContext: .empty,
+            token: "copilot-token-test"
+        )
+
+        #expect(outputs.map { $0.pageId } == ["1"])
+        #expect(counter.capturedRequests.compactMap { $0.url?.host } == [
+            "api.individual.githubcopilot.com",
+            "api.individual.githubcopilot.com",
+            "api.githubcopilot.com"
+        ])
     }
 
     @Test("translateBatch sends multi-page request with recent context block")
@@ -244,8 +340,8 @@ struct CopilotTranslationServiceBatchTests {
         #expect(counter.count == 2)
     }
 
-    @Test("translateBatch throws after second HTTP 500 (fallback trigger)")
-    func throwsAfterSecondHTTP500() async throws {
+    @Test("translateBatch throws after both endpoints exhaust HTTP 500")
+    func throwsAfterBothEndpointsExhaustHTTP500() async throws {
         let counter = BatchRequestCounter()
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(body: request.readMockBody())
@@ -269,7 +365,7 @@ struct CopilotTranslationServiceBatchTests {
             caught = error
         }
 
-        #expect(counter.count == 2)
+        #expect(counter.count == 4)
         let error = try #require(caught)
         // Non-cancellation error = fallback trigger
         #expect(!(error is CancellationError))
@@ -304,7 +400,7 @@ struct CopilotTranslationServiceBatchTests {
             caught = error
         }
 
-        #expect(counter.count == 2)
+        #expect(counter.count == 4)
         let parseError = try #require(caught as? LLMResponseParser.MultiPageParseError)
         if case .missingPage(let id) = parseError {
             #expect(id == "2")

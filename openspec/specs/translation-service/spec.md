@@ -57,11 +57,12 @@ The system SHALL support English and Japanese as source languages. The system SH
 - **AND** the target language dropdown contains English, French, German, Indonesian, Japanese, Korean, Portuguese (Brazil), Simplified Chinese, Spanish, Traditional Chinese, and Vietnamese in that order
 
 ### Requirement: Support GitHub Copilot translation backend
-The system SHALL support GitHub Copilot as a translation backend. The engine SHALL read the OAuth token from the local keychain entry stored by the Copilot CLI (`copilot-cli` service). The engine SHALL call `api.individual.githubcopilot.com` (for Individual accounts) or `api.githubcopilot.com` (for Business/Enterprise accounts) using the OpenAI-compatible chat completions endpoint with the `Copilot-Integration-Id: vscode-chat` header and `X-GitHub-Api-Version: 2022-11-28` header. The engine SHALL use the same LLM prompt, JSON parsing, and retry logic as the OpenAI backend. If the Copilot CLI is not installed or not logged in, the system SHALL throw `TranslationError.missingAPIKey(.githubCopilot)`.
+The system SHALL support GitHub Copilot as a translation backend. The engine SHALL read the OAuth token from the local keychain entry stored by the Copilot CLI (`copilot-cli` service). The engine SHALL call `api.individual.githubcopilot.com` first using the OpenAI-compatible chat completions endpoint, then fall back to `api.githubcopilot.com` for Business/Enterprise accounts if the first endpoint fails. Requests SHALL include the `Copilot-Integration-Id: copilot-developer-cli` header and SHALL NOT include an `X-GitHub-Api-Version` header. The engine SHALL use the same LLM prompt, JSON parsing, and retry logic as the OpenAI backend. If the Copilot CLI is not installed or not logged in, the system SHALL throw `TranslationError.missingAPIKey(.githubCopilot)`.
 
 #### Scenario: Copilot CLI present and logged in
 - **WHEN** user selects GitHub Copilot engine and translates a page
-- **THEN** the system reads the OAuth token from keychain and calls `api.individual.githubcopilot.com/chat/completions` (or `api.githubcopilot.com/chat/completions`)
+- **THEN** the system reads the OAuth token from keychain and calls `api.individual.githubcopilot.com/chat/completions`
+- **AND** if that endpoint fails, the system retries the translation against `api.githubcopilot.com/chat/completions`
 - **THEN** translated bubbles are returned
 
 #### Scenario: Copilot CLI not installed
