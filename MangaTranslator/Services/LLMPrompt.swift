@@ -237,6 +237,35 @@ enum LLMResponseParser {
         case malformedJSON
     }
 
+    private enum BubbleIndexValidationError: Error {
+        case missing(index: Int)
+        case unexpected(index: Int)
+        case duplicate(index: Int)
+    }
+
+    private static func validateBubbleIndexes<T>(
+        _ items: [T],
+        requestedBubbles: [BubbleCluster],
+        indexOf itemIndex: (T) -> Int
+    ) throws {
+        let requestedIndexes = Set(requestedBubbles.map(\.index))
+        var seenIndexes = Set<Int>()
+
+        for item in items {
+            let index = itemIndex(item)
+            guard requestedIndexes.contains(index) else {
+                throw BubbleIndexValidationError.unexpected(index: index)
+            }
+            guard seenIndexes.insert(index).inserted else {
+                throw BubbleIndexValidationError.duplicate(index: index)
+            }
+        }
+
+        for requestedBubble in requestedBubbles where !seenIndexes.contains(requestedBubble.index) {
+            throw BubbleIndexValidationError.missing(index: requestedBubble.index)
+        }
+    }
+
     // Parses a multi-page batch response and returns outputs in the order of `pageInputs`.
     // Throws MultiPageParseError when the response is malformed, missing a requested page,
     // contains an unexpected page, repeats a page id, or omits/duplicates/invents a bubble
@@ -290,17 +319,14 @@ enum LLMResponseParser {
 
             // Per-page bubble validation: reject extras, duplicates, and missing indexes so a
             // partial bubble response triggers fallback instead of silently dropping bubbles.
-            var seenIndexes = Set<Int>()
-            for item in page.bubbles {
-                if bubbleByIndex[item.index] == nil {
-                    throw MultiPageParseError.unexpectedBubble(pageId: id, index: item.index)
-                }
-                if !seenIndexes.insert(item.index).inserted {
-                    throw MultiPageParseError.unexpectedBubble(pageId: id, index: item.index)
-                }
-            }
-            for requestedBubble in input.bubbles where !seenIndexes.contains(requestedBubble.index) {
-                throw MultiPageParseError.missingBubble(pageId: id, index: requestedBubble.index)
+            do {
+                try validateBubbleIndexes(page.bubbles, requestedBubbles: input.bubbles, indexOf: \.index)
+            } catch BubbleIndexValidationError.missing(let index) {
+                throw MultiPageParseError.missingBubble(pageId: id, index: index)
+            } catch BubbleIndexValidationError.unexpected(let index) {
+                throw MultiPageParseError.unexpectedBubble(pageId: id, index: index)
+            } catch BubbleIndexValidationError.duplicate(let index) {
+                throw MultiPageParseError.unexpectedBubble(pageId: id, index: index)
             }
 
             let translated = page.bubbles.compactMap { item -> TranslatedBubble? in
@@ -332,6 +358,11 @@ enum LLMResponseParser {
         let decoded = try JSONDecoder().decode([LLMTranslationResponse].self, from: data)
 
         let bubbleByIndex = Dictionary(uniqueKeysWithValues: bubbles.map { ($0.index, $0) })
+        do {
+            try validateBubbleIndexes(decoded, requestedBubbles: bubbles, indexOf: \.index)
+        } catch is BubbleIndexValidationError {
+            throw TranslationError.invalidResponse
+        }
         let bubbles = decoded.compactMap { item -> TranslatedBubble? in
             guard let originalBubble = bubbleByIndex[item.index] else { return nil }
             return TranslatedBubble(
@@ -355,11 +386,11 @@ enum LLMResponseParser {
             .components(separatedBy: .newlines)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-        let translatedBubbles = zip(lines, bubbles).enumerated().map { index, pair in
+        let translatedBubbles = zip(lines, bubbles).map { pair in
             TranslatedBubble(
                 bubble: pair.1,
                 translatedText: pair.0.trimmingCharacters(in: .whitespaces),
-                index: index
+                index: pair.1.index
             )
         }
         return (translatedBubbles, [])

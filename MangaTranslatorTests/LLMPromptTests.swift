@@ -124,10 +124,10 @@ struct LLMResponseParserTests {
         #expect(byIndex[3]?.bubble.text == "C")
     }
 
-    // MARK: - Parser silently drops unknown indices
+    // MARK: - Strict index validation
 
-    @Test("parser silently drops items with unknown index")
-    func parserDropsUnknownIndex() throws {
+    @Test("parser rejects items with unknown index")
+    func parserRejectsUnknownIndex() throws {
         let bubbles = [
             makeBubble(index: 0, text: "A"),
             makeBubble(index: 1, text: "B")
@@ -141,10 +141,75 @@ struct LLMResponseParserTests {
         ]
         """
 
-        let (translated, _) = try LLMResponseParser.parse(json, bubbles: bubbles)
+        assertInvalidResponse {
+            _ = try LLMResponseParser.parse(json, bubbles: bubbles)
+        }
+    }
 
-        #expect(translated.count == 1)
-        #expect(translated[0].bubble.text == "A")
+    @Test("parser rejects missing bubble indices")
+    func parserRejectsMissingBubbleIndex() throws {
+        let bubbles = [
+            makeBubble(index: 0, text: "A"),
+            makeBubble(index: 1, text: "B")
+        ]
+        let json = """
+        [
+          {"index": 0, "translation": "Translated A"}
+        ]
+        """
+
+        assertInvalidResponse {
+            _ = try LLMResponseParser.parse(json, bubbles: bubbles)
+        }
+    }
+
+    @Test("parser rejects duplicate bubble indices")
+    func parserRejectsDuplicateBubbleIndex() throws {
+        let bubbles = [
+            makeBubble(index: 0, text: "A"),
+            makeBubble(index: 1, text: "B")
+        ]
+        let json = """
+        [
+          {"index": 0, "translation": "Translated A"},
+          {"index": 1, "translation": "Translated B"},
+          {"index": 0, "translation": "Translated A again"}
+        ]
+        """
+
+        assertInvalidResponse {
+            _ = try LLMResponseParser.parse(json, bubbles: bubbles)
+        }
+    }
+
+    private func assertInvalidResponse(_ operation: () throws -> Void) {
+        do {
+            try operation()
+            Issue.record("Expected TranslationError.invalidResponse")
+        } catch TranslationError.invalidResponse {
+            // Expected strict parser failure.
+        } catch {
+            Issue.record("Expected TranslationError.invalidResponse, got \(error)")
+        }
+    }
+
+    @Test("fallback parser preserves original bubble indices")
+    func fallbackParserPreservesOriginalBubbleIndices() {
+        let bubbles = [
+            makeBubble(index: 0, text: "A"),
+            makeBubble(index: 2, text: "B"),
+            makeBubble(index: 3, text: "C")
+        ]
+        let response = """
+        Translated A
+        Translated B
+        Translated C
+        """
+
+        let (translated, _) = LLMResponseParser.fallbackParse(response, bubbles: bubbles)
+
+        #expect(translated.map(\.index) == [0, 2, 3])
+        #expect(translated.map(\.bubble.index) == [0, 2, 3])
     }
 
     @Test("parser accepts fenced JSON and extracts detected terms")
