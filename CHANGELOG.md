@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.5.5 (2026-06-17)
+
+### Bug Fixes
+
+- Fixed PaddleOCR settings requiring more memory than necessary on some machines.
+- Fixed Copilot translation failing when the primary endpoint is unavailable.
+- Fixed glossary showing duplicate term suggestions for the same word.
+- Fixed translated text occasionally being assigned to the wrong speech bubble on single-page translations.
+
+### Improvements
+
+- Translations started from the toolbar can now be cancelled mid-process.
+
 ## v1.5.4 (2026-06-14)
 
 ### Bug Fixes
