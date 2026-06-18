@@ -16,6 +16,28 @@ struct GoogleTranslationServiceTests {
         BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
     }
 
+    @Test("Google sends API key in header instead of URL query")
+    func googleUsesAPIKeyHeader() async throws {
+        let expectedAPIKey = "AIza-google-test-key-1234567890"
+        let counter = BatchRequestCounter()
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(body: Data(), request: request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"data":{"translations":[{"translatedText":"ok"}]}}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+
+        let service = makeService(session: session)
+        let output = try await service.translate(bubbles: [makeBubble()], from: .ja, to: .en, context: .empty)
+
+        let request = try #require(counter.capturedRequests.first)
+        let components = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        #expect(components?.queryItems?.contains { $0.name == "key" } != true)
+        #expect(request.value(forHTTPHeaderField: "x-goog-api-key") == expectedAPIKey)
+        #expect(output.bubbles.first?.translatedText == "ok")
+    }
+
     @Test("Google request body uses provider language codes for every target language")
     func googleRequestBodyLanguageCodes() async throws {
         let expectedCodes: [(Language, String)] = [

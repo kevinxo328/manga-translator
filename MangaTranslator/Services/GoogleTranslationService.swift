@@ -59,13 +59,10 @@ struct GoogleTranslationService: TranslationService {
     private func translateTexts(
         _ texts: [String], from source: Language, to target: Language, apiKey: String, useHTML: Bool
     ) async throws -> [String] {
-        var components = URLComponents(string: "https://translation.googleapis.com/language/translate/v2")!
-        components.queryItems = [
-            URLQueryItem(name: "key", value: apiKey)
-        ]
-
-        var request = URLRequest(url: components.url!)
+        let url = URL(string: "https://translation.googleapis.com/language/translate/v2")!
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
@@ -89,7 +86,7 @@ struct GoogleTranslationService: TranslationService {
             DebugLogger.shared.logAPIError(
                 sanitized,
                 category: .translationGoogle,
-                endpoint: components.url?.absoluteString
+                endpoint: url.absoluteString
             )
             throw TranslationError.apiError(sanitized)
         }
