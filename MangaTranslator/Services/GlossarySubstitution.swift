@@ -20,31 +20,96 @@ enum GlossarySubstitution {
     private static func wrapTerms(
         in text: String,
         terms: [GlossaryTerm],
-        wrap: (String) -> String
+        wrap: (GlossaryTerm, String) -> String
     ) -> String {
-        let sources = terms.map(\.sourceTerm)
-            .filter { !$0.isEmpty }
-            .sorted { $0.count > $1.count }
-        guard !sources.isEmpty else { return text }
+        let sortedTerms = terms
+            .filter { !$0.sourceTerm.isEmpty }
+            .sorted { $0.sourceTerm.count > $1.sourceTerm.count }
+        guard !sortedTerms.isEmpty else { return text }
 
         var result = ""
         var cursor = text.startIndex
         while cursor < text.endIndex {
-            var earliest: Range<String.Index>?
-            for source in sources {
-                guard let range = text.range(of: source, range: cursor..<text.endIndex) else { continue }
-                // `sources` is longest-first, so on a tied start the longer term wins.
-                if earliest == nil || range.lowerBound < earliest!.lowerBound {
-                    earliest = range
+            var earliest: (term: GlossaryTerm, range: Range<String.Index>)?
+            for term in sortedTerms {
+                guard let range = text.range(of: term.sourceTerm, range: cursor..<text.endIndex) else { continue }
+                // `sortedTerms` is longest-first, so on a tied start the longer term wins.
+                if earliest == nil || range.lowerBound < earliest!.range.lowerBound {
+                    earliest = (term, range)
                 }
             }
             guard let match = earliest else { break }
-            result += text[cursor..<match.lowerBound]
-            result += wrap(String(text[match]))
-            cursor = match.upperBound
+            result += text[cursor..<match.range.lowerBound]
+            result += wrap(match.term, String(text[match.range]))
+            cursor = match.range.upperBound
         }
         result += text[cursor...]
         return result
+    }
+
+    private static func attributeEscaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private static func attributeValue(_ name: String, in attributes: String) -> String? {
+        let pattern = #"(?i)\b\#(NSRegularExpression.escapedPattern(for: name))\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(attributes.startIndex..<attributes.endIndex, in: attributes)
+        guard let match = regex.firstMatch(in: attributes, range: range) else { return nil }
+        for index in 1..<match.numberOfRanges {
+            let captureRange = match.range(at: index)
+            guard captureRange.location != NSNotFound, let range = Range(captureRange, in: attributes) else { continue }
+            return attributeUnescaped(String(attributes[range]))
+        }
+        return nil
+    }
+
+    private static func attributeUnescaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
+    private static func replaceMatches(
+        in text: String,
+        pattern: String,
+        options: NSRegularExpression.Options = [.caseInsensitive, .dotMatchesLineSeparators],
+        replacement: (NSTextCheckingResult, String) -> String?
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return text }
+        var result = text
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = regex.matches(in: text, range: fullRange)
+        for match in matches.reversed() {
+            guard
+                let matchRange = Range(match.range, in: result),
+                let replacementText = replacement(match, text)
+            else { continue }
+            result.replaceSubrange(matchRange, with: replacementText)
+        }
+        return result
+    }
+
+    private static func capturedString(_ index: Int, in match: NSTextCheckingResult, source: String) -> String? {
+        guard index < match.numberOfRanges else { return nil }
+        let range = match.range(at: index)
+        guard range.location != NSNotFound, let stringRange = Range(range, in: source) else { return nil }
+        return String(source[stringRange])
+    }
+
+    private static func targetForSource(_ source: String, terms: [GlossaryTerm]) -> String? {
+        terms.first { $0.sourceTerm == source }?.targetTerm
+    }
+
+    private static func targetForID(_ id: String, terms: [GlossaryTerm]) -> String? {
+        terms.first { $0.id == id }?.targetTerm
     }
 
     // MARK: - DeepL: XML tag handling
@@ -55,21 +120,27 @@ enum GlossarySubstitution {
         to text: String,
         terms: [GlossaryTerm]
     ) -> String {
-        wrapTerms(in: text, terms: terms) { "<x>\($0)</x>" }
+        wrapTerms(in: text, terms: terms) { term, source in
+            "<x id=\"\(attributeEscaped(term.id))\">\(source)</x>"
+        }
     }
 
     /// After DeepL translation, replace <x>SOURCE</x> with the target term.
     static func revertXML(_ text: String, terms: [GlossaryTerm]) -> String {
-        var result = text
-        for term in terms {
-            let pattern = "<x>\(NSRegularExpression.escapedPattern(for: term.sourceTerm))</x>"
-            result = result.replacingOccurrences(
-                of: pattern,
-                with: term.targetTerm,
-                options: .regularExpression
-            )
+        replaceMatches(in: text, pattern: #"<x\b([^>]*)>(.*?)</x>"#) { match, source in
+            guard
+                let attributes = capturedString(1, in: match, source: source),
+                let innerText = capturedString(2, in: match, source: source)
+            else { return nil }
+
+            if let id = attributeValue("id", in: attributes), let target = targetForID(id, terms: terms) {
+                return target
+            }
+            if let target = targetForSource(innerText, terms: terms) {
+                return target
+            }
+            return innerText
         }
-        return result
     }
 
     // MARK: - Google: HTML translate="no"
@@ -80,20 +151,31 @@ enum GlossarySubstitution {
         to text: String,
         terms: [GlossaryTerm]
     ) -> String {
-        wrapTerms(in: text, terms: terms) { "<span translate=\"no\">\($0)</span>" }
+        wrapTerms(in: text, terms: terms) { term, source in
+            "<span translate=\"no\" data-mt-glossary=\"\(attributeEscaped(term.id))\">\(source)</span>"
+        }
     }
 
     /// After Google translation, replace <span translate="no">SOURCE</span> with the target term.
     static func revertHTML(_ text: String, terms: [GlossaryTerm]) -> String {
-        var result = text
-        for term in terms {
-            let pattern = "<span translate=\"no\">\(NSRegularExpression.escapedPattern(for: term.sourceTerm))</span>"
-            result = result.replacingOccurrences(
-                of: pattern,
-                with: term.targetTerm,
-                options: .regularExpression
-            )
+        replaceMatches(in: text, pattern: #"<span\b([^>]*)>(.*?)</span>"#) { match, source in
+            guard
+                let attributes = capturedString(1, in: match, source: source),
+                let innerText = capturedString(2, in: match, source: source)
+            else { return nil }
+
+            let translateValue = attributeValue("translate", in: attributes)?.lowercased()
+            let classValue = attributeValue("class", in: attributes)?.lowercased()
+            let isGlossaryMarker = translateValue == "no" || classValue?.split(whereSeparator: \.isWhitespace).contains("notranslate") == true
+            guard isGlossaryMarker else { return nil }
+
+            if let id = attributeValue("data-mt-glossary", in: attributes), let target = targetForID(id, terms: terms) {
+                return target
+            }
+            if let target = targetForSource(innerText, terms: terms) {
+                return target
+            }
+            return innerText
         }
-        return result
     }
 }

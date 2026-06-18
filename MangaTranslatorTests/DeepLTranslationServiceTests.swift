@@ -241,13 +241,13 @@ struct GlossarySubstitutionXMLTests {
     @Test("term that is a substring of a longer term does not nest tags")
     func substringTermDoesNotNestTags() {
         let wrapped = GlossarySubstitution.applyXML(to: "東京タワーが見える", terms: [tokyo, tower])
-        #expect(wrapped == "<x>東京タワー</x>が見える")
+        #expect(wrapped == "<x id=\"t1\">東京タワー</x>が見える")
     }
 
     @Test("standalone occurrence of the shorter term is still wrapped")
     func standaloneShorterTermIsWrapped() {
         let wrapped = GlossarySubstitution.applyXML(to: "東京と東京タワー", terms: [tokyo, tower])
-        #expect(wrapped == "<x>東京</x>と<x>東京タワー</x>")
+        #expect(wrapped == "<x id=\"t2\">東京</x>と<x id=\"t1\">東京タワー</x>")
     }
 
     @Test("revert after apply leaves no tag fragments")
@@ -255,5 +255,26 @@ struct GlossarySubstitutionXMLTests {
         let wrapped = GlossarySubstitution.applyXML(to: "東京タワーと東京", terms: [tokyo, tower])
         let reverted = GlossarySubstitution.revertXML(wrapped, terms: [tokyo, tower])
         #expect(reverted == "Tokyo TowerとTokyo")
+    }
+
+    @Test("revert uses marker id when DeepL preserves x attributes")
+    func revertUsesMarkerID() {
+        let translated = "<x id='t1'>rewritten</x>"
+        let reverted = GlossarySubstitution.revertXML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Tokyo Tower")
+    }
+
+    @Test("revert falls back to source text for x tags without ids")
+    func revertFallsBackToSourceTextWithoutID() {
+        let translated = "<x>東京</x>"
+        let reverted = GlossarySubstitution.revertXML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Tokyo")
+    }
+
+    @Test("revert strips unmatched x tags")
+    func revertStripsUnmatchedTags() {
+        let translated = "Hello <x>謎</x>"
+        let reverted = GlossarySubstitution.revertXML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Hello 謎")
     }
 }

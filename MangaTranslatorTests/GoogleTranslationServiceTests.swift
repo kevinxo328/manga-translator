@@ -256,13 +256,13 @@ struct GlossarySubstitutionHTMLTests {
     @Test("term that is a substring of a longer term does not nest spans")
     func substringTermDoesNotNestSpans() {
         let wrapped = GlossarySubstitution.applyHTML(to: "東京タワーが見える", terms: [tokyo, tower])
-        #expect(wrapped == "<span translate=\"no\">東京タワー</span>が見える")
+        #expect(wrapped == "<span translate=\"no\" data-mt-glossary=\"t1\">東京タワー</span>が見える")
     }
 
     @Test("standalone occurrence of the shorter term is still wrapped")
     func standaloneShorterTermIsWrapped() {
         let wrapped = GlossarySubstitution.applyHTML(to: "東京と東京タワー", terms: [tokyo, tower])
-        #expect(wrapped == "<span translate=\"no\">東京</span>と<span translate=\"no\">東京タワー</span>")
+        #expect(wrapped == "<span translate=\"no\" data-mt-glossary=\"t2\">東京</span>と<span translate=\"no\" data-mt-glossary=\"t1\">東京タワー</span>")
     }
 
     @Test("revert after apply leaves no span fragments")
@@ -270,5 +270,26 @@ struct GlossarySubstitutionHTMLTests {
         let wrapped = GlossarySubstitution.applyHTML(to: "東京タワーと東京", terms: [tokyo, tower])
         let reverted = GlossarySubstitution.revertHTML(wrapped, terms: [tokyo, tower])
         #expect(reverted == "Tokyo TowerとTokyo")
+    }
+
+    @Test("revert uses marker id when Google rewrites span attributes")
+    func revertUsesMarkerIDWhenAttributesChange() {
+        let translated = "<SPAN data-mt-glossary='t1' translate = 'no'>rewritten</SPAN>"
+        let reverted = GlossarySubstitution.revertHTML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Tokyo Tower")
+    }
+
+    @Test("revert falls back to source text for no-translate spans without ids")
+    func revertFallsBackToSourceTextWithoutID() {
+        let translated = "<span class=\"notranslate\">東京</span>"
+        let reverted = GlossarySubstitution.revertHTML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Tokyo")
+    }
+
+    @Test("revert strips unmatched glossary spans")
+    func revertStripsUnmatchedSpans() {
+        let translated = "Hello <span translate=\"no\">謎</span>"
+        let reverted = GlossarySubstitution.revertHTML(translated, terms: [tokyo, tower])
+        #expect(reverted == "Hello 謎")
     }
 }
