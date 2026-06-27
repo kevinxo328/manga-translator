@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.5.6 (2026-06-28)
+
+### New Features
+
+- **GitHub Copilot Auto Routing** — Automatically routes translation requests to the best available GitHub Copilot model with dynamic endpoint fallback and error recovery.
+
+### Bug Fixes
+
+- Fixed glossary placeholder tags leaking raw markup into final translation results when using Google Translate or DeepL.
+- Fixed Google Translate API keys being sent in the request URL query parameters; they are now sent securely in request headers to avoid exposing them in logs.
+- Fixed an occasional hang during translation model file extraction.
+
 ## v1.5.5 (2026-06-17)
 
 ### Bug Fixes
