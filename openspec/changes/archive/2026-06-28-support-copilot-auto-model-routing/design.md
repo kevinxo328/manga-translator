@@ -115,7 +115,7 @@ State derivation after a successful catalog fetch is exact:
 The UI presentation is:
 
 - `.loading`: `ProgressView("Checking models…")`
-- `.autoOnly`: noninteractive labeled value `Model` / `Auto`, plus `GitHub selects a compatible model automatically.`
+- `.autoOnly`: enabled model picker containing only `Auto`, with no additional explanatory caption
 - `.selectable`: Picker containing `Auto` followed by compatible picker-enabled models
 - `.noCompatibleModels`: after both hosts return no suitable chat-completions catalog, error text `No compatible Copilot models available.`; Copilot is not selectable as the translation engine for this Settings lifetime
 - `.failed`: error text `Couldn’t load Copilot models.` and a `Retry` button; Copilot availability is not rewritten as not-installed or not-logged-in
@@ -123,6 +123,8 @@ The UI presentation is:
 CLI-not-installed and not-logged-in presentations remain unchanged. All code and UI strings remain English.
 
 Alternative rejected: display a disabled Picker containing only Auto. A disabled control implies unavailable interaction rather than an intentional account capability.
+
+Alternative rejected: replace the picker with a noninteractive Auto value and explanatory caption. Changing control shape between capability states adds presentation branching and the caption repeats the meaning of Auto.
 
 Alternative rejected: show `Auto → <resolved model>` persistently. Resolution occurs at translation time and can change after refresh, making the Settings label stale.
 

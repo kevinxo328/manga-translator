@@ -9,7 +9,7 @@ GitHub changed Copilot Free and Student plans on 2026-06-24 so Auto is their onl
 - Restrict Auto model hints to models that support MangaTranslator's implemented `/chat/completions` transport; do not guess capability from model names.
 - Cache and refresh the short-lived Auto session safely across single-page and batch translations. Refresh uses the still-valid old `Copilot-Session-Token` on the same host/account/hint key, falls back to one headerless acquisition after refresh 401, and shares one bounded recovery budget for protocol-specific inference failures.
 - Cache successful model catalogs for five minutes with account/host isolation and single-flight fetching so Settings and translation share capability data without making Settings a prerequisite.
-- Preserve explicit model selection for accounts that expose picker-enabled models while presenting a fixed Auto state for Auto-only accounts.
+- Preserve explicit model selection for accounts that expose picker-enabled models while presenting the same model picker with only Auto for Auto-only accounts.
 - Distinguish Settings loading, Auto-only, selectable, no-compatible-model, and request-failure states instead of collapsing all failures into an empty model list.
 - Change the first-launch Copilot preference to `auto` and migrate an unavailable saved model to Auto only when Auto is usable.
 - Add sanitized operational logging for the resolved concrete model without logging OAuth or Copilot session tokens.

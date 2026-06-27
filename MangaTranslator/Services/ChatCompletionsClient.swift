@@ -13,6 +13,8 @@ struct ChatCompletionsClient {
     let providerDisplayName: String
     let category: DebugLogCategory
     let urlSession: URLSession
+    let apiErrorRetryClassifier: @Sendable (SanitizedAPIError) -> Bool
+    let debugLogger: DebugLogger
 
     /// Both translate paths share the same retry budget: one retry with
     /// backoff, applied to API/network failures and parse failures alike.
@@ -50,7 +52,9 @@ struct ChatCompletionsClient {
         provider: APIErrorSanitizer.Provider,
         providerDisplayName: String,
         category: DebugLogCategory,
-        urlSession: URLSession
+        urlSession: URLSession,
+        apiErrorRetryClassifier: @escaping @Sendable (SanitizedAPIError) -> Bool = { _ in true },
+        debugLogger: DebugLogger = .shared
     ) {
         self.endpoint = endpoint
         self.model = model
@@ -59,6 +63,8 @@ struct ChatCompletionsClient {
         self.providerDisplayName = providerDisplayName
         self.category = category
         self.urlSession = urlSession
+        self.apiErrorRetryClassifier = apiErrorRetryClassifier
+        self.debugLogger = debugLogger
     }
 
     func translate(
@@ -68,7 +74,7 @@ struct ChatCompletionsClient {
         context: TranslationContext,
         authToken: String
     ) async throws -> TranslationOutput {
-        DebugLogger.shared.logAPIDiagnostic(
+        debugLogger.logAPIDiagnostic(
             "Translation started: bubbles=\(bubbles.count) \(source.rawValue)→\(target.rawValue)",
             category: category, model: model, endpoint: endpointDescription
         )
@@ -89,7 +95,7 @@ struct ChatCompletionsClient {
                 )
                 do {
                     let (parsed, detected) = try LLMResponseParser.parse(responseText, bubbles: bubbles)
-                    DebugLogger.shared.logAPIDiagnostic(
+                    debugLogger.logAPIDiagnostic(
                         "Translation completed: bubbles=\(parsed.count)",
                         category: category, statusCode: 200, model: model
                     )
@@ -99,7 +105,7 @@ struct ChatCompletionsClient {
                     lastError = error
                     // Log error type and response length only; response content
                     // may carry user text and stays out of the logs.
-                    DebugLogger.shared.log(
+                    debugLogger.log(
                         "Translation attempt \(attempt)/\(maxAttempts) parse failed: \(type(of: error)), response length \(responseText.count)",
                         level: .warning, category: category
                     )
@@ -108,9 +114,11 @@ struct ChatCompletionsClient {
                 throw urlError
             } catch is CancellationError {
                 throw CancellationError()
+            } catch TranslationError.apiError(let error) where !apiErrorRetryClassifier(error) {
+                throw TranslationError.apiError(error)
             } catch {
                 lastError = error
-                DebugLogger.shared.log(
+                debugLogger.log(
                     "Translation attempt \(attempt)/\(maxAttempts) API call failed",
                     level: .warning, category: category
                 )
@@ -123,7 +131,7 @@ struct ChatCompletionsClient {
         // Parse failures degrade to line-based fallback so the page still
         // renders; API/network failures have nothing to fall back on.
         if let responseText = lastResponseText {
-            DebugLogger.shared.log("Translation response parse failed after \(maxAttempts) attempts, using fallback", level: .warning, category: category)
+            debugLogger.log("Translation response parse failed after \(maxAttempts) attempts, using fallback", level: .warning, category: category)
             let (fallback, _) = LLMResponseParser.fallbackParse(responseText, bubbles: bubbles)
             return TranslationOutput(bubbles: fallback, detectedTerms: [])
         }
@@ -137,7 +145,7 @@ struct ChatCompletionsClient {
         priorContext: TranslationContext,
         authToken: String
     ) async throws -> [BatchPageOutput] {
-        DebugLogger.shared.logAPIDiagnostic(
+        debugLogger.logAPIDiagnostic(
             "translateBatch started: pages=\(pageInputs.count) \(source.rawValue)→\(target.rawValue)",
             category: category, model: model, endpoint: endpointDescription
         )
@@ -159,7 +167,7 @@ struct ChatCompletionsClient {
                     )
                 )
                 let outputs = try LLMResponseParser.parseMultiPage(responseText, pageInputs: pageInputs)
-                DebugLogger.shared.logAPIDiagnostic(
+                debugLogger.logAPIDiagnostic(
                     "translateBatch completed: pages=\(outputs.count)",
                     category: category, statusCode: 200, model: model
                 )
@@ -168,6 +176,8 @@ struct ChatCompletionsClient {
                 throw urlError
             } catch is CancellationError {
                 throw CancellationError()
+            } catch TranslationError.apiError(let error) where !apiErrorRetryClassifier(error) {
+                throw TranslationError.apiError(error)
             } catch {
                 lastError = error
                 if attempt < maxAttempts {
@@ -211,7 +221,7 @@ struct ChatCompletionsClient {
                 statusCode: statusCode,
                 responseData: data
             )
-            DebugLogger.shared.logAPIError(
+            debugLogger.logAPIError(
                 sanitized,
                 category: category,
                 model: model,

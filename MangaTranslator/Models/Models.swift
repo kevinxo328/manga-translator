@@ -80,6 +80,31 @@ struct CopilotModel: Identifiable, Hashable {
     let id: String
     let name: String
     let category: String?
+    let pickerEnabled: Bool?
+    let supportedEndpoints: Set<String>
+    let capabilityType: String?
+
+    static let auto = CopilotModel(id: "auto", name: "Auto", category: nil)
+
+    init(
+        id: String,
+        name: String,
+        category: String?,
+        pickerEnabled: Bool? = nil,
+        supportedEndpoints: Set<String> = [],
+        capabilityType: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.category = category
+        self.pickerEnabled = pickerEnabled
+        self.supportedEndpoints = supportedEndpoints
+        self.capabilityType = capabilityType
+    }
+
+    var isChatCompletionsCompatible: Bool {
+        supportedEndpoints.contains("/chat/completions")
+    }
 
     var displayLabel: String {
         guard let category else { return name }
@@ -90,6 +115,83 @@ struct CopilotModel: Identifiable, Hashable {
         default:           label = "Standard"
         }
         return "\(name) (\(label))"
+    }
+}
+
+struct CopilotModelCatalog: Equatable {
+    let models: [CopilotModel]
+
+    var autoHintModelIDs: [String] {
+        models.filter(\.isChatCompletionsCompatible).map(\.id)
+    }
+
+    var selectableModels: [CopilotModel] {
+        models
+            .filter { $0.isChatCompletionsCompatible && $0.pickerEnabled != false }
+            .sorted { $0.name < $1.name }
+    }
+}
+
+struct CopilotModelCatalogResult: Equatable {
+    let host: URL
+    let catalog: CopilotModelCatalog
+}
+
+enum CopilotCatalogPurpose: Equatable {
+    case auto
+    case explicit(modelID: String)
+    case settings
+}
+
+enum CopilotCatalogSelectionError: LocalizedError, Equatable {
+    case noCompatibleModels
+    case modelUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .noCompatibleModels:
+            return "No compatible Copilot models available."
+        case .modelUnavailable(let modelID):
+            return "Copilot model '\(modelID)' is unavailable."
+        }
+    }
+}
+
+enum CopilotModelLoadState: Equatable {
+    case idle
+    case loading
+    case autoOnly
+    case selectable([CopilotModel])
+    case noCompatibleModels
+    case failed(String)
+
+    static func loaded(from catalog: CopilotModelCatalog) -> CopilotModelLoadState {
+        let selectableModels = catalog.selectableModels
+        if !selectableModels.isEmpty {
+            return .selectable([.auto] + selectableModels)
+        }
+        if !catalog.autoHintModelIDs.isEmpty {
+            return .autoOnly
+        }
+        return .noCompatibleModels
+    }
+
+    static func failed(from error: Error) -> CopilotModelLoadState {
+        _ = error
+        return .failed("Couldn’t load Copilot models.")
+    }
+
+    func normalizedCopilotModel(_ storedModelID: String) -> String {
+        switch self {
+        case .autoOnly:
+            return CopilotModel.auto.id
+        case .selectable(let models):
+            return models.contains(where: { $0.id == storedModelID })
+                ? storedModelID
+                : CopilotModel.auto.id
+        case .idle, .loading, .noCompatibleModels, .failed:
+            return storedModelID
+        }
     }
 }
 

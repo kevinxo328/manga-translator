@@ -170,13 +170,13 @@ The system SHALL persist the user's Copilot selection to `UserDefaults` under `c
 - **THEN** the existing `copilotModel` preference remains unchanged
 
 ### Requirement: GitHub Copilot section in Settings UI
-The API Keys tab in Settings SHALL include a GitHub Copilot section that displays Copilot CLI availability and the model capability state. An Auto-only account SHALL see a noninteractive `Model` value of `Auto` and the caption `GitHub selects a compatible model automatically.` An account with compatible picker-enabled models SHALL see a picker containing Auto followed by those models. The engine picker in Preferences SHALL show GitHub Copilot only when the CLI is installed, logged in, and the loaded catalog has at least one compatible model, or while catalog capability remains unknown due to idle/loading/failure state.
+The API Keys tab in Settings SHALL include a GitHub Copilot section that displays Copilot CLI availability and the model capability state. An Auto-only account SHALL see an enabled model picker containing only `Auto`, without an additional explanatory caption. An account with compatible picker-enabled models SHALL see the same picker containing Auto followed by those models. The engine picker in Preferences SHALL show GitHub Copilot only when the CLI is installed, logged in, and the loaded catalog has at least one compatible model, or while catalog capability remains unknown due to idle/loading/failure state.
 
 #### Scenario: GitHub Copilot section — Auto-only account
 - **WHEN** the CLI is available and the loaded catalog has compatible Auto candidates but no compatible picker-enabled models
 - **THEN** a green `Copilot CLI detected` label is shown
-- **AND** Settings displays a noninteractive `Model` value of `Auto`
-- **AND** Settings displays `GitHub selects a compatible model automatically.`
+- **AND** Settings displays an enabled `Model` picker containing only `Auto`
+- **AND** Settings does not display an additional Auto explanation
 
 #### Scenario: GitHub Copilot section — selectable account
 - **WHEN** the CLI is available and the loaded catalog has compatible picker-enabled models

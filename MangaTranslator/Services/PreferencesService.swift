@@ -3,7 +3,7 @@ import Foundation
 final class PreferencesService: ObservableObject {
     static let defaultOpenAIBaseURL = "https://api.openai.com/v1"
     static let defaultOpenAIModel = "gpt-5"
-    static let defaultCopilotModel = "gpt-5-mini"
+    static let defaultCopilotModel = "auto"
 
     private let defaults: UserDefaults
 

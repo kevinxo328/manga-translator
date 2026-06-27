@@ -71,8 +71,8 @@ struct SettingsView: View {
     @State private var showClearCacheAlert = false
     @State private var cacheSizeBytes: Int64 = 0
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
-    @State private var copilotModels: [CopilotModel] = []
-    @State private var isLoadingCopilotModels = false
+    @State private var copilotModelState: CopilotModelLoadState = .idle
+    @State private var copilotToken: String?
 
     #if arch(arm64)
     @StateObject private var paddleOCRViewModel: PaddleOCRSettingsViewModel = {
@@ -148,10 +148,22 @@ struct SettingsView: View {
                 preferences.translationEngine = .openAI
             }
             if case .available(let token) = copilotAvailability {
-                isLoadingCopilotModels = true
-                copilotModels = (try? await CopilotEnvironment.fetchModels(token: token)) ?? []
-                isLoadingCopilotModels = false
+                copilotToken = token
+                await loadCopilotModels(token: token)
             }
+        }
+    }
+
+    @MainActor
+    private func loadCopilotModels(token: String) async {
+        copilotModelState = .loading
+        do {
+            let result = try await CopilotEnvironment.selectCatalog(token: token, purpose: .settings)
+            let state = CopilotModelLoadState.loaded(from: result.catalog)
+            copilotModelState = state
+            preferences.copilotModel = state.normalizedCopilotModel(preferences.copilotModel)
+        } catch {
+            copilotModelState = .failed("Couldn’t load Copilot models.")
         }
     }
 
@@ -229,16 +241,28 @@ struct SettingsView: View {
                 case .available:
                     Label("Copilot CLI detected", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    if isLoadingCopilotModels {
-                        ProgressView()
-                    } else if copilotModels.isEmpty {
-                        Text("No models available")
+                    switch copilotModelState {
+                    case .idle:
+                        EmptyView()
+                    case .loading:
+                        ProgressView("Checking models…")
+                    case .autoOnly:
+                        copilotModelPicker(models: [.auto])
+                    case .selectable(let models):
+                        copilotModelPicker(models: models)
+                    case .noCompatibleModels:
+                        Text("No compatible Copilot models available.")
                             .foregroundStyle(.secondary)
                             .font(.caption)
-                    } else {
-                        Picker("Model", selection: $preferences.copilotModel) {
-                            ForEach(copilotModels) { model in
-                                Text(model.displayLabel).tag(model.id)
+                    case .failed:
+                        Text("Couldn’t load Copilot models.")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                        Button("Retry") {
+                            guard let token = copilotToken else { return }
+                            copilotModelState = .loading
+                            Task {
+                                await loadCopilotModels(token: token)
                             }
                         }
                     }
@@ -261,6 +285,14 @@ struct SettingsView: View {
         .padding()
     }
 
+    private func copilotModelPicker(models: [CopilotModel]) -> some View {
+        Picker("Model", selection: $preferences.copilotModel) {
+            ForEach(models) { model in
+                Text(model.displayLabel).tag(model.id)
+            }
+        }
+    }
+
     private var preferencesTab: some View {
         Form {
             Section {
@@ -276,7 +308,9 @@ struct SettingsView: View {
                 }
                 Picker("Translation Engine", selection: $preferences.translationEngine) {
                     ForEach(TranslationEngine.allCases.filter {
-                        $0 != .githubCopilot || copilotAvailability.isAvailable
+                        $0 != .githubCopilot || copilotAvailability.allowsEngineSelection(
+                            modelState: copilotModelState
+                        )
                     }) { engine in
                         Text(engine.displayName).tag(engine)
                     }

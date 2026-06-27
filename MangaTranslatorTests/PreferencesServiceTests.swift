@@ -3,6 +3,14 @@ import Combine
 import Foundation
 @testable import MangaTranslator
 
+enum CopilotPreferenceNormalizationCase: CaseIterable, Sendable {
+    case autoOnlyUnavailable
+    case selectableValid
+    case selectableAbsent
+    case failedPreserves
+    case noCompatiblePreserves
+}
+
 @Suite("PreferencesService", .serialized)
 struct PreferencesServiceTests {
 
@@ -13,6 +21,47 @@ struct PreferencesServiceTests {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         self.defaults = defaults
+    }
+
+    @Test("Fresh preferences default the Copilot model to Auto")
+    func freshPreferencesDefaultCopilotModelToAuto() {
+        let preferences = PreferencesService(defaults: defaults)
+
+        #expect(preferences.copilotModel == "auto")
+    }
+
+    @Test(
+        "Copilot model normalization follows successful catalog capability",
+        arguments: CopilotPreferenceNormalizationCase.allCases
+    )
+    func copilotModelNormalizationFollowsCatalogCapability(
+        _ testCase: CopilotPreferenceNormalizationCase
+    ) {
+        let concrete = CopilotModel(
+            id: "concrete",
+            name: "Concrete",
+            category: nil,
+            pickerEnabled: true,
+            supportedEndpoints: ["/chat/completions"]
+        )
+        let state: CopilotModelLoadState
+        let stored: String
+        let expected: String
+
+        switch testCase {
+        case .autoOnlyUnavailable:
+            (state, stored, expected) = (.autoOnly, "unavailable", "auto")
+        case .selectableValid:
+            (state, stored, expected) = (.selectable([.auto, concrete]), "concrete", "concrete")
+        case .selectableAbsent:
+            (state, stored, expected) = (.selectable([.auto, concrete]), "absent", "auto")
+        case .failedPreserves:
+            (state, stored, expected) = (.failed("Couldn’t load Copilot models."), "saved", "saved")
+        case .noCompatiblePreserves:
+            (state, stored, expected) = (.noCompatibleModels, "saved", "saved")
+        }
+
+        #expect(state.normalizedCopilotModel(stored) == expected)
     }
 
     // MARK: - Two independent instances do NOT share state
