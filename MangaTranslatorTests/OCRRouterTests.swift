@@ -1,10 +1,147 @@
 import XCTest
 import CoreGraphics
+import CoreImage
 import AppKit
 @testable import MangaTranslator
 
 @MainActor
 final class OCRRouterTests: XCTestCase {
+
+    // MARK: - Owned image boundary
+
+    func testOwnedImageSnapshotRemainsReadableAfterSourceImageIsReleased() throws {
+        var sourceImage: NSImage? = makeTestImage(width: 64, height: 48)
+        let snapshot = try OCRImageSnapshot.makeOwnedCGImage(from: sourceImage!)
+        sourceImage = nil
+
+        let ciImage = CIImage(cgImage: snapshot)
+        let context = CIContext(options: [.useSoftwareRenderer: true])
+        let rendered = context.createCGImage(ciImage, from: ciImage.extent)
+
+        XCTAssertNotNil(rendered, "Owned pixels must remain readable after the source NSImage is released")
+        XCTAssertEqual(snapshot.width, 64)
+        XCTAssertEqual(snapshot.height, 48)
+    }
+
+    func testPagePipelinePassesStableCGImageToBackgroundOCR() async throws {
+        let detector = RecordingComicTextDetector(regionCount: 1)
+        let service = MangaOCRService(detector: detector)
+        await service.setRecognizer(RecordingOCRRecognizer())
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false)
+        )
+
+        let result = try await router.processPage(
+            image: makeTestImage(width: 128, height: 128),
+            sourceLanguage: .ja
+        )
+
+        XCTAssertEqual(result.bubbles.count, 1)
+        XCTAssertEqual(detector.detectCount, 1)
+    }
+
+    func testPaddlePagePipelineUsesTheOwnedCGImageBoundary() async throws {
+        let detector = RecordingComicTextDetector(regionCount: 1)
+        let recognizer = RecordingOCRRecognizer()
+        let service = MangaOCRService(detector: detector)
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .downloaded, enabled: true),
+            paddleOCRFactory: { recognizer }
+        )
+
+        let result = try await router.processPage(
+            image: makeTestImage(width: 128, height: 128),
+            sourceLanguage: .ja
+        )
+
+        XCTAssertEqual(result.bubbles.count, 1)
+        XCTAssertEqual(detector.detectCount, 1)
+        XCTAssertEqual(recognizer.recognizeCount, 1)
+    }
+
+    func testOwnedSnapshotCanBeProcessedWhileSourceImageIsReadRepeatedly() async throws {
+        let sourceImage = makeTestImage(width: 256, height: 256)
+        let snapshot = try OCRImageSnapshot.makeOwnedCGImage(from: sourceImage)
+        let worker = Task.detached(priority: nil) {
+            let context = CIContext(options: [.useSoftwareRenderer: true])
+            var successfulReads = 0
+            for _ in 0..<32 {
+                let ciImage = CIImage(cgImage: snapshot)
+                if context.createCGImage(ciImage, from: ciImage.extent) != nil {
+                    successfulReads += 1
+                }
+            }
+            return successfulReads
+        }
+
+        for _ in 0..<32 {
+            _ = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            await Task.yield()
+        }
+
+        let successfulReads = await worker.value
+        XCTAssertEqual(successfulReads, 32)
+    }
+
+    func testOneOwnedSnapshotSupportsMultipleRegionsOnLargePage() async throws {
+        let detector = RecordingComicTextDetector(regionCount: 3)
+        let recognizer = RecordingOCRRecognizer()
+        let service = MangaOCRService(detector: detector)
+        await service.setRecognizer(recognizer)
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false)
+        )
+
+        let result = try await router.processPage(
+            image: makeTestImage(width: 4096, height: 2048),
+            sourceLanguage: .ja
+        )
+
+        XCTAssertEqual(result.bubbles.count, 3)
+        XCTAssertEqual(detector.detectCount, 1, "Detection must run once against one page snapshot")
+        XCTAssertEqual(recognizer.recognizeCount, 3)
+    }
+
+    func testLargeOwnedSnapshotUsesOneRGBA8PixelBuffer() throws {
+        let width = 4096
+        let height = 2048
+        let sourceImage = makeTestImage(width: width, height: height)
+        let start = DispatchTime.now().uptimeNanoseconds
+        let snapshot = try OCRImageSnapshot.makeOwnedCGImage(from: sourceImage)
+        let elapsedMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+        let ownedBytes = snapshot.bytesPerRow * snapshot.height
+
+        print("Owned OCR snapshot: \(width)x\(height), \(ownedBytes) bytes, \(String(format: "%.2f", elapsedMilliseconds)) ms")
+        XCTAssertEqual(snapshot.bitsPerPixel, 32)
+        XCTAssertEqual(snapshot.bytesPerRow, width * 4)
+        XCTAssertEqual(ownedBytes, width * height * 4)
+    }
+
+    func testImageMaterializationFailureStopsBeforeBackgroundOCR() async {
+        let detector = RecordingComicTextDetector(regionCount: 1)
+        let service = MangaOCRService(detector: detector)
+        await service.setRecognizer(RecordingOCRRecognizer())
+        let router = OCRRouter(
+            mangaOCRService: service,
+            capabilityChecker: MockCapabilityChecker(.supported),
+            downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false)
+        )
+
+        do {
+            _ = try await router.processPage(image: NSImage(), sourceLanguage: .ja)
+            XCTFail("Invalid image must fail before background inference")
+        } catch {
+            XCTAssertTrue(error is OCRError)
+        }
+
+        XCTAssertEqual(detector.detectCount, 0)
+    }
 
     // MARK: - Task 6.1: Routing decisions
 
@@ -719,6 +856,47 @@ private final class UnloadTrackingOCRRecognizer: OCRRecognizing {
 
     func unload() {
         unloadCount += 1
+    }
+}
+
+private final class RecordingOCRRecognizer: @unchecked Sendable, OCRRecognizing {
+    private let lock = NSLock()
+    private(set) var recognizeCount = 0
+
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        lock.lock()
+        recognizeCount += 1
+        lock.unlock()
+        return ("recorded", 1.0)
+    }
+}
+
+private final class RecordingComicTextDetector: ComicTextDetecting, @unchecked Sendable {
+    private let lock = NSLock()
+    private let regionCount: Int
+    private(set) var detectCount = 0
+
+    init(regionCount: Int) {
+        self.regionCount = regionCount
+    }
+
+    func detectTextRegions(in cgImage: CGImage) throws -> ComicTextDetectorResult {
+        lock.lock()
+        detectCount += 1
+        lock.unlock()
+
+        let regions = (0..<regionCount).map { index in
+            DetectedTextRegion(
+                boundingBox: CGRect(x: CGFloat(index * 24), y: 0, width: 20, height: 20),
+                confidence: 1.0,
+                classIndex: 0
+            )
+        }
+        return ComicTextDetectorResult(
+            regions: regions,
+            textPixelMask: nil,
+            lowConfidenceRegionCount: 0
+        )
     }
 }
 

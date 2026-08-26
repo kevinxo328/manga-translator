@@ -1,9 +1,84 @@
 import Foundation
 import AppKit
+import CoreGraphics
 
 #if arch(arm64)
 import MangaTranslatorMLX
 #endif
+
+@MainActor
+enum OCRImageSnapshot {
+    static func makeOwnedCGImage(from image: NSImage) throws -> CGImage {
+        guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw OCRError.invalidImage
+        }
+
+        let width = source.width
+        let height = source.height
+        guard width > 0, height > 0 else {
+            throw OCRError.invalidImage
+        }
+
+        let rowSize = width.multipliedReportingOverflow(by: 4)
+        guard !rowSize.overflow else {
+            throw OCRError.invalidImage
+        }
+        let imageSize = rowSize.partialValue.multipliedReportingOverflow(by: height)
+        guard !imageSize.overflow else {
+            throw OCRError.invalidImage
+        }
+
+        let bytesPerRow = rowSize.partialValue
+        let byteCount = imageSize.partialValue
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw OCRError.invalidImage
+        }
+
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+            | CGBitmapInfo.byteOrder32Big.rawValue
+        var pixelData = Data(count: byteCount)
+        let rendered = pixelData.withUnsafeMutableBytes { buffer -> Bool in
+            guard let baseAddress = buffer.baseAddress,
+                  let context = CGContext(
+                      data: baseAddress,
+                      width: width,
+                      height: height,
+                      bitsPerComponent: 8,
+                      bytesPerRow: bytesPerRow,
+                      space: colorSpace,
+                      bitmapInfo: bitmapInfo
+                  ) else {
+                return false
+            }
+
+            context.interpolationQuality = .none
+            context.setBlendMode(.copy)
+            context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+
+        guard rendered,
+              let provider = CGDataProvider(data: pixelData as CFData),
+              let snapshot = CGImage(
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  bytesPerRow: bytesPerRow,
+                  space: colorSpace,
+                  bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo),
+                  provider: provider,
+                  decode: nil,
+                  shouldInterpolate: false,
+                  intent: .defaultIntent
+              ) else {
+            throw OCRError.invalidImage
+        }
+
+        return snapshot
+    }
+}
 
 @MainActor
 final class OCRRouter {
@@ -121,7 +196,8 @@ final class OCRRouter {
 
     func processWithPaddleOCR(image: NSImage) async throws -> MangaOCRPageResult {
         try await withPaddleOCRInference(operationDescription: "PaddleOCR") {
-            let result = try await mangaOCRService.recognizeAndCluster(in: image)
+            let cgImage = try OCRImageSnapshot.makeOwnedCGImage(from: image)
+            let result = try await mangaOCRService.recognizeAndCluster(in: cgImage)
             let sorted = readingOrderSorter.sort(result.bubbles)
             DebugLogger.shared.log("Completed OCR with PaddleOCR, bubbles=\(sorted.count)", level: .info, category: .ocrPaddle)
             return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
@@ -172,7 +248,8 @@ final class OCRRouter {
             await mangaOCRService.resetRecognizer()
             usingPaddleOCR = false
         }
-        let result = try await mangaOCRService.recognizeAndCluster(in: image)
+        let cgImage = try OCRImageSnapshot.makeOwnedCGImage(from: image)
+        let result = try await mangaOCRService.recognizeAndCluster(in: cgImage)
         let sorted = readingOrderSorter.sort(result.bubbles)
         DebugLogger.shared.log("Completed OCR with MangaOCR, bubbles=\(sorted.count)", level: .info, category: .ocrManga)
         return MangaOCRPageResult(bubbles: sorted, textPixelMask: result.textPixelMask, lowConfidenceDetectionCount: result.lowConfidenceDetectionCount)
@@ -241,9 +318,7 @@ extension OCRRouter: EditModeOCRPerforming {
         bubbles: [BubbleCluster],
         sourceLanguage: Language
     ) async throws -> [UUID: String] {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw OCRError.invalidImage
-        }
+        let cgImage = try OCRImageSnapshot.makeOwnedCGImage(from: image)
         let route = currentRoute()
         logRoutingDecision(
             sourceLanguage: sourceLanguage,

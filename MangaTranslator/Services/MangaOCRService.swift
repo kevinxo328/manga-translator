@@ -1,5 +1,5 @@
 import Foundation
-import AppKit
+import CoreGraphics
 
 actor MangaOCRService {
     private let detector: ComicTextDetecting
@@ -21,13 +21,6 @@ actor MangaOCRService {
     static func makeRecognizer() throws -> any OCRRecognizing {
         let tokenizer = try MangaOCRTokenizer()
         return MangaOCRRecognizer(tokenizer: tokenizer)
-    }
-
-    func recognizeAndCluster(in image: NSImage) throws -> MangaOCRPageResult {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw OCRError.invalidImage
-        }
-        return try recognizeAndCluster(in: cgImage)
     }
 
     // Recognises text for a single, caller-supplied region. Used by the Edit
