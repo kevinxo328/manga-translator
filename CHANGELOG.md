@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.7 (2026-08-26)
+
+### Bug Fixes
+
+- Fixed the app occasionally crashing during OCR when a displayed page was being processed at the same time.
+
 ## v1.5.6 (2026-06-28)
 
 ### New Features
