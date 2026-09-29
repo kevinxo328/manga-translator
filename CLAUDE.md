@@ -139,3 +139,17 @@ git push origin v1.x.x
 ## `Package.swift`
 
 The root `Package.swift` is **only** for `DetectorExportCLI`, a standalone command-line tool that exports the YOLO detector. It is not the main app build system (that is `MangaTranslator.xcodeproj`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The default five triage labels are used: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. See `docs/agents/domain.md`.
