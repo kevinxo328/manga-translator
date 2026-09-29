@@ -90,8 +90,7 @@ struct ImageViewer: View {
     // Edit Mode plumbing. All optional / defaulted so existing call sites
     // (no edit mode) keep working unchanged. When `isEditing` is false the
     // view behaves identically to the pre-edit-mode version: no overlay,
-    // no edit gestures, no callbacks invoked. See
-    // `openspec/changes/manual-bubble-editing/specs/image-viewer/spec.md`.
+    // no edit gestures, no callbacks invoked.
     var isEditing: Bool = false
     var editSession: EditSession? = nil
     // Forwarded to `TranslationViewModel.applyEditAction(_:)`. The view

@@ -136,8 +136,7 @@ final class TranslationViewModel: ObservableObject {
     //
     // Used by the Edit Mode Commit path so re-translation of page N sees
     // pages [N-3..<N] as its context — not the rolling-window buffer that
-    // drives initial / batch translation. See
-    // `openspec/changes/manual-bubble-editing/specs/contextual-translation/spec.md`.
+    // drives initial / batch translation.
     func summariesPreceding(pageIndex: Int, count: Int = 3) -> [String] {
         guard pageIndex > 0 else { return [] }
         let cap = min(pageIndex, pages.count)
@@ -217,7 +216,7 @@ final class TranslationViewModel: ObservableObject {
     // cache and runs full OCR on a miss; `.retranslate` bypasses the cache and
     // preserves any committed bubble set; `.engineSwitch` consults the new
     // engine's cache but only trusts entries whose layout matches the committed
-    // set. See `openspec/changes/engine-switch-cache-reuse/design.md` D1.
+    // set.
     enum PageTranslationMode {
         case standard
         case retranslate
@@ -228,8 +227,7 @@ final class TranslationViewModel: ObservableObject {
     // entry, used by the engine-switch cache-hit gate. Translated text is
     // deliberately excluded: matching layouts with different translations are
     // exactly the case the lookup exists for. Exact CGRect equality, no
-    // tolerance — same convention as the Edit Mode OCR-dirty rule. See
-    // `openspec/changes/engine-switch-cache-reuse/design.md` D2.
+    // tolerance — same convention as the Edit Mode OCR-dirty rule.
     nonisolated static func layoutMatches(committed: [TranslatedBubble], cached: [TranslatedBubble]) -> Bool {
         guard committed.count == cached.count else { return false }
         let lhs = committed.sorted { $0.index < $1.index }
@@ -728,8 +726,7 @@ final class TranslationViewModel: ObservableObject {
         // never does. An engine switch only trusts a cached entry whose layout
         // matches the page's committed bubble set — a stale layout (bubbles
         // drawn, moved, deleted, or reordered since the entry was written)
-        // falls through to the preserve-and-retranslate branch below. See
-        // `openspec/changes/engine-switch-cache-reuse/design.md` D2/D3.
+        // falls through to the preserve-and-retranslate branch below.
         if mode != .retranslate, let cached = cacheService.lookup(
             imageHash: imageHash,
             source: preferences.sourceLanguage,
@@ -752,8 +749,6 @@ final class TranslationViewModel: ObservableObject {
         // `text`, `index`, and `isManual` flag across re-translate — so
         // drawn bubbles, moved/resized bubbles, and reordered sequences
         // all survive engine switches and explicit Re-translate clicks.
-        // See `openspec/changes/manual-bubble-editing/specs/retranslate/spec.md`
-        // (MODIFIED requirement) and `design.md` §D5.
         if mode != .standard, case .translated(let existing) = previousPage.state, !existing.isEmpty {
             var preservedClusters = existing
                 .sorted { $0.index < $1.index }
@@ -1136,8 +1131,7 @@ final class TranslationViewModel: ObservableObject {
     // a transactional editor over already-translated bubbles. Captures both
     // the bubble snapshot and the PageState so Cancel can restore the page
     // verbatim even after a failed Commit (which would leave the page in
-    // `.error`). See
-    // `openspec/changes/manual-bubble-editing/design.md` §D1.
+    // `.error`).
     func openEditSession(pageId: UUID) {
         guard let pageIndex = pages.firstIndex(where: { $0.id == pageId }) else { return }
         guard case .translated(let bubbles) = pages[pageIndex].state else { return }

@@ -218,9 +218,8 @@ struct BubbleCluster: Identifiable {
     var isInverted: Bool = false
     // Tracks whether the user has touched this bubble's geometry in any Edit
     // Mode session — either by drawing it, moving it, or resizing it.
-    // Single-bit semantics; sticky once set. See
-    // `openspec/changes/manual-bubble-editing/design.md` §D5: the inverse of
-    // a Move / Resize restores boundingBox only, never `isManual`. Cancel can
+    // Single-bit semantics; sticky once set: the inverse of a Move / Resize
+    // restores boundingBox only, never `isManual`. Cancel can
     // restore the pre-session value because Cancel restores the entire
     // snapshot, not because the flag is reset directly. Future "re-detect"
     // flows MUST consult this flag to decide which boxes to preserve.
@@ -291,8 +290,7 @@ struct MangaPage: Identifiable {
 
 // Reversible user actions in an Edit Mode session. Pushed onto an EditSession's
 // undo stack on first application; popped and inverted by `Cmd+Z`; re-applied
-// by `Cmd+Shift+Z`. See `openspec/changes/manual-bubble-editing/design.md` §D2
-// for the apply / inverse table.
+// by `Cmd+Shift+Z`.
 //
 // `.delete` and `.unstageDelete` are set-based and idempotent on the session's
 // `deletedBubbleIds` set: applying either twice has the same effect as once.
@@ -313,8 +311,7 @@ indirect enum EditAction {
 }
 
 // Transactional, per-page edit state. Lives on TranslationViewModel as a
-// private @MainActor property. See
-// `openspec/changes/manual-bubble-editing/design.md` §D1.
+// private @MainActor property.
 //
 // `dirtyBubbleIds` is a UI-only cache for rendering the sidebar's "Modified"
 // dirty visuals during the in-progress session. The commit pipeline derives
@@ -361,9 +358,7 @@ struct EditSession {
 }
 
 extension EditAction {
-    // Reverses the visible effect of this action on `session`. See
-    // `openspec/changes/manual-bubble-editing/design.md` §D2 for the full
-    // table.
+    // Reverses the visible effect of this action on `session`.
     //
     // - `.move` / `.resize` inverse restores `boundingBox` only; `isManual`
     //   stays sticky (§D5).

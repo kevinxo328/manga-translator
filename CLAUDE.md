@@ -46,12 +46,6 @@ Image Input -> ComicTextDetector (YOLO) -> BubbleDetector -> ReadingOrderSorter
 
 `TranslationViewModel` coordinates the pipeline. It receives file input, drives each page through detection, OCR, translation, cache lookup/storage, and publishes state changes to SwiftUI views.
 
-## Specifications (OpenSpec)
-
-This repository follows a spec-driven development workflow. All capability and feature specifications are documented under the [openspec/specs](file:///Users/chunweiliu/Repos/manga-translator/openspec/specs) directory.
-
-- **Spec Location**: `openspec/specs/<feature-name>/spec.md` (e.g., [ocr-benchmark spec](file:///Users/chunweiliu/Repos/manga-translator/openspec/specs/ocr-benchmark/spec.md))
-
 ## Build & Run
 
 ```bash

@@ -17,8 +17,7 @@ struct NSPasteboardClipboard: ClipboardWriting {
     }
 }
 
-// Decoration applied to a TranslationCard while Edit Mode is active. See
-// `openspec/changes/manual-bubble-editing/specs/manual-bubble-editing/spec.md`.
+// Decoration applied to a TranslationCard while Edit Mode is active.
 enum EditCardDecoration: Equatable {
     case unchanged
     case new

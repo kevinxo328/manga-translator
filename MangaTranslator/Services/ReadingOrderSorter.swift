@@ -70,8 +70,7 @@ struct ReadingOrderSorter {
     // land at their geometric position rather than at the end of the list —
     // and so any prior manual ordering (sidebar drag-to-reorder) is preserved.
     //
-    // Algorithm (see `openspec/changes/manual-bubble-editing/specs/reading-order/spec.md`
-    // and `design.md` §D4):
+    // Algorithm:
     //   1. Empty input → return `[newBox]` with `index = 0`.
     //   2. Otherwise pick the existing entry whose centre is the Euclidean
     //      nearest to `newBox`'s centre in image pixel coordinates.
