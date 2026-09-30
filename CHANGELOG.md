@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.8 (2026-09-30)
+
+### Bug Fixes
+
+- Fixed duplicate main windows opening when interacting with the app.
+
 ## v1.5.7 (2026-08-26)
 
 ### Bug Fixes
