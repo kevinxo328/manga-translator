@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.9 (2026-09-30)
+
+### Bug Fixes
+
+- Fixed automatic update checks not running on schedule.
+
+### Improvements
+
+- Made the Copilot loading indicator in Settings smaller so that the preferences window stays clean and compact.
+
 ## v1.5.8 (2026-09-30)
 
 ### Bug Fixes
