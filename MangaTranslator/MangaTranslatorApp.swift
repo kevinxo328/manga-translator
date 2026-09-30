@@ -26,6 +26,29 @@ final class AppWindowHolder {
     var aboutWindow: NSWindow?
 }
 
+@MainActor
+final class MainWindowRegistry {
+    private(set) weak var primaryWindow: NSWindow?
+
+    @discardableResult
+    func register(_ candidate: NSWindow) -> Bool {
+        if let primaryWindow, primaryWindow !== candidate {
+            primaryWindow.makeKeyAndOrderFront(nil)
+            candidate.close()
+            return false
+        }
+
+        primaryWindow = candidate
+        return true
+    }
+
+    func unregister(_ candidate: NSWindow) {
+        if primaryWindow === candidate {
+            primaryWindow = nil
+        }
+    }
+}
+
 /// Replaces the `App > Settings…` menu item because we use a custom `Window` scene
 /// (Settings scene silently ignores `.windowResizability`).
 private struct OpenSettingsButton: View {
@@ -39,12 +62,36 @@ private struct OpenSettingsButton: View {
     }
 }
 
+private struct ShowFileImporterFocusedValueKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var showFileImporter: Binding<Bool>? {
+        get { self[ShowFileImporterFocusedValueKey.self] }
+        set { self[ShowFileImporterFocusedValueKey.self] = newValue }
+    }
+}
+
+private struct OpenMangaButton: View {
+    @FocusedBinding(\.showFileImporter) private var showFileImporter
+
+    var body: some View {
+        Button("Open...") {
+            showFileImporter = true
+        }
+        .keyboardShortcut("o", modifiers: .command)
+        .disabled(showFileImporter == nil)
+    }
+}
+
 @main
 struct MangaTranslatorApp: App {
     @StateObject private var preferences: PreferencesService
     @StateObject private var viewModel: TranslationViewModel
     private let updateChecker = UpdateChecker()
     private let windows = AppWindowHolder()
+    private let mainWindows = MainWindowRegistry()
 
     init() {
         let prefs = PreferencesService()
@@ -62,7 +109,7 @@ struct MangaTranslatorApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(viewModel: viewModel)
+            ContentView(viewModel: viewModel, mainWindowRegistry: mainWindows)
                 .task {
                     #if arch(arm64)
                     await ModelDownloadService.shared.verifyOnLaunch()
@@ -71,10 +118,7 @@ struct MangaTranslatorApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open...") {
-                    viewModel.showFileImporter = true
-                }
-                .keyboardShortcut("o", modifiers: .command)
+                OpenMangaButton()
             }
 
             CommandGroup(replacing: .appInfo) {

@@ -48,8 +48,6 @@ final class TranslationViewModel: ObservableObject {
     @Published var activeGlossaryID: String? = nil
     @Published var glossaries: [Glossary] = []
     @Published var sourcePath: String? = nil
-    @Published var showFileImporter = false
-
     var allowedTypes: [UTType] {
         [.image, .folder, .zip, UTType(filenameExtension: "cbz") ?? .zip]
     }

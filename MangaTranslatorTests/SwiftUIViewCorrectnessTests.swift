@@ -1,12 +1,141 @@
 import Testing
 import Combine
 import AppKit
+import SwiftUI
 @testable import MangaTranslator
+
+private final class CloseTrackingWindow: NSWindow {
+    private(set) var didClose = false
+
+    override func close() {
+        didClose = true
+        delegate?.windowWillClose?(
+            Notification(name: NSWindow.willCloseNotification, object: self)
+        )
+        orderOut(nil)
+    }
+}
 
 // MARK: - Group 1: @StateObject vs @ObservedObject
 
 @Suite("SwiftUI View Correctness")
 struct SwiftUIViewCorrectnessTests {
+
+    @Test("Main scene wires window-local file importing through one command")
+    func mainSceneWiresWindowLocalFileImporting() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/MangaTranslatorApp.swift"),
+            encoding: .utf8
+        )
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/Views/ContentView.swift"),
+            encoding: .utf8
+        )
+        let viewModelSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/ViewModels/TranslationViewModel.swift"),
+            encoding: .utf8
+        )
+
+        #expect(appSource.contains("WindowGroup {"))
+        #expect(contentSource.contains("@State private var showFileImporter = false"))
+        #expect(!viewModelSource.contains("@Published var showFileImporter"))
+        #expect(appSource.components(separatedBy: #".keyboardShortcut("o", modifiers: .command)"#).count - 1 == 1)
+        #expect(!contentSource.contains(#".keyboardShortcut("o", modifiers: .command)"#))
+    }
+
+    @Test("Main window registry rejects a second visible translation window")
+    @MainActor
+    func mainWindowRegistryRejectsDuplicate() {
+        let registry = MainWindowRegistry()
+        let primary = CloseTrackingWindow()
+        let duplicate = CloseTrackingWindow()
+        primary.orderFront(nil)
+        duplicate.orderFront(nil)
+
+        registry.register(primary)
+        registry.register(duplicate)
+
+        #expect(registry.primaryWindow === primary)
+        #expect(primary.isVisible)
+        #expect(duplicate.didClose)
+    }
+
+    @Test("Main window registry accepts a replacement after the primary closes")
+    @MainActor
+    func mainWindowRegistryAcceptsReplacement() {
+        let registry = MainWindowRegistry()
+        let closedWindow = CloseTrackingWindow()
+        let replacement = CloseTrackingWindow()
+        closedWindow.orderFront(nil)
+        registry.register(closedWindow)
+        closedWindow.close()
+        registry.unregister(closedWindow)
+        replacement.orderFront(nil)
+
+        registry.register(replacement)
+
+        #expect(registry.primaryWindow === replacement)
+        #expect(replacement.isVisible)
+    }
+
+    @Test("Main window registry does not treat a hidden window as closed")
+    @MainActor
+    func mainWindowRegistryRejectsDuplicateWhilePrimaryIsHidden() {
+        let registry = MainWindowRegistry()
+        let primary = CloseTrackingWindow()
+        let duplicate = CloseTrackingWindow()
+        registry.register(primary)
+        primary.orderOut(nil)
+
+        registry.register(duplicate)
+
+        #expect(registry.primaryWindow === primary)
+        #expect(duplicate.didClose)
+    }
+
+    @Test("ContentView attachment prevents two visible translation windows")
+    @MainActor
+    func contentViewAttachmentPreventsDuplicateWindow() async throws {
+        let suiteName = "MainWindowLifecycleTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = PreferencesService(defaults: defaults)
+        let viewModel = TranslationViewModel(preferences: preferences)
+        let registry = MainWindowRegistry()
+        let primary = CloseTrackingWindow()
+        primary.contentView = NSHostingView(
+            rootView: ContentView(viewModel: viewModel, mainWindowRegistry: registry)
+        )
+
+        primary.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(100))
+
+        let duplicate = CloseTrackingWindow()
+        duplicate.contentView = NSHostingView(
+            rootView: ContentView(viewModel: viewModel, mainWindowRegistry: registry)
+        )
+        duplicate.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(registry.primaryWindow === primary)
+        #expect(primary.isVisible)
+        #expect(duplicate.didClose)
+        #expect(!duplicate.isVisible)
+
+        primary.close()
+        let replacement = CloseTrackingWindow()
+        replacement.contentView = NSHostingView(
+            rootView: ContentView(viewModel: viewModel, mainWindowRegistry: registry)
+        )
+        replacement.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(registry.primaryWindow === replacement)
+        #expect(replacement.isVisible)
+    }
 
     // MARK: CheckForUpdatesViewModel
 

@@ -4,7 +4,9 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
+    let mainWindowRegistry: MainWindowRegistry
     @Environment(\.openWindow) private var openWindow
+    @State private var showFileImporter = false
 
     // Stored handle for the NSEvent local monitor that catches Edit Mode
     // keys whose SwiftUI keyboardShortcut routing is focus-dependent.
@@ -88,7 +90,7 @@ struct ContentView: View {
         .frame(minWidth: ViewLayout.MainWindow.minWidth, minHeight: ViewLayout.MainWindow.minHeight)
         .toolbar { toolbarContent }
         .fileImporter(
-            isPresented: $viewModel.showFileImporter,
+            isPresented: $showFileImporter,
             allowedContentTypes: viewModel.allowedTypes,
             allowsMultipleSelection: false
         ) { result in
@@ -129,7 +131,8 @@ struct ContentView: View {
             handlePaste(providers)
         }
         .background(KeyboardShortcutLayer(viewModel: viewModel, isEditing: isEditing, navigateBubbles: navigateBubbles))
-        .background(WindowCloseInterceptor(isEditing: isEditing))
+        .focusedSceneValue(\.showFileImporter, $showFileImporter)
+        .background(WindowCloseInterceptor(isEditing: isEditing, mainWindowRegistry: mainWindowRegistry))
         .onAppear { installEditKeyMonitor() }
         .onDisappear { removeEditKeyMonitor() }
         .onExitCommand {
@@ -307,7 +310,7 @@ struct ContentView: View {
 
             Button {
                 guard !isEditing else { return }
-                viewModel.showFileImporter = true
+                showFileImporter = true
             } label: {
                 VStack(spacing: 20) {
                     ZStack {
@@ -400,12 +403,11 @@ struct ContentView: View {
         ToolbarItem(placement: .navigation) {
             Button(action: {
                 guard !isEditing else { return }
-                viewModel.showFileImporter = true
+                showFileImporter = true
             }) {
                 Label("Open", systemImage: "plus.rectangle.on.folder")
             }
             .help("Open image, folder or archive")
-            .keyboardShortcut("o", modifiers: .command)
             .disabled(viewModel.isTranslationInFlight || isEditing)
         }
 
@@ -705,9 +707,10 @@ private struct KeyboardShortcutLayer: View {
 // the user a lightweight cue to use Done or Cancel first.
 private struct WindowCloseInterceptor: NSViewRepresentable {
     let isEditing: Bool
+    let mainWindowRegistry: MainWindowRegistry
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(mainWindowRegistry: mainWindowRegistry)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -726,13 +729,20 @@ private struct WindowCloseInterceptor: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSWindowDelegate {
+        let mainWindowRegistry: MainWindowRegistry
         weak var window: NSWindow?
         weak var previousDelegate: NSWindowDelegate?
         var isEditing = false
 
+        init(mainWindowRegistry: MainWindowRegistry) {
+            self.mainWindowRegistry = mainWindowRegistry
+        }
+
         func attach(to window: NSWindow?) {
             guard let window, self.window !== window else { return }
+            guard mainWindowRegistry.register(window) else { return }
             self.window = window
             previousDelegate = window.delegate
             window.delegate = self
@@ -745,6 +755,13 @@ private struct WindowCloseInterceptor: NSViewRepresentable {
                 return false
             }
             return previousDelegate?.windowShouldClose?(sender) ?? true
+        }
+
+        func windowWillClose(_ notification: Notification) {
+            if let closingWindow = notification.object as? NSWindow {
+                mainWindowRegistry.unregister(closingWindow)
+            }
+            previousDelegate?.windowWillClose?(notification)
         }
     }
 }
