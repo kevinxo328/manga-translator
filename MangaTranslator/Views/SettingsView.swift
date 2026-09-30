@@ -245,7 +245,11 @@ struct SettingsView: View {
                     case .idle:
                         EmptyView()
                     case .loading:
-                        ProgressView("Checking models…")
+                        HStack {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Checking models…")
+                        }
                     case .autoOnly:
                         copilotModelPicker(models: [.auto])
                     case .selectable(let models):

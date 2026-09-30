@@ -819,7 +819,13 @@ struct SettingsViewCopilotTests {
             .appendingPathComponent("MangaTranslator/Views/SettingsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        #expect(source.contains("ProgressView(\"Checking models…\")"))
+        let loadingStart = try #require(source.range(of: "case .loading:"))
+        let loadingEnd = try #require(source.range(of: "case .autoOnly:", range: loadingStart.upperBound..<source.endIndex))
+        let loadingBranch = String(source[loadingStart.lowerBound..<loadingEnd.lowerBound])
+
+        #expect(loadingBranch.contains("ProgressView()"))
+        #expect(loadingBranch.contains(".controlSize(.small)"))
+        #expect(loadingBranch.contains("Text(\"Checking models…\")"))
         #expect(source.contains("Text(\"No compatible Copilot models available.\")"))
         #expect(source.contains("Text(\"Couldn’t load Copilot models.\")"))
         #expect(source.contains("Button(\"Retry\")"))
