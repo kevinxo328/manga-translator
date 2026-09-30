@@ -111,6 +111,39 @@ final class ProjectStructureTests: XCTestCase {
         )
     }
 
+    func testSparkleAutomaticallyChecksWithoutDownloadingByDefault() throws {
+        let infoPlist = try loadPropertyList(at: repositoryRoot.appendingPathComponent("MangaTranslator/Info.plist"))
+
+        XCTAssertEqual(
+            infoPlist["SUEnableAutomaticChecks"] as? Bool,
+            true,
+            "Sparkle must check automatically so it can notify the user when an update is available."
+        )
+        XCTAssertEqual(
+            infoPlist["SUAutomaticallyUpdate"] as? Bool,
+            false,
+            "Sparkle must ask the user before downloading an available update."
+        )
+        XCTAssertEqual(
+            infoPlist["SUAllowsAutomaticUpdates"] as? Bool,
+            false,
+            "Sparkle must not offer automatic downloading or installation as a user option."
+        )
+    }
+
+    func testUpdateSettingControlsOnlyAutomaticChecks() throws {
+        let settingsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(settingsSource.contains("updater.automaticallyChecksForUpdates = $0"))
+        XCTAssertFalse(
+            settingsSource.contains("updater.automaticallyDownloadsUpdates"),
+            "The automatic-check preference must not opt the user into background downloads."
+        )
+    }
+
     func testSandboxedSparkleInstallerMachLookupEntitlementsArePresent() throws {
         let entitlements = try loadPropertyList(at: repositoryRoot.appendingPathComponent("MangaTranslator/MangaTranslator.entitlements"))
         let machLookupNames = entitlements["com.apple.security.temporary-exception.mach-lookup.global-name"] as? [String]

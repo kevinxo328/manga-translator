@@ -10,8 +10,12 @@
 	<string>https://github.com/kevinxo328/manga-translator/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>wBM+qWzYj8vbAMxvpP+pVUIsTN6tGxqFrkBgiaDdbzk=</string>
-	<key>SUAutomaticallyChecksForUpdates</key>
+	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>3600</integer>
 	<key>SUEnableInstallerLauncherService</key>
