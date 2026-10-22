@@ -71,8 +71,9 @@ struct SettingsView: View {
     @State private var showClearCacheAlert = false
     @State private var cacheSizeBytes: Int64 = 0
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
-    @State private var copilotModelState: CopilotModelLoadState = .idle
+    @State private var copilotModelState: CopilotModelLoadState
     @State private var copilotToken: String?
+    private let copilotModelStateOverride: CopilotModelLoadState?
 
     #if arch(arm64)
     @StateObject private var paddleOCRViewModel: PaddleOCRSettingsViewModel = {
@@ -89,13 +90,16 @@ struct SettingsView: View {
         viewModel: TranslationViewModel,
         onClearCache: (() -> Void)? = nil,
         onFetchCacheSize: (() -> Int64)? = nil,
-        updater: SPUUpdater? = nil
+        updater: SPUUpdater? = nil,
+        copilotModelStateOverride: CopilotModelLoadState? = nil
     ) {
         self.preferences = preferences
         self.viewModel = viewModel
         self.onClearCache = onClearCache
         self.onFetchCacheSize = onFetchCacheSize
         self.updater = updater
+        self.copilotModelStateOverride = copilotModelStateOverride
+        _copilotModelState = State(initialValue: copilotModelStateOverride ?? .idle)
     }
 
     // Derived from preferences.activeTabIdentifier; unknown identifiers fall back to .apiKeys.
@@ -143,6 +147,12 @@ struct SettingsView: View {
             normalizeActiveTabIdentifier()
         }
         .task {
+            if let copilotModelStateOverride {
+                copilotAvailability = .available(token: "ui-test")
+                copilotToken = "ui-test"
+                copilotModelState = copilotModelStateOverride
+                return
+            }
             copilotAvailability = CopilotEnvironment.check()
             if !copilotAvailability.isAvailable && preferences.translationEngine == .githubCopilot {
                 preferences.translationEngine = .openAI
@@ -249,6 +259,7 @@ struct SettingsView: View {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Checking models…")
+                                .accessibilityIdentifier("settings.copilot.loading")
                         }
                     case .picker(let models):
                         copilotModelPicker(models: models)
@@ -260,13 +271,8 @@ struct SettingsView: View {
                         Text("Couldn’t load Copilot models.")
                             .foregroundStyle(.secondary)
                             .font(.caption)
-                        Button("Retry") {
-                            guard let token = copilotToken else { return }
-                            copilotModelState = .loading
-                            Task {
-                                await loadCopilotModels(token: token)
-                            }
-                        }
+                        Button("Retry", action: retryCopilotModels)
+                            .accessibilityIdentifier("settings.copilot.retry")
                     }
                 case .notInstalled:
                     Label("GitHub Copilot CLI not found", systemImage: "xmark.circle")
@@ -292,6 +298,15 @@ struct SettingsView: View {
             ForEach(models) { model in
                 Text(model.displayLabel).tag(model.id)
             }
+        }
+    }
+
+    private func retryCopilotModels() {
+        guard let token = copilotToken else { return }
+        copilotModelState = .loading
+        guard copilotModelStateOverride == nil else { return }
+        Task {
+            await loadCopilotModels(token: token)
         }
     }
 

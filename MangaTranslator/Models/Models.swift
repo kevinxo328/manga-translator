@@ -165,6 +165,12 @@ enum CopilotModelLoadState: Equatable {
     case noCompatibleModels
     case failed(String)
 
+    static var uiTestOverride: CopilotModelLoadState? {
+        ProcessInfo.processInfo.environment["MANGATRANSLATOR_UI_TEST_COPILOT_STATE"] == "failed"
+            ? .failed("UI test")
+            : nil
+    }
+
     static func loaded(from catalog: CopilotModelCatalog) -> CopilotModelLoadState {
         let selectableModels = catalog.selectableModels
         if !selectableModels.isEmpty {
