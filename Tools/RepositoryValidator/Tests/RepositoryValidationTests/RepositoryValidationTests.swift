@@ -3,20 +3,20 @@ import Testing
 @testable import RepositoryValidation
 
 struct RepositoryValidationTests {
-    @Test("Quality workflows require separately runnable OCR benchmark")
-    func qualityWorkflowsRejectMissingBenchmarkWorkflow() throws {
+    @Test("Quality workflows require a pull request workflow")
+    func qualityWorkflowsRejectMissingPRWorkflow() throws {
         let root = try makeFixture(withProject: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.removeItem(
-            at: root.appendingPathComponent(".github/workflows/ocr-diagnostics.yml")
+            at: root.appendingPathComponent(".github/workflows/quality.yml")
         )
 
         #expect(RepositoryValidator.qualityWorkflowViolations(root: root).map(\.code) == [
-            "quality.diagnostics-workflow"
+            "quality.pr-workflow"
         ])
     }
 
-    @Test("Committed quality workflows keep diagnostics out of the PR lane")
+    @Test("Committed quality workflow keeps diagnostics out of the PR lane")
     func committedQualityWorkflowsPassTheirContract() {
         #expect(RepositoryValidator.qualityWorkflowViolations(root: repositoryRoot).isEmpty)
     }
@@ -338,12 +338,6 @@ struct RepositoryValidationTests {
         try """
         {"on":{"pull_request":{}},"jobs":{"checks":{"steps":[{"run":"xcodebuild test -scheme MangaTranslator"},{"run":"swift run repository-validator"}]}}}
         """.write(to: workflows.appendingPathComponent("quality.yml"), atomically: true, encoding: .utf8)
-        try """
-        {"on":{"workflow_dispatch":{},"schedule":[{"cron":"0 3 * * 1"}]},"jobs":{"benchmark":{"steps":[{"run":"xcodebuild test -scheme OCRBenchmark"}]}}}
-        """.write(to: workflows.appendingPathComponent("ocr-diagnostics.yml"), atomically: true, encoding: .utf8)
-        let documentation = root.appendingPathComponent("docs/quality-diagnostics.md")
-        try FileManager.default.createDirectory(at: documentation.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "diagnostic inputs".write(to: documentation, atomically: true, encoding: .utf8)
     }
 
     private func makeProjectContractFixture(

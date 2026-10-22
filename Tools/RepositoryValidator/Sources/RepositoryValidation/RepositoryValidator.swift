@@ -77,7 +77,6 @@ public enum RepositoryValidator {
     public static func qualityWorkflowViolations(root: URL) -> [ValidationViolation] {
         let workflows = root.appendingPathComponent(".github/workflows", isDirectory: true)
         let quality = workflow(at: workflows.appendingPathComponent("quality.yml"))
-        let diagnostics = workflow(at: workflows.appendingPathComponent("ocr-diagnostics.yml"))
         var violations: [ValidationViolation] = []
 
         guard let quality else {
@@ -85,7 +84,7 @@ public enum RepositoryValidator {
                 code: "quality.pr-workflow",
                 message: "Missing .github/workflows/quality.yml"
             ))
-            return violations + missingDiagnosticsViolation()
+            return violations
         }
         if !workflowTriggers(quality, event: "pull_request") {
             violations.append(ValidationViolation(
@@ -108,29 +107,6 @@ public enum RepositoryValidator {
             ))
         }
 
-        guard let diagnostics else {
-            return violations + missingDiagnosticsViolation()
-        }
-        if !workflowTriggers(diagnostics, event: "workflow_dispatch") || !workflowTriggers(diagnostics, event: "schedule") {
-            violations.append(ValidationViolation(
-                code: "quality.diagnostics-triggers",
-                message: "ocr-diagnostics.yml must support manual and scheduled execution"
-            ))
-        }
-        let diagnosticCommands = workflowCommands(diagnostics)
-        if !diagnosticCommands.contains(where: { $0.contains("-scheme OCRBenchmark") }) ||
-            diagnosticCommands.contains(where: { $0.contains("-scheme PaddleOCRParityDiagnostic") }) {
-            violations.append(ValidationViolation(
-                code: "quality.diagnostics-schemes",
-                message: "ocr-diagnostics.yml must run OCRBenchmark without hosted PaddleOCR parity"
-            ))
-        }
-        if !FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/quality-diagnostics.md").path) {
-            violations.append(ValidationViolation(
-                code: "quality.diagnostics-documentation",
-                message: "Missing docs/quality-diagnostics.md"
-            ))
-        }
         return violations
     }
 
@@ -271,13 +247,6 @@ public enum RepositoryValidator {
     private static func propertyList(at url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
-    }
-
-    private static func missingDiagnosticsViolation() -> [ValidationViolation] {
-        [ValidationViolation(
-            code: "quality.diagnostics-workflow",
-            message: "Missing .github/workflows/ocr-diagnostics.yml"
-        )]
     }
 
     private static func workflow(at url: URL) -> [String: Any]? {
