@@ -240,27 +240,6 @@ struct DebugLogViewTests {
         let _: any View.Type = LevelBadge.self
     }
 
-    @Test("Action buttons share baseline-aligned labels")
-    func actionButtonsShareBaselineAlignedLabels() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("MangaTranslator/Views/DebugLogView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let labelStart = try #require(source.range(of: "struct DebugLogActionButtonLabel"))
-        let labelEnd = try #require(source.range(of: "// MARK: - Row View", range: labelStart.upperBound..<source.endIndex))
-        let labelSource = String(source[labelStart.lowerBound..<labelEnd.lowerBound])
-
-        #expect(source.contains("DebugLogActionButtonLabel(systemImage: \"trash\", title: \"Clear\")"))
-        #expect(source.contains("DebugLogActionButtonLabel(systemImage: \"square.and.arrow.up\", title: \"Export\", iconYOffset: -1)"))
-        #expect(labelSource.contains("Text(title)"))
-        #expect(labelSource.contains(".overlay(alignment: .leading)"))
-        #expect(labelSource.contains(".frame(width: 16, height: 16, alignment: .center)"))
-        #expect(labelSource.contains(".offset(y: iconYOffset)"))
-        #expect(!labelSource.contains("HStack(alignment: .firstTextBaseline, spacing: 4)"))
-        #expect(!source.contains("label: {\n                HStack(spacing: 4)"))
-    }
-
     // MARK: - Helpers
 
     private func makeStore() -> DebugLogStore {

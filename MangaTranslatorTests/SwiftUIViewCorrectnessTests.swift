@@ -198,10 +198,10 @@ struct SwiftUIViewCorrectnessTests {
         #expect(displayed === win1, "Second click must reuse the first window, not create a new one")
     }
 
-    // MARK: - Group 5: Sorted computed properties
+    // MARK: - Group 5: Translation display ordering
 
-    @Test("sortedBubbles returns TranslatedBubble array in ascending index order")
-    func sortedBubblesAreAscendingByIndex() {
+    @Test("Translation display order follows reading order")
+    func translationDisplayOrderFollowsReadingOrder() {
         let cluster = BubbleCluster(
             boundingBox: .zero,
             text: "test",
@@ -212,8 +212,7 @@ struct SwiftUIViewCorrectnessTests {
             TranslatedBubble(bubble: cluster, translatedText: "A", index: 0),
             TranslatedBubble(bubble: cluster, translatedText: "B", index: 1),
         ]
-        let sorted = bubbles.sorted { $0.index < $1.index }
-        #expect(sorted.map(\.index) == [0, 1, 2], "Bubbles must be sorted in ascending reading order")
+        #expect(bubbles.sortedByIndex.map(\.index) == [0, 1, 2], "Bubbles must be sorted in ascending reading order")
     }
 
     @Test("Enumerated sorted bubbles have correct display numbers")
@@ -227,7 +226,7 @@ struct SwiftUIViewCorrectnessTests {
             TranslatedBubble(bubble: cluster, translatedText: "B", index: 1),
             TranslatedBubble(bubble: cluster, translatedText: "A", index: 0),
         ]
-        let enumerated = Array(bubbles.sorted { $0.index < $1.index }.enumerated())
+        let enumerated = Array(bubbles.sortedByIndex.enumerated())
         #expect(enumerated[0].offset == 0)
         #expect(enumerated[1].offset == 1)
         #expect(enumerated[0].element.translatedText == "A")
