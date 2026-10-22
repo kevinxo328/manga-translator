@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.10 (2026-10-22)
+
+### Bug Fixes
+
+- Fixed Copilot translation failing when the "Auto" model option was selected.
+
 ## v1.5.9 (2026-09-30)
 
 ### Bug Fixes
