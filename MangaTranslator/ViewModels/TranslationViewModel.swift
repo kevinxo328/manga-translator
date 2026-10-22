@@ -805,10 +805,9 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
-    // Run one multi-page LLM batch. Returns true if the run was cancelled, signalling the
-    // caller to stop processing later batches. On non-cancellation failure, falls back to
-    // calling the per-page translate(...) for every page in the group in page-index order;
-    // per-page fallback uses the same recent-context window updates as the per-page entry.
+    // Run one multi-page LLM batch. Returns true when later groups must stop. Ordinary LLM
+    // failures fall back to per-page translation, while ChatGPT Plan provider failures must
+    // remain explicit and therefore leave the group pending without a fallback request.
     private func runBatch(_ group: [BatchPlanItem], service: any TranslationService) async -> Bool {
         guard !group.isEmpty else { return false }
         let pageInputs = group.map {
@@ -846,6 +845,17 @@ final class TranslationViewModel: ObservableObject {
             revertBatchPagesToPending(group)
             return true
         } catch {
+            if service.engine == .chatGPTPlan {
+                revertBatchPagesToPending(group)
+                errorMessage = error.localizedDescription
+                pipelineLogger.log(
+                    "ChatGPT Plan batch failed; preserving pending pages (pages=\(group.count))",
+                    level: .warning,
+                    category: .pipeline,
+                    metadata: ["operation": "chatGPTPlanBatchStop", "page_count": "\(group.count)"]
+                )
+                return true
+            }
             pipelineLogger.log(
                 "Batch failed; falling back to per-page (pages=\(group.count))",
                 level: .warning,

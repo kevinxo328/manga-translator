@@ -4,6 +4,90 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("Plan translation streams a complete response with the selected model and full context")
+    func planTranslationStreamsCompletedResponse() async throws {
+        let store = SessionBox(session: session(selectedModel: "gpt-5"))
+        let account = ChatGPTPlanAccountService(
+            transport: OAuthTransportStub(),
+            load: { store.session }, save: { store.session = $0 }, clear: { store.session = nil }
+        )
+        let captured = RequestBox()
+        let sse = """
+        data: {"type":"response.output_text.delta","delta":"[{\\\"index\\\":0,"}
+
+        data: {"type":"response.output_text.delta","delta":"\\\"translation\\\":\\\"Hello\\\"}]"}
+
+        data: {"type":"response.completed"}
+
+        """
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.request = request
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/event-stream"])!
+            return (response, Data(sse.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+
+        let service = ChatGPTPlanTranslationService(account: account, urlSession: httpSession)
+        let context = TranslationContext(
+            glossaryTerms: [GlossaryTerm(id: "hero", sourceTerm: "勇者", targetTerm: "Hero", autoDetected: false)],
+            recentPageSummaries: ["The hero enters the castle."]
+        )
+        var bubble = BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
+        bubble.index = 0
+
+        let output = try await service.translate(bubbles: [bubble], from: .ja, to: .en, context: context)
+
+        #expect(output.bubbles.map(\.translatedText) == ["Hello"])
+        let request = try #require(captured.request)
+        #expect(request.url == URL(string: "https://api.openai.com/v1/responses"))
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer old-access")
+        #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
+        let body = request.jsonMockBody()
+        #expect(body["model"] as? String == "gpt-5")
+        #expect(body["stream"] as? Bool == true)
+        #expect(body["store"] as? Bool == false)
+        #expect((body["instructions"] as? String)?.contains("Glossary") == true)
+        #expect((body["instructions"] as? String)?.contains("Recent context") == true)
+        #expect(body["temperature"] == nil)
+        #expect(body["max_output_tokens"] == nil)
+    }
+
+    @Test("Plan translation rejects a stream without a successful terminal event")
+    func planTranslationRejectsUnterminatedStream() async {
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data("data: {\"type\":\"response.output_text.delta\",\"delta\":\"[]\"}\n\n".utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")),
+            urlSession: httpSession
+        )
+
+        await #expect(throws: TranslationError.self) {
+            _ = try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+        }
+    }
+
+    @Test("Plan translation surfaces unavailable-model provider errors")
+    func planTranslationSurfacesProviderErrors() async {
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (response, Data(#"{"error":{"message":"Model unavailable","code":"model_not_found"}}"#.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+        let service = ChatGPTPlanTranslationService(account: account(with: session(selectedModel: "retired")), urlSession: httpSession)
+
+        do {
+            _ = try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+            Issue.record("Expected provider error")
+        } catch let TranslationError.apiError(error) {
+            #expect(error.statusCode == 404)
+            #expect(error.code == "model_not_found")
+        } catch {
+            Issue.record("Expected TranslationError.apiError, got \(error)")
+        }
+    }
     @Test("catalog keeps only displayable models in a stable order")
     func catalogFiltersDisplayableModels() throws {
         let data = """
@@ -143,8 +227,16 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(store.session == nil)
     }
 
-    private func session(expiresAt: Date = .distantFuture) -> ChatGPTPlanSession {
-        ChatGPTPlanSession(email: "reader@example.com", subject: "reader", clientID: "issued-client", idToken: "id", accessToken: "old-access", refreshToken: "old-refresh", expiresAt: expiresAt, scopes: ["chatgpt.tokens.use.direct"])
+    private func session(expiresAt: Date = .distantFuture, selectedModel: String? = nil) -> ChatGPTPlanSession {
+        ChatGPTPlanSession(email: "reader@example.com", subject: "reader", clientID: "issued-client", idToken: "id", accessToken: "old-access", refreshToken: "old-refresh", expiresAt: expiresAt, scopes: ["chatgpt.tokens.use.direct"], selectedModel: selectedModel)
+    }
+
+    private func account(with session: ChatGPTPlanSession) -> ChatGPTPlanAccountService {
+        let store = SessionBox(session: session)
+        return ChatGPTPlanAccountService(
+            transport: OAuthTransportStub(),
+            load: { store.session }, save: { store.session = $0 }, clear: { store.session = nil }
+        )
     }
 
     private func token(access: String, refresh: String) -> ChatGPTPlanTokenResponse {
@@ -180,6 +272,10 @@ private actor ChatGPTPlanCatalogCallCounter {
 private final class SessionBox: @unchecked Sendable {
     var session: ChatGPTPlanSession?
     init(session: ChatGPTPlanSession?) { self.session = session }
+}
+
+private final class RequestBox: @unchecked Sendable {
+    var request: URLRequest?
 }
 
 private actor OAuthTransportStub: ChatGPTPlanOAuthTransport {

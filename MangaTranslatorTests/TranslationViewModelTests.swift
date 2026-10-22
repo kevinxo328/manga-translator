@@ -4024,6 +4024,29 @@ final class BatchSchedulerTests: XCTestCase {
         XCTAssertTrue(perPageInputs[2].hasPrefix("w303"), "Third per-page call must be for page 3 (got \(perPageInputs[2]))")
     }
 
+    func testChatGPTPlanBatchFailureStopsWithoutPerPageFallback() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 20, 20, 5],
+            engine: .chatGPTPlan
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        service.failBatchForPageIds = ["1"]
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"]])
+        XCTAssertTrue(service.perPageCalls.isEmpty, "Plan failures must not retry through per-page translation")
+        if case .translated = vm.pages[0].state {
+            // The completed group remains available.
+        } else {
+            XCTFail("Page 0 should retain its completed translation")
+        }
+        for index in 1..<vm.pages.count {
+            if case .pending = vm.pages[index].state { continue }
+            XCTFail("Page \(index) should remain pending after the Plan failure, got \(vm.pages[index].state)")
+        }
+    }
+
     // 6.8
     func testRunBatchPipelineBatchFailureFallbackPreservesRecentContext() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
