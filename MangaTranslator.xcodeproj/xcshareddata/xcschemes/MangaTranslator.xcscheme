@@ -7,6 +7,20 @@
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
       <BuildActionEntries>
+		 <BuildActionEntry
+			buildForTesting = "YES"
+			buildForRunning = "NO"
+			buildForProfiling = "NO"
+			buildForArchiving = "NO"
+			buildForAnalyzing = "NO">
+			<BuildableReference
+				BuildableIdentifier = "primary"
+				BlueprintIdentifier = "U50000010000000000000001"
+				BuildableName = "MangaTranslatorUITests.xctest"
+				BlueprintName = "MangaTranslatorUITests"
+				ReferencedContainer = "container:MangaTranslator.xcodeproj">
+			</BuildableReference>
+		 </BuildActionEntry>
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
@@ -44,6 +58,17 @@
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
       <Testables>
+		 <TestableReference
+			skipped = "NO"
+			parallelizable = "NO">
+			<BuildableReference
+				BuildableIdentifier = "primary"
+				BlueprintIdentifier = "U50000010000000000000001"
+				BuildableName = "MangaTranslatorUITests.xctest"
+				BlueprintName = "MangaTranslatorUITests"
+				ReferencedContainer = "container:MangaTranslator.xcodeproj">
+			</BuildableReference>
+		 </TestableReference>
          <TestableReference
             skipped = "NO"
             parallelizable = "YES">

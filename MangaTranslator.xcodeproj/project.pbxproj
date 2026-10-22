@@ -98,6 +98,7 @@
 		T10000010000000000000001 /* LLMPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000001 /* LLMPromptTests.swift */; };
 		T10000010000000000000002 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000002 /* PreferencesServiceTests.swift */; };
 		T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */; };
+		U10000010000000000000001 /* MangaTranslatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = U20000010000000000000002 /* MangaTranslatorUITests.swift */; };
 		T10000010000000000000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000004 /* KeychainServiceTests.swift */; };
 		T10000010000000000000005 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000005 /* ModelsTests.swift */; };
 		T10000010000000000000014 /* EditActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000014 /* EditActionTests.swift */; };
@@ -279,6 +280,8 @@
 		T2000001000000000000000E /* OpenAITranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITranslationServiceTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000F /* BubblePolarityClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubblePolarityClassifierTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000010 /* MangaTranslatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		U20000010000000000000001 /* MangaTranslatorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MangaTranslatorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		U20000010000000000000002 /* MangaTranslatorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaTranslatorUITests.swift; sourceTree = "<group>"; };
 		T20000010000000000000011 /* ComicTextDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComicTextDetectorTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000012 /* CacheServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000013 /* SettingsTabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTabTests.swift; sourceTree = "<group>"; };
@@ -340,6 +343,7 @@
 				A40000010000000000000002 /* MangaTranslator */,
 				M40000010000000000000001 /* MangaTranslatorMLX */,
 				T40000010000000000000001 /* MangaTranslatorTests */,
+				U40000010000000000000001 /* MangaTranslatorUITests */,
 				BK40000010000000000000001 /* OCRBenchmarkTests */,
 				A40000010000000000000009 /* Products */,
 			);
@@ -439,6 +443,7 @@
 			children = (
 				A20000010000000000000010 /* MangaTranslator.app */,
 				T20000010000000000000010 /* MangaTranslatorTests.xctest */,
+				U20000010000000000000001 /* MangaTranslatorUITests.xctest */,
 				M20000010000000000000010 /* MangaTranslatorMLX.framework */,
 				BK20000010000000000000001 /* OCRBenchmarkTests.xctest */,
 				PD20000010000000000000001 /* PaddleOCRParityDiagnosticTests.xctest */,
@@ -533,6 +538,14 @@
 				MD20000010000000000000001 /* ModelDownloadServiceTests.swift */,
 			);
 			path = MangaTranslatorTests;
+			sourceTree = "<group>";
+		};
+		U40000010000000000000001 /* MangaTranslatorUITests */ = {
+			isa = PBXGroup;
+			children = (
+				U20000010000000000000002 /* MangaTranslatorUITests.swift */,
+			);
+			path = MangaTranslatorUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -638,6 +651,21 @@
 			productReference = T20000010000000000000010 /* MangaTranslatorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		U50000010000000000000001 /* MangaTranslatorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = UA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorUITests" */;
+			buildPhases = (
+				U60000010000000000000001 /* Sources */,
+			);
+			buildRules = ();
+			dependencies = (
+				UD0000010000000000000001 /* PBXTargetDependency */,
+			);
+			name = MangaTranslatorUITests;
+			productName = MangaTranslatorUITests;
+			productReference = U20000010000000000000001 /* MangaTranslatorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -666,6 +694,10 @@
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = A50000010000000000000001;
 					};
+					U50000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A50000010000000000000001;
+					};
 				};
 			};
 			buildConfigurationList = A70000010000000000000001 /* Build configuration list for PBXProject "MangaTranslator" */;
@@ -691,6 +723,7 @@
 				A50000010000000000000001 /* MangaTranslator */,
 				M50000010000000000000001 /* MangaTranslatorMLX */,
 				T50000010000000000000001 /* MangaTranslatorTests */,
+				U50000010000000000000001 /* MangaTranslatorUITests */,
 				BK50000010000000000000001 /* OCRBenchmarkTests */,
 				PD50000010000000000000001 /* PaddleOCRParityDiagnosticTests */,
 			);
@@ -865,6 +898,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		U60000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				U10000010000000000000001 /* MangaTranslatorUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -897,6 +938,10 @@
 			isa = PBXTargetDependency;
 			target = A50000010000000000000001 /* MangaTranslator */;
 			targetProxy = TC0000010000000000000001 /* PBXContainerItemProxy */;
+		};
+		UD0000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000010000000000000001 /* MangaTranslator */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1290,6 +1335,34 @@
 			};
 			name = Release;
 		};
+		UB0000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = MangaTranslator;
+			};
+			name = Debug;
+		};
+		UB0000010000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chunweiliu.MangaTranslatorUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = MangaTranslator;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1343,6 +1416,15 @@
 			buildConfigurations = (
 				TB0000010000000000000001 /* Debug */,
 				TB0000010000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		UA0000010000000000000001 /* Build configuration list for PBXNativeTarget "MangaTranslatorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				UB0000010000000000000001 /* Debug */,
+				UB0000010000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
