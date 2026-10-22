@@ -567,6 +567,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
+                    .accessibilityIdentifier("toolbar.cancelBatchTranslation")
                     .help("Cancel batch translation")
                 case .retranslateAll:
                     Button {
@@ -575,6 +576,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "arrow.trianglehead.2.counterclockwise")
                     }
+                    .accessibilityIdentifier("toolbar.retranslateAllPages")
                     .disabled(viewModel.isTranslationInFlight || isEditing)
                     .help("Re-translate all pages using current settings")
                 }
