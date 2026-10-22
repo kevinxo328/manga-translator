@@ -88,6 +88,7 @@ enum CopilotAvailability: Equatable {
 
 struct CopilotEnvironment {
     static let copilotAPIVersion = "2026-07-01"
+    static let copilotAutoAPIVersion = "2026-08-01"
     static let copilotIntegrationID = "copilot-developer-cli"
     static let individualHost = URL(string: "https://api.individual.githubcopilot.com")!
     static let businessHost = URL(string: "https://api.githubcopilot.com")!

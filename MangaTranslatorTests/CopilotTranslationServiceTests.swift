@@ -8,8 +8,6 @@ enum InvalidAutoSessionCase: CaseIterable, Sendable {
     case emptySessionToken
     case invalidExpiry
     case nonfutureExpiry
-    case selectedAbsentFromAvailable
-    case selectedOutsideHints
 }
 
 enum FatalRefreshCase: CaseIterable, Sendable {
@@ -80,25 +78,17 @@ struct CopilotTranslationServiceTests {
         }
     }
 
-    @Test("Auto translation resolves a compatible model session before inference")
-    func autoTranslationResolvesCompatibleModelSessionBeforeInference() async throws {
+    @Test("Auto translation resolves a model with the V2 Auto endpoint before inference")
+    func autoTranslationResolvesWithV2AutoEndpointBeforeInference() async throws {
         let counter = BatchRequestCounter()
-        let modelsJSON = Data(#"""
-        {"data":[
-          {"id":"gpt-5-mini","name":"GPT-5 mini","model_picker_enabled":false,"supported_endpoints":["/chat/completions"]},
-          {"id":"gpt-5.3-codex","name":"GPT-5.3 Codex","model_picker_enabled":false,"supported_endpoints":["/responses"]}
-        ]}
-        """#.utf8)
-        let sessionJSON = Data(#"""
-        {"selected_model":"gpt-5-mini","available_models":["gpt-5-mini"],"session_token":"session-secret","expires_at":4102444800}
+        let autoJSON = Data(#"""
+        {"selected_model":{"id":"gpt-5-mini"},"session_token":"session-secret","expires_at":4102444800}
         """#.utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             switch request.url?.path {
-            case "/models":
-                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
-            case "/models/session":
-                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, sessionJSON)
+            case "/auto":
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, autoJSON)
             case "/chat/completions":
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, validSinglePageResponseBody(translation: "Translated"))
             default:
@@ -123,12 +113,12 @@ struct CopilotTranslationServiceTests {
 
         #expect(output.bubbles.first?.translatedText == "Translated")
         #expect(counter.capturedRequests.compactMap(\.url?.path) == [
-            "/models", "/models/session", "/chat/completions"
+            "/auto", "/chat/completions"
         ])
-        let modelSessionRequest = try #require(counter.capturedRequests.first { $0.url?.path == "/models/session" })
-        let modelSessionBody = String(decoding: modelSessionRequest.readMockBody(), as: UTF8.self)
-        #expect(modelSessionBody.contains("gpt-5-mini"))
-        #expect(!modelSessionBody.contains("gpt-5.3-codex"))
+        let autoRequest = try #require(counter.capturedRequests.first { $0.url?.path == "/auto" })
+        let autoBody = String(decoding: autoRequest.readMockBody(), as: UTF8.self)
+        #expect(autoBody.contains("こんにちは"))
+        #expect(autoRequest.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2026-08-01")
 
         let inferenceRequest = try #require(counter.capturedRequests.first { $0.url?.path == "/chat/completions" })
         let inferenceBody = String(decoding: inferenceRequest.readMockBody(), as: UTF8.self)
@@ -137,6 +127,45 @@ struct CopilotTranslationServiceTests {
         #expect(inferenceRequest.value(forHTTPHeaderField: "Copilot-Session-Token") == "session-secret")
         #expect(inferenceRequest.value(forHTTPHeaderField: "Copilot-Integration-Id") == "copilot-developer-cli")
         #expect(inferenceRequest.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2026-07-01")
+    }
+
+    @Test("Auto uses the Responses API for a Responses-only selected model")
+    func autoTranslationUsesResponsesAPIForResponsesOnlyModel() async throws {
+        let counter = BatchRequestCounter()
+        let autoJSON = Data(#"""
+        {"selected_model":{"id":"gpt-5.6-luna","supported_endpoints":["/responses"]},"session_token":"session-secret","expires_at":4102444800}
+        """#.utf8)
+        let responseText = "[{\"index\":0,\"translation\":\"Translated\"}]"
+        let escapedResponseText = responseText.replacingOccurrences(of: "\"", with: "\\\"")
+        let responsesJSON = Data("{\"output\":[{\"content\":[{\"type\":\"output_text\",\"text\":\"\(escapedResponseText)\"}]}]}".utf8)
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            _ = counter.record(request: request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            switch request.url?.path {
+            case "/auto": return (response, autoJSON)
+            case "/responses": return (response, responsesJSON)
+            default: return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!, Data())
+            }
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+        let service = CopilotTranslationService(
+            model: "auto", urlSession: session,
+            catalogStore: CopilotModelCatalogStore(),
+            sessionResolver: CopilotAutoSessionResolver()
+        )
+
+        let output = try await service.translate(
+            bubbles: [makeSingleBubble()], from: .ja, to: .en,
+            context: .empty, token: "oauth-token"
+        )
+
+        #expect(output.bubbles.first?.translatedText == "Translated")
+        #expect(counter.capturedRequests.compactMap(\.url?.path) == ["/auto", "/responses"])
+        let request = try #require(counter.capturedRequests.last)
+        let body = String(decoding: request.readMockBody(), as: UTF8.self)
+        #expect(body.contains("\"instructions\""))
+        #expect(body.contains("\"input\""))
+        #expect(!body.contains("\"messages\""))
     }
 
     @Test("Explicit compatible model is catalog-validated and sent without an Auto session")
@@ -207,7 +236,7 @@ struct CopilotTranslationServiceTests {
             )
         }
         #expect(counter.capturedRequests.compactMap(\.url?.path) == ["/models", "/models"])
-        #expect(!counter.capturedRequests.contains { $0.url?.path == "/models/session" || $0.url?.path == "/chat/completions" })
+        #expect(!counter.capturedRequests.contains { $0.url?.path == "/auto" || $0.url?.path == "/chat/completions" })
     }
 
     @Test("Explicit inference fallback revalidates the model on the business host")
@@ -250,7 +279,7 @@ struct CopilotTranslationServiceTests {
             "api.githubcopilot.com/models",
             "api.githubcopilot.com/chat/completions"
         ])
-        #expect(!counter.capturedRequests.contains { $0.url?.path == "/models/session" })
+        #expect(!counter.capturedRequests.contains { $0.url?.path == "/auto" })
         #expect(counter.capturedRequests.allSatisfy {
             $0.value(forHTTPHeaderField: "Copilot-Session-Token") == nil
         })
@@ -264,10 +293,10 @@ struct CopilotTranslationServiceTests {
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             if request.url?.path == "/models" { return (response, modelsJSON) }
-            if request.url?.path == "/models/session" {
-                let attempt = counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count
+            if request.url?.path == "/auto" {
+                let attempt = counter.capturedRequests.filter { $0.url?.path == "/auto" }.count
                 let model = attempt == 1 ? "model-a" : "model-b"
-                let body = Data("{\"selected_model\":\"\(model)\",\"available_models\":[\"model-a\",\"model-b\"],\"session_token\":\"session-\(attempt)\",\"expires_at\":4102444800}".utf8)
+                let body = Data("{\"selected_model\":{\"id\":\"\(model)\"},\"session_token\":\"session-\(attempt)\",\"expires_at\":4102444800}".utf8)
                 return (response, body)
             }
             let inferenceAttempt = counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count
@@ -290,7 +319,7 @@ struct CopilotTranslationServiceTests {
         )
 
         #expect(output.bubbles.first?.translatedText == "Recovered")
-        let sessions = counter.capturedRequests.filter { $0.url?.path == "/models/session" }
+        let sessions = counter.capturedRequests.filter { $0.url?.path == "/auto" }
         let inferences = counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }
         #expect(sessions.count == 2)
         #expect(inferences.count == 2)
@@ -310,8 +339,8 @@ struct CopilotTranslationServiceTests {
             if request.url?.path == "/models" {
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
             }
-            if request.url?.path == "/models/session" {
-                let body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\"],\"session_token\":\"new-session\",\"expires_at\":4102444800}".utf8)
+            if request.url?.path == "/auto" {
+                let body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"new-session\",\"expires_at\":4102444800}".utf8)
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
             }
             let body = Data("{\"error\":{\"message\":\"unsupported\",\"code\":\"\(errorCode.rawValue)\"}}".utf8)
@@ -335,7 +364,7 @@ struct CopilotTranslationServiceTests {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 2)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
         #expect(counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count == 2)
     }
 
@@ -349,12 +378,12 @@ struct CopilotTranslationServiceTests {
                 if request.url?.path == "/models" {
                     return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
                 }
-                if request.url?.path == "/models/session" {
-                    let attempt = counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count
+                if request.url?.path == "/auto" {
+                    let attempt = counter.capturedRequests.filter { $0.url?.path == "/auto" }.count
                     if attempt == 2, let acquisitionFailureStatus {
                         return (HTTPURLResponse(url: request.url!, statusCode: acquisitionFailureStatus, httpVersion: nil, headerFields: nil)!, Data())
                     }
-                    let body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\"],\"session_token\":\"session-\(attempt)\",\"expires_at\":4102444800}".utf8)
+                    let body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"session-\(attempt)\",\"expires_at\":4102444800}".utf8)
                     return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
                 }
                 let attempt = counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count
@@ -386,7 +415,7 @@ struct CopilotTranslationServiceTests {
 
         let (successCounter, output) = try await run(acquisitionFailureStatus: nil)
         #expect(output?.bubbles.first?.translatedText == "Reauthorized")
-        let successSessions = successCounter.capturedRequests.filter { $0.url?.path == "/models/session" }
+        let successSessions = successCounter.capturedRequests.filter { $0.url?.path == "/auto" }
         #expect(successSessions.count == 2)
         let reacquisition = try #require(successSessions.last)
         #expect(reacquisition.value(forHTTPHeaderField: "Copilot-Session-Token") == nil)
@@ -395,7 +424,7 @@ struct CopilotTranslationServiceTests {
         for status in [401, 403] {
             let (failureCounter, output) = try await run(acquisitionFailureStatus: status)
             #expect(output == nil)
-            #expect(failureCounter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 2)
+            #expect(failureCounter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
             #expect(failureCounter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count == 1)
             #expect(!failureCounter.capturedRequests.contains { $0.url?.host == "api.githubcopilot.com" })
         }
@@ -410,8 +439,8 @@ struct CopilotTranslationServiceTests {
             if request.url?.path == "/models" {
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
             }
-            if request.url?.path == "/models/session" {
-                let body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\"],\"session_token\":\"session\",\"expires_at\":4102444800}".utf8)
+            if request.url?.path == "/auto" {
+                let body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"session\",\"expires_at\":4102444800}".utf8)
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
             }
             let attempt = counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count
@@ -433,23 +462,23 @@ struct CopilotTranslationServiceTests {
                 context: .empty, token: "oauth-token"
             )
         }
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 2)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
         #expect(counter.capturedRequests.filter { $0.url?.path == "/chat/completions" }.count == 2)
     }
 
-    @Test("Auto protocol fallback starts a clean transaction on the business host")
-    func autoProtocolFallbackUsesHostLocalCatalogAndSession() async throws {
+    @Test("Auto routing falls back to the business host after an invalid response")
+    func autoRoutingFallbackStartsCleanTransactionOnBusinessHost() async throws {
         let counter = BatchRequestCounter()
         let modelsJSON = Data("{\"data\":[{\"id\":\"model-a\",\"name\":\"Model A\",\"model_picker_enabled\":false,\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             if request.url?.path == "/models" { return (response, modelsJSON) }
-            if request.url?.path == "/models/session" {
+            if request.url?.path == "/auto" {
                 if request.url?.host == "api.individual.githubcopilot.com" {
                     return (response, Data("{}".utf8))
                 }
-                let body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\"],\"session_token\":\"business-session\",\"expires_at\":4102444800}".utf8)
+                let body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"business-session\",\"expires_at\":4102444800}".utf8)
                 return (response, body)
             }
             return (response, validSinglePageResponseBody(translation: "Business"))
@@ -471,10 +500,8 @@ struct CopilotTranslationServiceTests {
             guard let host = request.url?.host, let path = request.url?.path else { return nil }
             return host + path
         } == [
-            "api.individual.githubcopilot.com/models",
-            "api.individual.githubcopilot.com/models/session",
-            "api.githubcopilot.com/models",
-            "api.githubcopilot.com/models/session",
+            "api.individual.githubcopilot.com/auto",
+            "api.githubcopilot.com/auto",
             "api.githubcopilot.com/chat/completions"
         ])
         let businessRequests = counter.capturedRequests.filter { $0.url?.host == "api.githubcopilot.com" }
@@ -518,7 +545,7 @@ struct CopilotTranslationServiceTests {
         }
         #expect(counter.capturedRequests.compactMap(\.url?.path) == ["/models", "/chat/completions"])
         #expect(!counter.capturedRequests.contains { $0.url?.host == "api.githubcopilot.com" })
-        #expect(!counter.capturedRequests.contains { $0.url?.path == "/models/session" })
+        #expect(!counter.capturedRequests.contains { $0.url?.path == "/auto" })
     }
 
     @Test("Successful Auto routing logs only the resolved model and sanitized endpoint")
@@ -529,12 +556,12 @@ struct CopilotTranslationServiceTests {
         let store = DebugLogStore(databaseURL: tempURL)
         let logger = DebugLogger(store: store)
         let modelsJSON = Data("{\"data\":[{\"id\":\"model-a\",\"name\":\"Model A\",\"model_picker_enabled\":false,\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
-        let sessionJSON = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\"],\"session_token\":\"session-secret-value\",\"expires_at\":4102444800}".utf8)
+        let sessionJSON = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"session-secret-value\",\"expires_at\":4102444800}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             switch request.url?.path {
             case "/models": return (response, modelsJSON)
-            case "/models/session": return (response, sessionJSON)
+            case "/auto": return (response, sessionJSON)
             default: return (response, validSinglePageResponseBody(translation: "Logged"))
             }
         }
@@ -610,6 +637,45 @@ struct CopilotTranslationServiceTests {
         #expect(!text.contains("Authorization"))
     }
 
+    @Test("Invalid successful Auto responses persist a safe diagnostic")
+    func invalidSuccessfulAutoResponsesPersistSafeDiagnostic() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let store = DebugLogStore(databaseURL: tempURL)
+        let logger = DebugLogger(store: store)
+        let responseBody = Data("{\"selected_model\":{\"id\":\"model-a\"},\"provider_debug\":\"must-not-persist\"}".utf8)
+        let session = ProviderHTTPMockURLProtocol.makeSession { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, responseBody)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
+        let resolver = CopilotAutoSessionResolver(debugLogger: logger)
+
+        await #expect(throws: CopilotProtocolError.self) {
+            _ = try await resolver.resolveAuto(
+                token: "oauth-secret", host: CopilotEnvironment.individualHost,
+                prompt: "translate", urlSession: session
+            )
+        }
+        await logger.flush()
+
+        let entries = await store.query(filter: DebugLogFilter())
+        let entry = try #require(entries.first)
+        let metadata = try JSONDecoder().decode([String: String].self, from: Data(entry.metadataJSON.utf8))
+        #expect(entry.level == .error)
+        #expect(entry.category == .translationCopilot)
+        #expect(entry.message == "GitHub Copilot returned invalid model session")
+        #expect(metadata == [
+            "endpoint": "https://api.individual.githubcopilot.com/auto",
+            "reason": "missing_session_token",
+            "status_code": "200"
+        ])
+        let persisted = entries.map { $0.message + $0.metadataJSON }.joined(separator: "\n")
+        #expect(!persisted.contains("oauth-secret"))
+        #expect(!persisted.contains("must-not-persist"))
+    }
+
     @Test(
         "Invalid Auto session responses never reach inference",
         arguments: InvalidAutoSessionCase.allCases
@@ -622,24 +688,20 @@ struct CopilotTranslationServiceTests {
         case .missingSelectedModel:
             sessionBody = Data("{\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"token\",\"expires_at\":4102444800}".utf8)
         case .missingSessionToken:
-            sessionBody = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"expires_at\":4102444800}".utf8)
+            sessionBody = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"expires_at\":4102444800}".utf8)
         case .emptySessionToken:
-            sessionBody = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"\",\"expires_at\":4102444800}".utf8)
+            sessionBody = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"\",\"expires_at\":4102444800}".utf8)
         case .invalidExpiry:
-            sessionBody = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"token\",\"expires_at\":\"invalid\"}".utf8)
+            sessionBody = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"token\",\"expires_at\":\"invalid\"}".utf8)
         case .nonfutureExpiry:
-            sessionBody = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"token\",\"expires_at\":0}".utf8)
-        case .selectedAbsentFromAvailable:
-            sessionBody = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"other\"],\"session_token\":\"token\",\"expires_at\":4102444800}".utf8)
-        case .selectedOutsideHints:
-            sessionBody = Data("{\"selected_model\":\"other\",\"available_models\":[\"other\"],\"session_token\":\"token\",\"expires_at\":4102444800}".utf8)
+            sessionBody = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"token\",\"expires_at\":0}".utf8)
         }
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             switch request.url?.path {
             case "/models": return (response, modelsJSON)
-            case "/models/session": return (response, sessionBody)
+            case "/auto": return (response, sessionBody)
             default: return (response, validSinglePageResponseBody(translation: "Must not infer"))
             }
         }
@@ -663,17 +725,17 @@ struct CopilotTranslationServiceTests {
         #expect(!counter.capturedRequests.contains { $0.url?.path == "/chat/completions" })
     }
 
-    @Test("Expiry-less Auto sessions are immediate-use only")
-    func expirylessAutoSessionsAreImmediateUseOnly() async throws {
+    @Test("Auto routing requests a fresh selection for each translation")
+    func autoRoutingRequestsFreshSelectionForEachTranslation() async throws {
         let counter = BatchRequestCounter()
         let modelsJSON = Data("{\"data\":[{\"id\":\"gpt-5-mini\",\"name\":\"GPT-5 mini\",\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
-        let sessionJSON = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"one-use\"}".utf8)
+        let sessionJSON = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"one-use\",\"expires_at\":4102444800}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             switch request.url?.path {
             case "/models": return (response, modelsJSON)
-            case "/models/session": return (response, sessionJSON)
+            case "/auto": return (response, sessionJSON)
             default: return (response, validSinglePageResponseBody(translation: "Translated"))
             }
         }
@@ -694,22 +756,22 @@ struct CopilotTranslationServiceTests {
                 token: "oauth-token"
             )
         }
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 2)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
     }
 
-    @Test("Fresh Auto session is reused across public translations")
-    func freshAutoSessionIsReusedAcrossPublicTranslations() async throws {
+    @Test("Auto routing does not reuse a previous prompt selection")
+    func autoRoutingDoesNotReusePreviousPromptSelection() async throws {
         let counter = BatchRequestCounter()
         let clock = CopilotTestClock(Date(timeIntervalSince1970: 1_000))
         let modelsJSON = Data("{\"data\":[{\"id\":\"gpt-5-mini\",\"name\":\"GPT-5 mini\",\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
         let expiry = Int(clock.now().timeIntervalSince1970 + 600)
-        let sessionJSON = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"cached\",\"expires_at\":\(expiry)}".utf8)
+        let sessionJSON = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"cached\",\"expires_at\":\(expiry)}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             switch request.url?.path {
             case "/models": return (response, modelsJSON)
-            case "/models/session": return (response, sessionJSON)
+            case "/auto": return (response, sessionJSON)
             default: return (response, validSinglePageResponseBody(translation: "Translated"))
             }
         }
@@ -730,11 +792,11 @@ struct CopilotTranslationServiceTests {
                 token: "oauth-token"
             )
         }
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 1)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
     }
 
-    @Test("Auto session cache honors reuse refresh and expiry boundaries")
-    func autoSessionCacheHonorsReuseRefreshAndExpiryBoundaries() async throws {
+    @Test("Auto routing sends each prompt without a refresh token")
+    func autoRoutingSendsEachPromptWithoutRefreshToken() async throws {
         let counter = BatchRequestCounter()
         let clock = CopilotTestClock(Date(timeIntervalSince1970: 1_000))
         let modelsJSON = Data("{\"data\":[{\"id\":\"gpt-5-mini\",\"name\":\"GPT-5 mini\",\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
@@ -742,14 +804,14 @@ struct CopilotTranslationServiceTests {
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             if request.url?.path == "/models" { return (response, modelsJSON) }
-            if request.url?.path == "/models/session" {
-                let attempt = counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count
+            if request.url?.path == "/auto" {
+                let attempt = counter.capturedRequests.filter { $0.url?.path == "/auto" }.count
                 let values: (String, Int) = switch attempt {
                 case 1: ("old-token", 1_401)
                 case 2: ("refreshed-token", 1_600)
                 default: ("new-token", 2_200)
                 }
-                let body = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"\(values.0)\",\"expires_at\":\(values.1)}".utf8)
+                let body = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"\(values.0)\",\"expires_at\":\(values.1)}".utf8)
                 return (response, body)
             }
             return (response, validSinglePageResponseBody(translation: "Translated"))
@@ -771,23 +833,20 @@ struct CopilotTranslationServiceTests {
         try await translate()
         clock.advance(by: 100)
         try await translate()
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 1)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 2)
 
         clock.advance(by: 1)
         try await translate()
-        var sessionRequests = counter.capturedRequests.filter { $0.url?.path == "/models/session" }
-        #expect(sessionRequests.count == 2)
-        let initialRequest = try #require(sessionRequests.first)
-        let refreshRequest = try #require(sessionRequests.dropFirst().first)
-        #expect(refreshRequest.value(forHTTPHeaderField: "Copilot-Session-Token") == "old-token")
-        #expect(refreshRequest.readMockBody() == initialRequest.readMockBody())
+        var sessionRequests = counter.capturedRequests.filter { $0.url?.path == "/auto" }
+        #expect(sessionRequests.count == 3)
+        #expect(sessionRequests.allSatisfy {
+            $0.value(forHTTPHeaderField: "Copilot-Session-Token") == nil
+        })
 
         clock.advance(by: 500)
         try await translate()
-        sessionRequests = counter.capturedRequests.filter { $0.url?.path == "/models/session" }
-        #expect(sessionRequests.count == 3)
-        let expiredAcquisition = try #require(sessionRequests.last)
-        #expect(expiredAcquisition.value(forHTTPHeaderField: "Copilot-Session-Token") == nil)
+        sessionRequests = counter.capturedRequests.filter { $0.url?.path == "/auto" }
+        #expect(sessionRequests.count == 4)
     }
 
     @Test("Refresh atomically replaces sessions and expiry-less refresh clears cache")
@@ -823,11 +882,11 @@ struct CopilotTranslationServiceTests {
             let body: Data
             switch attempt {
             case 1:
-                body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\",\"model-b\"],\"session_token\":\"old-token\",\"expires_at\":1200}".utf8)
+                body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"old-token\",\"expires_at\":1200}".utf8)
             case 2:
-                body = Data("{\"selected_model\":\"model-b\",\"available_models\":[\"model-a\",\"model-b\"],\"session_token\":\"one-use\"}".utf8)
+                body = Data("{\"selected_model\":{\"id\":\"model-b\"},\"session_token\":\"one-use\"}".utf8)
             default:
-                body = Data("{\"selected_model\":\"model-a\",\"available_models\":[\"model-a\",\"model-b\"],\"session_token\":\"new-token\",\"expires_at\":2000}".utf8)
+                body = Data("{\"selected_model\":{\"id\":\"model-a\"},\"session_token\":\"new-token\",\"expires_at\":2000}".utf8)
             }
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
         }
@@ -859,7 +918,7 @@ struct CopilotTranslationServiceTests {
             }
             let token = attempt == 1 ? "old-token" : "new-token"
             let expiry = attempt == 1 ? 1_200 : 2_000
-            let body = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"\(token)\",\"expires_at\":\(expiry)}".utf8)
+            let body = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"\(token)\",\"expires_at\":\(expiry)}".utf8)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
@@ -901,7 +960,7 @@ struct CopilotTranslationServiceTests {
             let session = ProviderHTTPMockURLProtocol.makeSession { request in
                 _ = counter.record(request: request)
                 if counter.count == 1 {
-                    let body = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"old-token\",\"expires_at\":1200}".utf8)
+                    let body = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"old-token\",\"expires_at\":1200}".utf8)
                     return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
                 }
                 clock.advance(by: expiryAdvance)
@@ -938,7 +997,7 @@ struct CopilotTranslationServiceTests {
             if attempt == 1 || attempt == 3 {
                 let token = attempt == 1 ? "old-token" : "new-token"
                 let expiry = attempt == 1 ? 1_200 : 2_000
-                let body = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"\(token)\",\"expires_at\":\(expiry)}".utf8)
+                let body = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"\(token)\",\"expires_at\":\(expiry)}".utf8)
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
             }
             switch testCase {
@@ -951,7 +1010,7 @@ struct CopilotTranslationServiceTests {
             case .malformedSuccess:
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("{".utf8))
             case .invalidSelection:
-                let body = Data("{\"selected_model\":\"other\",\"available_models\":[\"other\"],\"session_token\":\"invalid\",\"expires_at\":2000}".utf8)
+                let body = Data("{\"selected_model\":{\"id\":\"other\"},\"session_token\":\"invalid\",\"expires_at\":2000}".utf8)
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
             }
         }
@@ -973,7 +1032,7 @@ struct CopilotTranslationServiceTests {
     func concurrentSessionResolutionIsSingleFlightAndWaiterCancellationIsLocal() async throws {
         let host = URL(string: "https://api.individual.githubcopilot.com")!
         let hints = ["gpt-5-mini"]
-        let body = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"shared\",\"expires_at\":4102444800}".utf8)
+        let body = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"shared\",\"expires_at\":4102444800}".utf8)
 
         let counter = BatchRequestCounter()
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
@@ -1097,14 +1156,15 @@ struct CopilotTranslationServiceTests {
         #expect(invalidationCounter.capturedRequests.last?.value(forHTTPHeaderField: "Copilot-Session-Token") == nil)
     }
 
-    @Test("Auto translation rejects an empty compatible hint set before session acquisition")
-    func autoTranslationRejectsEmptyCompatibleHintsBeforeSessionAcquisition() async {
+    @Test("Auto translation delegates model selection to the Auto endpoint")
+    func autoTranslationDelegatesModelSelectionToAutoEndpoint() async throws {
         let counter = BatchRequestCounter()
-        let responsesOnlyJSON = Data("{\"data\":[{\"id\":\"responses-only\",\"name\":\"Responses Only\",\"supported_endpoints\":[\"/responses\"]}]}".utf8)
+        let autoJSON = Data("{\"selected_model\":{\"id\":\"router-selected\"},\"session_token\":\"token\",\"expires_at\":4102444800}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, responsesOnlyJSON)
+            if request.url?.path == "/auto" { return (response, autoJSON) }
+            return (response, validSinglePageResponseBody(translation: "Translated"))
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(session) }
         let service = CopilotTranslationService(
@@ -1114,16 +1174,12 @@ struct CopilotTranslationServiceTests {
             sessionResolver: CopilotAutoSessionResolver()
         )
 
-        await #expect(throws: CopilotCatalogSelectionError.noCompatibleModels) {
-            _ = try await service.translate(
-                bubbles: [makeSingleBubble()],
-                from: .ja,
-                to: .en,
-                context: .empty,
-                token: "oauth-token"
-            )
-        }
-        #expect(counter.capturedRequests.compactMap(\.url?.path) == ["/models", "/models"])
+        let output = try await service.translate(
+            bubbles: [makeSingleBubble()], from: .ja, to: .en,
+            context: .empty, token: "oauth-token"
+        )
+        #expect(output.bubbles.first?.translatedText == "Translated")
+        #expect(counter.capturedRequests.compactMap(\.url?.path) == ["/auto", "/chat/completions"])
     }
 
     @Test("Cancellation before Auto acquisition issues no protocol requests")
@@ -1344,13 +1400,13 @@ struct CopilotTranslationServiceBatchTests {
     func autoBatchResolvesOneCompatibleSessionAndPreservesOrder() async throws {
         let counter = BatchRequestCounter()
         let modelsJSON = Data("{\"data\":[{\"id\":\"gpt-5-mini\",\"name\":\"GPT-5 mini\",\"model_picker_enabled\":false,\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
-        let sessionJSON = Data("{\"selected_model\":\"gpt-5-mini\",\"available_models\":[\"gpt-5-mini\"],\"session_token\":\"batch-session\",\"expires_at\":4102444800}".utf8)
+        let sessionJSON = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"batch-session\",\"expires_at\":4102444800}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             switch request.url?.path {
             case "/models":
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
-            case "/models/session":
+            case "/auto":
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, sessionJSON)
             case "/chat/completions":
                 let body = validMultiPageResponseBody(translations: [("2", "T2"), ("1", "T1")])
@@ -1377,9 +1433,9 @@ struct CopilotTranslationServiceBatchTests {
 
         #expect(outputs.map(\.pageId) == ["1", "2"])
         #expect(counter.capturedRequests.compactMap(\.url?.path) == [
-            "/models", "/models/session", "/chat/completions"
+            "/models", "/auto", "/chat/completions"
         ])
-        #expect(counter.capturedRequests.filter { $0.url?.path == "/models/session" }.count == 1)
+        #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 1)
     }
 
     @Test("translate falls back from individual to business endpoint")

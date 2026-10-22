@@ -6,8 +6,21 @@ import Foundation
 /// service stays responsible for authentication and endpoint configuration,
 /// including any provider-specific sanitization of `endpoint` and `model`.
 struct ChatCompletionsClient {
+    enum API {
+        case chatCompletions
+        case responses
+
+        var path: String {
+            switch self {
+            case .chatCompletions: "chat/completions"
+            case .responses: "responses"
+            }
+        }
+    }
+
     let endpoint: URL
     let model: String
+    let api: API
     let extraHeaders: [String: String]
     let provider: APIErrorSanitizer.Provider
     let providerDisplayName: String
@@ -48,6 +61,7 @@ struct ChatCompletionsClient {
     init(
         endpoint: URL,
         model: String,
+        api: API = .chatCompletions,
         extraHeaders: [String: String] = [:],
         provider: APIErrorSanitizer.Provider,
         providerDisplayName: String,
@@ -58,6 +72,7 @@ struct ChatCompletionsClient {
     ) {
         self.endpoint = endpoint
         self.model = model
+        self.api = api
         self.extraHeaders = extraHeaders
         self.provider = provider
         self.providerDisplayName = providerDisplayName
@@ -191,7 +206,7 @@ struct ChatCompletionsClient {
     }
 
     func callAPI(systemPrompt: String, userPrompt: String, authToken: String, maxTokens: Int) async throws -> String {
-        let url = endpoint.appendingPathComponent("chat/completions")
+        let url = endpoint.appendingPathComponent(api.path)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
@@ -200,15 +215,26 @@ struct ChatCompletionsClient {
             request.setValue(value, forHTTPHeaderField: field)
         }
 
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userPrompt]
-            ],
-            "temperature": Self.temperature,
-            "max_tokens": maxTokens
-        ]
+        let body: [String: Any]
+        switch api {
+        case .chatCompletions:
+            body = [
+                "model": model,
+                "messages": [
+                    ["role": "system", "content": systemPrompt],
+                    ["role": "user", "content": userPrompt]
+                ],
+                "temperature": Self.temperature,
+                "max_tokens": maxTokens
+            ]
+        case .responses:
+            body = [
+                "model": model,
+                "instructions": systemPrompt,
+                "input": userPrompt,
+                "max_output_tokens": maxTokens
+            ]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await urlSession.data(for: request)
@@ -231,12 +257,25 @@ struct ChatCompletionsClient {
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let choices = json?["choices"] as? [[String: Any]]
-        let message = choices?.first?["message"] as? [String: Any]
-        guard let content = message?["content"] as? String else {
-            throw TranslationError.invalidResponse
+        switch api {
+        case .chatCompletions:
+            let choices = json?["choices"] as? [[String: Any]]
+            let message = choices?.first?["message"] as? [String: Any]
+            guard let content = message?["content"] as? String else {
+                throw TranslationError.invalidResponse
+            }
+            return content
+        case .responses:
+            if let outputText = json?["output_text"] as? String {
+                return outputText
+            }
+            let output = json?["output"] as? [[String: Any]]
+            let content = output?.compactMap { $0["content"] as? [[String: Any]] }.flatMap { $0 }
+            let text = content?.compactMap { $0["text"] as? String }.joined()
+            guard let text, !text.isEmpty else {
+                throw TranslationError.invalidResponse
+            }
+            return text
         }
-
-        return content
     }
 }

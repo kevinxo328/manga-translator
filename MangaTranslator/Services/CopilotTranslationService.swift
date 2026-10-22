@@ -5,6 +5,7 @@ struct CopilotResolvedSession: Sendable {
     let modelID: String
     let sessionToken: String
     let expiresAt: Date?
+    let supportedEndpoints: Set<String>?
 }
 
 enum CopilotProtocolError: LocalizedError, Equatable {
@@ -13,6 +14,18 @@ enum CopilotProtocolError: LocalizedError, Equatable {
     var errorDescription: String? {
         "GitHub Copilot returned an invalid model session."
     }
+}
+
+private enum CopilotInvalidModelSessionReason: String {
+    case malformedResponse = "malformed_response"
+    case missingSelectedModel = "missing_selected_model"
+    case emptySelectedModel = "empty_selected_model"
+    case missingAvailableModels = "missing_available_models"
+    case missingSessionToken = "missing_session_token"
+    case emptySessionToken = "empty_session_token"
+    case selectedModelNotAvailable = "selected_model_not_available"
+    case selectedModelNotHint = "selected_model_not_hint"
+    case expiredSession = "expired_session"
 }
 
 actor CopilotAutoSessionResolver {
@@ -78,9 +91,9 @@ actor CopilotAutoSessionResolver {
             }
         }
         struct Response: Decodable {
-            let selectedModel: String
-            let availableModels: [String]
-            let sessionToken: String
+            let selectedModel: String?
+            let availableModels: [String]?
+            let sessionToken: String?
             let expiresAt: Double?
 
             enum CodingKeys: String, CodingKey {
@@ -89,9 +102,27 @@ actor CopilotAutoSessionResolver {
                 case sessionToken = "session_token"
                 case expiresAt = "expires_at"
             }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                if let model = try? container.decode(String.self, forKey: .selectedModel) {
+                    selectedModel = model
+                } else if let model = try? container.decode(SelectedModel.self, forKey: .selectedModel) {
+                    selectedModel = model.id
+                } else {
+                    selectedModel = nil
+                }
+                availableModels = try container.decodeIfPresent([String].self, forKey: .availableModels)
+                sessionToken = try container.decodeIfPresent(String.self, forKey: .sessionToken)
+                expiresAt = try container.decodeIfPresent(Double.self, forKey: .expiresAt)
+            }
+
+            private struct SelectedModel: Decodable {
+                let id: String
+            }
         }
 
-        var request = URLRequest(url: host.appending(path: "models/session"))
+        var request = URLRequest(url: host.appending(path: "auto"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -152,7 +183,7 @@ actor CopilotAutoSessionResolver {
             debugLogger.logAPIError(
                 sanitized,
                 category: .translationCopilot,
-                endpoint: host.appending(path: "models/session").absoluteString
+                endpoint: host.appending(path: "auto").absoluteString
             )
             if refreshToken != nil, http.statusCode == 401 {
                 guard generations[key, default: 0] == generation else {
@@ -184,21 +215,49 @@ actor CopilotAutoSessionResolver {
         do {
             decoded = try JSONDecoder().decode(Response.self, from: data)
         } catch {
-            if refreshToken != nil, generations[key, default: 0] == generation { sessions[key] = nil }
+            invalidateInvalidSession(
+                .malformedResponse,
+                host: host,
+                refreshToken: refreshToken,
+                key: key,
+                generation: generation
+            )
             throw CopilotProtocolError.invalidModelSession
         }
-        guard !decoded.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !decoded.sessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              decoded.availableModels.contains(decoded.selectedModel),
-              modelHints.contains(decoded.selectedModel),
-              decoded.expiresAt.map({ $0 > now().timeIntervalSince1970 }) != false else {
-            if refreshToken != nil, generations[key, default: 0] == generation { sessions[key] = nil }
+
+        guard let selectedModel = decoded.selectedModel else {
+            invalidateInvalidSession(.missingSelectedModel, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard !selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            invalidateInvalidSession(.emptySelectedModel, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard let sessionToken = decoded.sessionToken else {
+            invalidateInvalidSession(.missingSessionToken, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard !sessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            invalidateInvalidSession(.emptySessionToken, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard decoded.availableModels?.contains(selectedModel) != false else {
+            invalidateInvalidSession(.selectedModelNotAvailable, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard modelHints.contains(selectedModel) else {
+            invalidateInvalidSession(.selectedModelNotHint, host: host, refreshToken: refreshToken, key: key, generation: generation)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard decoded.expiresAt.map({ $0 > now().timeIntervalSince1970 }) != false else {
+            invalidateInvalidSession(.expiredSession, host: host, refreshToken: refreshToken, key: key, generation: generation)
             throw CopilotProtocolError.invalidModelSession
         }
         let resolved = CopilotResolvedSession(
-            modelID: decoded.selectedModel,
-            sessionToken: decoded.sessionToken,
-            expiresAt: decoded.expiresAt.map { Date(timeIntervalSince1970: $0) }
+            modelID: selectedModel,
+            sessionToken: sessionToken,
+            expiresAt: decoded.expiresAt.map { Date(timeIntervalSince1970: $0) },
+            supportedEndpoints: nil
         )
         if generations[key, default: 0] == generation {
             if resolved.expiresAt != nil {
@@ -208,6 +267,96 @@ actor CopilotAutoSessionResolver {
             }
         }
         return resolved
+    }
+
+    func resolveAuto(
+        token: String,
+        host: URL,
+        prompt: String,
+        urlSession: URLSession
+    ) async throws -> CopilotResolvedSession {
+        struct Response: Decodable {
+            struct SelectedModel: Decodable {
+                let id: String?
+                let supportedEndpoints: Set<String>?
+
+                enum CodingKeys: String, CodingKey {
+                    case id
+                    case supportedEndpoints = "supported_endpoints"
+                }
+            }
+
+            let selectedModel: SelectedModel?
+            let sessionToken: String?
+            let expiresAt: Double?
+
+            enum CodingKeys: String, CodingKey {
+                case selectedModel = "selected_model"
+                case sessionToken = "session_token"
+                case expiresAt = "expires_at"
+            }
+        }
+
+        var request = URLRequest(url: host.appending(path: "auto"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(CopilotEnvironment.copilotIntegrationID, forHTTPHeaderField: "Copilot-Integration-Id")
+        request.setValue(CopilotEnvironment.copilotAutoAPIVersion, forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["prompt": prompt])
+
+        let (data, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TranslationError.invalidResponse
+        }
+        if !(200..<300).contains(http.statusCode) {
+            let sanitized = APIErrorSanitizer.sanitize(
+                provider: .copilot,
+                providerDisplayName: TranslationEngine.githubCopilot.displayName,
+                statusCode: http.statusCode,
+                responseData: data
+            )
+            debugLogger.logAPIError(
+                sanitized,
+                category: .translationCopilot,
+                endpoint: request.url?.absoluteString
+            )
+            throw TranslationError.apiError(sanitized)
+        }
+
+        let decoded: Response
+        do {
+            decoded = try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            logInvalidSessionResponse(reason: "malformed_auto_response", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard let selectedModel = decoded.selectedModel?.id else {
+            logInvalidSessionResponse(reason: "missing_selected_model", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard !selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logInvalidSessionResponse(reason: "empty_selected_model", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard let sessionToken = decoded.sessionToken else {
+            logInvalidSessionResponse(reason: "missing_session_token", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard !sessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logInvalidSessionResponse(reason: "empty_session_token", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        guard let expiresAt = decoded.expiresAt, expiresAt > now().timeIntervalSince1970 else {
+            logInvalidSessionResponse(reason: "expired_session", endpoint: request.url!)
+            throw CopilotProtocolError.invalidModelSession
+        }
+        return CopilotResolvedSession(
+            modelID: selectedModel,
+            sessionToken: sessionToken,
+            expiresAt: Date(timeIntervalSince1970: expiresAt),
+            supportedEndpoints: decoded.selectedModel?.supportedEndpoints
+        )
     }
 
     func invalidate(token: String, host: URL, modelHints: [String]) {
@@ -257,6 +406,35 @@ actor CopilotAutoSessionResolver {
         }
     }
 
+    private func invalidateInvalidSession(
+        _ reason: CopilotInvalidModelSessionReason,
+        host: URL,
+        refreshToken: String?,
+        key: Key,
+        generation: UInt64
+    ) {
+        logInvalidSessionResponse(
+            reason: reason.rawValue,
+            endpoint: host.appending(path: "auto")
+        )
+        if refreshToken != nil, generations[key, default: 0] == generation {
+            sessions[key] = nil
+        }
+    }
+
+    private func logInvalidSessionResponse(reason: String, endpoint: URL) {
+        debugLogger.log(
+            "GitHub Copilot returned invalid model session",
+            level: .error,
+            category: .translationCopilot,
+            metadata: [
+                "endpoint": endpoint.absoluteString,
+                "reason": reason,
+                "status_code": "200"
+            ]
+        )
+    }
+
     private static func digest(_ token: String) -> String {
         SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
@@ -276,8 +454,6 @@ struct CopilotTranslationService: TranslationService {
 
     private struct AutoClientContext {
         let client: ChatCompletionsClient
-        let host: URL
-        let modelHints: [String]
     }
 
     init(
@@ -297,7 +473,8 @@ struct CopilotTranslationService: TranslationService {
     private func makeClient(
         baseURL: String,
         model: String? = nil,
-        sessionToken: String? = nil
+        sessionToken: String? = nil,
+        api: ChatCompletionsClient.API = .chatCompletions
     ) -> ChatCompletionsClient {
         var headers = ["Copilot-Integration-Id": CopilotEnvironment.copilotIntegrationID]
         if let sessionToken {
@@ -307,6 +484,7 @@ struct CopilotTranslationService: TranslationService {
         return ChatCompletionsClient(
             endpoint: URL(string: baseURL)!,
             model: model ?? self.model,
+            api: api,
             extraHeaders: headers,
             provider: .copilot,
             providerDisplayName: TranslationEngine.githubCopilot.displayName,
@@ -317,42 +495,39 @@ struct CopilotTranslationService: TranslationService {
         )
     }
 
-    private func makeAutoClient(token: String, host: URL) async throws -> AutoClientContext {
-        let models = try await catalogStore.models(host: host, token: token) {
-            try await CopilotEnvironment.fetchModelsFromEndpoint(
-                token: token,
-                urlString: host.appending(path: "models").absoluteString,
-                session: urlSession
-            )
-        }
-        guard !models.isEmpty else { throw TranslationError.invalidResponse }
-        let catalog = CopilotModelCatalog(models: models)
-        guard !catalog.autoHintModelIDs.isEmpty else {
-            throw CopilotCatalogSelectionError.noCompatibleModels
-        }
-        let resolved = try await sessionResolver.resolve(
+    private func makeAutoClient(token: String, host: URL, prompt: String) async throws -> AutoClientContext {
+        let resolved = try await sessionResolver.resolveAuto(
             token: token,
             host: host,
-            modelHints: catalog.autoHintModelIDs,
+            prompt: prompt,
             urlSession: urlSession
         )
+        let supportedEndpoints = resolved.supportedEndpoints ?? ["/chat/completions"]
+        let api: ChatCompletionsClient.API
+        if supportedEndpoints.contains("/responses") {
+            api = .responses
+        } else if supportedEndpoints.contains("/chat/completions") {
+            api = .chatCompletions
+        } else {
+            throw TranslationError.invalidResponse
+        }
         return AutoClientContext(
             client: makeClient(
                 baseURL: host.absoluteString,
                 model: resolved.modelID,
-                sessionToken: resolved.sessionToken
-            ),
-            host: host,
-            modelHints: catalog.autoHintModelIDs
+                sessionToken: resolved.sessionToken,
+                api: api
+            )
         )
     }
 
     private func withAutoRecovery<T>(
         token: String,
         host: URL,
+        prompt: String,
         _ operation: (ChatCompletionsClient) async throws -> T
     ) async throws -> T {
-        let context = try await makeAutoClient(token: token, host: host)
+        let context = try await makeAutoClient(token: token, host: host, prompt: prompt)
         do {
             return try await operation(context.client)
         } catch TranslationError.apiError(let error) {
@@ -361,23 +536,20 @@ struct CopilotTranslationService: TranslationService {
             guard isCompatibilityFailure || error.statusCode == 401 else {
                 throw TranslationError.apiError(error)
             }
-            await sessionResolver.invalidate(token: token, host: context.host, modelHints: context.modelHints)
-            if isCompatibilityFailure {
-                await catalogStore.invalidate(host: context.host, token: token)
-            }
-            let replacement = try await makeAutoClient(token: token, host: host)
+            let replacement = try await makeAutoClient(token: token, host: host, prompt: prompt)
             return try await operation(replacement.client)
         }
     }
 
     private func withAutoHostFallback<T>(
         token: String,
+        prompt: String,
         _ operation: (ChatCompletionsClient) async throws -> T
     ) async throws -> T {
         var lastError: Error?
         for host in CopilotEnvironment.catalogHosts {
             do {
-                return try await withAutoRecovery(token: token, host: host, operation)
+                return try await withAutoRecovery(token: token, host: host, prompt: prompt, operation)
             } catch let urlError as URLError where urlError.code == .cancelled {
                 throw urlError
             } catch is CancellationError {
@@ -464,7 +636,8 @@ struct CopilotTranslationService: TranslationService {
     ) async throws -> TranslationOutput {
         try Task.checkCancellation()
         if model == CopilotModel.auto.id {
-            return try await withAutoHostFallback(token: token) { client in
+            let routingPrompt = LLMPrompt.userPrompt(bubbles: bubbles)
+            return try await withAutoHostFallback(token: token, prompt: routingPrompt) { client in
                 try await client.translate(
                     bubbles: bubbles,
                     from: source,
@@ -516,7 +689,8 @@ struct CopilotTranslationService: TranslationService {
     ) async throws -> [BatchPageOutput] {
         try Task.checkCancellation()
         if model == CopilotModel.auto.id {
-            return try await withAutoHostFallback(token: token) { client in
+            let routingPrompt = LLMPrompt.multiPageUserPrompt(pageInputs: pageInputs)
+            return try await withAutoHostFallback(token: token, prompt: routingPrompt) { client in
                 try await client.translateBatch(
                     pageInputs: pageInputs,
                     from: source,
