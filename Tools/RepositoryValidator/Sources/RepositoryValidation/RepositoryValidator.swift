@@ -21,13 +21,16 @@ public struct ValidationResult: Codable, Sendable {
 }
 
 public enum RepositoryValidator {
-    public static func appBuildSettings(root: URL) -> Result<[String: String], ValidationViolation> {
+    public static func appBuildSettings(
+        root: URL,
+        configuration: String
+    ) -> Result<[String: String], ValidationViolation> {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcodebuild")
         process.arguments = [
             "-project", root.appendingPathComponent("MangaTranslator.xcodeproj").path,
             "-target", "MangaTranslator",
-            "-configuration", "Debug",
+            "-configuration", configuration,
             "-showBuildSettings", "-json"
         ]
         let output = Pipe()
@@ -42,14 +45,14 @@ public enum RepositoryValidator {
                   let settings = objects.first?["buildSettings"] as? [String: String] else {
                 return .failure(ValidationViolation(
                     code: "project.build-settings",
-                    message: "Cannot read MangaTranslator build settings"
+                    message: "Cannot read MangaTranslator \(configuration) build settings"
                 ))
             }
             return .success(settings)
         } catch {
             return .failure(ValidationViolation(
                 code: "project.build-settings",
-                message: "Cannot run xcodebuild for MangaTranslator settings"
+                message: "Cannot run xcodebuild for MangaTranslator \(configuration) settings"
             ))
         }
     }
@@ -104,7 +107,12 @@ public enum RepositoryValidator {
         let forbidden = Set(["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics", "PaddleOCRVL"])
         let files = enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
         for file in files {
-            guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+                return [ValidationViolation(
+                    code: "project.mlx-import-boundary",
+                    message: "Cannot read \(file.lastPathComponent) while checking MLX imports"
+                )]
+            }
             let visitor = ImportVisitor(viewMode: .sourceAccurate)
             visitor.walk(Parser.parse(source: source))
             if !visitor.modules.isDisjoint(with: forbidden) {

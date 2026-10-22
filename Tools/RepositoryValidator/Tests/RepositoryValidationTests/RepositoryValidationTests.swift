@@ -67,6 +67,18 @@ struct RepositoryValidationTests {
             "project.mlx-import-boundary"
         ])
     }
+
+    @Test("MLX import boundaries fail closed for unreadable app sources")
+    func projectContractsRejectUnreadableAppSources() throws {
+        let root = try makeProjectContractFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("MangaTranslator/Invalid.swift")
+        try Data([0xFF]).write(to: source)
+
+        #expect(RepositoryValidator.mlxOwnershipViolations(root: root).map(\.code) == [
+            "project.mlx-import-boundary"
+        ])
+    }
     @Test("A MangaTranslator repository root passes foundation validation")
     func validRepositoryRootPasses() throws {
         let root = try makeFixture(withProject: true)

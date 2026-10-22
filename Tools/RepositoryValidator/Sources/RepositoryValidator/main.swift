@@ -6,11 +6,13 @@ let rootPath = arguments.first ?? FileManager.default.currentDirectoryPath
 let root = URL(fileURLWithPath: rootPath, isDirectory: true)
 var violations = RepositoryValidator.validate(root: root).violations
 if violations.first?.code != "repository.project.missing" {
-    switch RepositoryValidator.appBuildSettings(root: root) {
-    case let .success(settings):
-        violations += RepositoryValidator.projectContractViolations(root: root, appBuildSettings: settings)
-    case let .failure(violation):
-        violations.append(violation)
+    for configuration in ["Debug", "Release"] {
+        switch RepositoryValidator.appBuildSettings(root: root, configuration: configuration) {
+        case let .success(settings):
+            violations += RepositoryValidator.projectContractViolations(root: root, appBuildSettings: settings)
+        case let .failure(violation):
+            violations.append(violation)
+        }
     }
 }
 let result = ValidationResult(violations: violations)
