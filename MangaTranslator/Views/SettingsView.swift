@@ -241,8 +241,8 @@ struct SettingsView: View {
                 case .available:
                     Label("Copilot CLI detected", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    switch copilotModelState {
-                    case .idle:
+                    switch CopilotModelControls.forState(copilotModelState) {
+                    case .none:
                         EmptyView()
                     case .loading:
                         HStack {
@@ -250,15 +250,13 @@ struct SettingsView: View {
                                 .controlSize(.small)
                             Text("Checking models…")
                         }
-                    case .autoOnly:
-                        copilotModelPicker(models: [.auto])
-                    case .selectable(let models):
+                    case .picker(let models):
                         copilotModelPicker(models: models)
                     case .noCompatibleModels:
                         Text("No compatible Copilot models available.")
                             .foregroundStyle(.secondary)
                             .font(.caption)
-                    case .failed:
+                    case .retry:
                         Text("Couldn’t load Copilot models.")
                             .foregroundStyle(.secondary)
                             .font(.caption)

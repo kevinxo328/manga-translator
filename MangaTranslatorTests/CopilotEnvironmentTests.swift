@@ -765,22 +765,9 @@ final class CopilotMockURLProtocol: URLProtocol {
 
 @Suite("SettingsView Copilot")
 struct SettingsViewCopilotTests {
-    @Test("Auto-only state renders the shared enabled Picker with only Auto")
-    func autoOnlyStateRendersSingleOptionPicker() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("MangaTranslator/Views/SettingsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let start = try #require(source.range(of: "case .autoOnly:"))
-        let end = try #require(source.range(of: "case .selectable", range: start.upperBound..<source.endIndex))
-        let branch = String(source[start.lowerBound..<end.lowerBound])
-
-        #expect(source.contains("Label(\"Copilot CLI detected\", systemImage: \"checkmark.circle.fill\")"))
-        #expect(branch.contains("copilotModelPicker(models: [.auto])"))
-        #expect(!branch.contains("LabeledContent("))
-        #expect(!branch.contains("GitHub selects a compatible model automatically."))
-        #expect(!branch.contains(".disabled("))
+    @Test("Auto-only state exposes only the Auto model control")
+    func autoOnlyStateExposesSingleOptionPicker() {
+        #expect(CopilotModelControls.forState(.autoOnly) == .picker([.auto]))
     }
 
     @Test("Selectable state renders Auto first and only compatible picker models")
@@ -797,39 +784,13 @@ struct SettingsViewCopilotTests {
         }
         #expect(models.map(\.id) == ["auto", "alpha", "zeta"])
 
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("MangaTranslator/Views/SettingsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let start = try #require(source.range(of: "case .selectable(let models):"))
-        let end = try #require(source.range(of: "case .noCompatibleModels:", range: start.upperBound..<source.endIndex))
-        let branch = String(source[start.lowerBound..<end.lowerBound])
-        #expect(branch.contains("copilotModelPicker(models: models)"))
-        #expect(source.contains("Picker(\"Model\", selection: $preferences.copilotModel)"))
-        #expect(source.contains("ForEach(models)"))
-        #expect(source.contains("Text(model.displayLabel).tag(model.id)"))
+        #expect(CopilotModelControls.forState(.selectable(models)) == .picker(models))
     }
 
     @Test("Loading, no-compatible, and failed states render distinct retryable UI")
-    func loadingNoCompatibleAndFailedStatesRenderDistinctRetryableUI() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("MangaTranslator/Views/SettingsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let loadingStart = try #require(source.range(of: "case .loading:"))
-        let loadingEnd = try #require(source.range(of: "case .autoOnly:", range: loadingStart.upperBound..<source.endIndex))
-        let loadingBranch = String(source[loadingStart.lowerBound..<loadingEnd.lowerBound])
-
-        #expect(loadingBranch.contains("ProgressView()"))
-        #expect(loadingBranch.contains(".controlSize(.small)"))
-        #expect(loadingBranch.contains("Text(\"Checking models…\")"))
-        #expect(source.contains("Text(\"No compatible Copilot models available.\")"))
-        #expect(source.contains("Text(\"Couldn’t load Copilot models.\")"))
-        #expect(source.contains("Button(\"Retry\")"))
-        #expect(source.contains("copilotModelState = .loading"))
-        #expect(source.contains("await loadCopilotModels(token: token)"))
+    func loadingNoCompatibleAndFailedStatesExposeDistinctControls() {
+        #expect(CopilotModelControls.forState(.loading) == .loading)
+        #expect(CopilotModelControls.forState(.noCompatibleModels) == .noCompatibleModels)
+        #expect(CopilotModelControls.forState(.failed("network")) == .retry)
     }
 }

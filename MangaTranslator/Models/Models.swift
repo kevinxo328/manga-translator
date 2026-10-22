@@ -195,6 +195,31 @@ enum CopilotModelLoadState: Equatable {
     }
 }
 
+enum CopilotModelControls: Equatable {
+    case none
+    case loading
+    case picker([CopilotModel])
+    case noCompatibleModels
+    case retry
+
+    static func forState(_ state: CopilotModelLoadState) -> CopilotModelControls {
+        switch state {
+        case .idle:
+            .none
+        case .loading:
+            .loading
+        case .autoOnly:
+            .picker([.auto])
+        case .selectable(let models):
+            .picker(models)
+        case .noCompatibleModels:
+            .noCompatibleModels
+        case .failed:
+            .retry
+        }
+    }
+}
+
 struct TextObservation: Identifiable {
     let id = UUID()
     let boundingBox: CGRect
