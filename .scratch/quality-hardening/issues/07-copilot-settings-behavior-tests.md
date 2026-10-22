@@ -4,10 +4,15 @@
 
 **Blocked by:** 05: Establish SwiftUI behaviour and UI-test seams.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Auto-only and selectable catalogs expose only valid model choices.
-- [ ] Loading, unavailable, and failed states expose distinct observable user outcomes, including retry where applicable.
-- [ ] A deliberately broken state/action mapping makes the successor test red and restoration green.
-- [ ] SettingsView source-text scans and obsolete old-copy absence assertions are retired.
+- [x] Auto-only and selectable catalogs expose only valid model choices.
+- [x] Loading, unavailable, and failed states expose distinct observable user outcomes, including retry where applicable.
+- [x] A deliberately broken state/action mapping makes the successor test red and restoration green.
+- [x] SettingsView source-text scans and obsolete old-copy absence assertions are retired.
+
+## Verification
+
+- `xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS' -only-testing:MangaTranslatorTests/SettingsViewCopilotTests` passes with the restored mapping.
+- Temporarily mapping `.failed` to `.none` makes `loadingNoCompatibleAndFailedStatesExposeDistinctControls()` fail; restoring `.retry` makes the focused suite pass.
 
