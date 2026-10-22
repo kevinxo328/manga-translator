@@ -1396,16 +1396,13 @@ struct CopilotTranslationServiceBatchTests {
         CopilotTranslationService(model: "gpt-5-mini", urlSession: session)
     }
 
-    @Test("Auto batch resolves one compatible session and preserves requested order")
-    func autoBatchResolvesOneCompatibleSessionAndPreservesOrder() async throws {
+    @Test("Auto batch resolves one session and preserves requested order")
+    func autoBatchResolvesOneSessionAndPreservesRequestedOrder() async throws {
         let counter = BatchRequestCounter()
-        let modelsJSON = Data("{\"data\":[{\"id\":\"gpt-5-mini\",\"name\":\"GPT-5 mini\",\"model_picker_enabled\":false,\"supported_endpoints\":[\"/chat/completions\"]}]}".utf8)
         let sessionJSON = Data("{\"selected_model\":{\"id\":\"gpt-5-mini\"},\"session_token\":\"batch-session\",\"expires_at\":4102444800}".utf8)
         let session = ProviderHTTPMockURLProtocol.makeSession { request in
             _ = counter.record(request: request)
             switch request.url?.path {
-            case "/models":
-                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, modelsJSON)
             case "/auto":
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, sessionJSON)
             case "/chat/completions":
@@ -1433,7 +1430,7 @@ struct CopilotTranslationServiceBatchTests {
 
         #expect(outputs.map(\.pageId) == ["1", "2"])
         #expect(counter.capturedRequests.compactMap(\.url?.path) == [
-            "/models", "/auto", "/chat/completions"
+            "/auto", "/chat/completions"
         ])
         #expect(counter.capturedRequests.filter { $0.url?.path == "/auto" }.count == 1)
     }
