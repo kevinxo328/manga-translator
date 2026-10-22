@@ -13,5 +13,5 @@
 
 ## Comments
 
-- Verification: adding `print("logging-policy-probe")` to `BaseURLValidator` made the validator return `logging.direct-print`; removing that exact probe returned the validator to green. The focused `BaseURLValidatorTests` Xcode run passed after restoration.
+- Verification: adding `print`, `NSLog`, and `Logger` probes to `BaseURLValidator` made the validator return `logging.direct-print`, `logging.direct-nslog`, and `logging.direct-logger`; removing those exact probes returned the validator to green. The focused `BaseURLValidatorTests` Xcode run passed after restoration.
 

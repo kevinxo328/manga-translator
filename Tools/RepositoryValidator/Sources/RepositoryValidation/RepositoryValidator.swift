@@ -44,9 +44,12 @@ public enum RepositoryValidator {
             return []
         }
 
-        let exemptFiles: Set<String> = ["DebugLogger.swift", "DebugLogStore.swift"]
+        let exemptPaths: Set<String> = ["Services/DebugLogger.swift", "Services/DebugLogStore.swift"]
         let files = enumerator.compactMap { $0 as? URL }
-            .filter { $0.pathExtension == "swift" && !exemptFiles.contains($0.lastPathComponent) }
+            .filter {
+                $0.pathExtension == "swift" &&
+                !exemptPaths.contains($0.path.replacingOccurrences(of: sourceDirectory.path + "/", with: ""))
+            }
             .sorted { $0.path < $1.path }
 
         var violations: [ValidationViolation] = []
@@ -86,6 +89,8 @@ private final class DirectLoggingCallVisitor: SyntaxVisitor {
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         if let callee = node.calledExpression.as(DeclReferenceExprSyntax.self) {
             calls.insert(callee.baseName.text)
+        } else if let callee = node.calledExpression.as(MemberAccessExprSyntax.self) {
+            calls.insert(callee.declName.baseName.text)
         }
         return .visitChildren
     }

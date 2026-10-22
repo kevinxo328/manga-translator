@@ -27,7 +27,7 @@ Create a fail-closed quality system for pull requests. It will run the normal ap
 
 ## Implementation Decisions
 
-- The repository remains dependency-light: validators are versioned local Swift tooling or scripts using platform-provided Swift/Xcode capabilities; no third-party lint or dependency-graph package is introduced.
+- The repository remains dependency-light: validators are versioned local Swift tooling or scripts. The validator package alone may depend on pinned SwiftSyntax/SwiftParser for source-accurate AST analysis; no third-party lint or dependency-graph package is introduced into the app target.
 - The PR lane runs the normal MangaTranslator test scheme, repository-local policy/config validation, and the focused macOS UI tests. It does not run OCRBenchmark or PaddleOCRParityDiagnostic.
 - OCRBenchmark and PaddleOCR parity diagnostics are exposed as scheduled and manually dispatched GitHub Actions workflows with their existing data/artifact prerequisites made explicit.
 - A local validator owns source-policy and project-policy checks. It parses structured inputs where available and avoids line-oriented substring scanning as the policy mechanism.

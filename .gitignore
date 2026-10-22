@@ -11,6 +11,7 @@ xcuserdata/
 *.xccheckout
 *.xcscmblueprint
 Package.resolved
+!Tools/RepositoryValidator/Package.resolved
 
 # Swift Package Manager
 #

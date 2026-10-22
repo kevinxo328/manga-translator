@@ -93,7 +93,7 @@ struct RepositoryValidationTests {
             print("not a call")
             \"\"\"
             // NSLog("not a call")
-            /* Logger(subsystem: "example", category: "example") */
+            /* ignored logging example */
             print("debug")
             NSLog("debug")
             let logger = Logger(subsystem: "example", category: "example")
@@ -101,12 +101,6 @@ struct RepositoryValidationTests {
             named: "Feature.swift",
             at: root
         )
-        try writeSource(
-            "let logger = Logger(subsystem: \"example\", category: \"example\")",
-            named: "DebugLogger.swift",
-            at: root
-        )
-
         let violations = RepositoryValidator.validate(root: root).violations
 
         #expect(violations.map(\.code) == [
@@ -114,6 +108,36 @@ struct RepositoryValidationTests {
             "logging.direct-nslog",
             "logging.direct-logger"
         ])
+    }
+
+    @Test("Logging policy rejects qualified direct logging calls")
+    func loggingPolicyFindsQualifiedCalls() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeSource(
+            """
+            Swift.print("debug")
+            Foundation.NSLog("debug")
+            os.Logger(subsystem: "example", category: "example")
+            """,
+            named: "Qualified.swift",
+            at: root
+        )
+
+        #expect(RepositoryValidator.validate(root: root).violations.map(\.code) == [
+            "logging.direct-print",
+            "logging.direct-nslog",
+            "logging.direct-logger"
+        ])
+    }
+
+    @Test("Only the explicit logging wrapper paths are exempt")
+    func loggingPolicyDoesNotExemptSameNamedNestedFile() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeSource("print(\"debug\")", named: "Nested/DebugLogger.swift", at: root)
+
+        #expect(RepositoryValidator.validate(root: root).violations.map(\.code) == ["logging.direct-print"])
     }
 
     private func makeFixture(withProject: Bool) throws -> URL {
@@ -131,9 +155,10 @@ struct RepositoryValidationTests {
 
     private func writeSource(_ source: String, named name: String, at root: URL) throws {
         let directory = root.appendingPathComponent("MangaTranslator", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = directory.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         try source.write(
-            to: directory.appendingPathComponent(name),
+            to: destination,
             atomically: true,
             encoding: .utf8
         )
