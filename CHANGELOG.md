@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.11 (2026-10-22)
+
+### Bug Fixes
+
+- Fixed toolbar icons showing up in mismatched sizes, so the top bar now looks clean and consistent.
+
 ## v1.5.10 (2026-10-22)
 
 ### Bug Fixes
