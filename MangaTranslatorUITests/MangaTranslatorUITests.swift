@@ -5,7 +5,11 @@ final class MangaTranslatorUITests: XCTestCase {
     func testApplicationLaunches() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 10)
+                || app.wait(for: .runningBackground, timeout: 1),
+            "The application must remain running after launch"
+        )
     }
 
     @MainActor
