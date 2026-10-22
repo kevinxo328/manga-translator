@@ -1,12 +1,57 @@
 import Testing
+import Foundation
 @testable import MangaTranslator
+
+@Test("ChatGPT Plan sessions redact account identity and renewable credentials")
+func chatGPTPlanSessionRedactsSensitiveDiagnosticData() {
+    let session = ChatGPTPlanSession(
+        email: "reader@example.com",
+        subject: "user-123",
+        clientID: "oaiapp_123",
+        idToken: "id-token-secret",
+        accessToken: "access-token-secret",
+        refreshToken: "refresh-token-secret",
+        expiresAt: Date(timeIntervalSince1970: 1_800_000_000),
+        scopes: ["chatgpt.tokens.use.direct"]
+    )
+
+    #expect(session.description == "[REDACTED]")
+    #expect(!session.description.contains(session.email))
+    #expect(!session.description.contains(session.refreshToken))
+}
+
+@Test("ChatGPT Plan callback rejects a browser response for another sign-in attempt")
+func chatGPTPlanCallbackRejectsMismatchedState() {
+    let attempt = ChatGPTPlanAuthorizationAttempt(
+        state: "expected-state", nonce: "nonce", verifier: "verifier",
+        redirectURI: URL(string: "http://127.0.0.1:1455/auth/callback")!,
+        clientID: "dynamic_agent_client", isNewRegistration: true
+    )
+
+    #expect(throws: ChatGPTPlanOAuthError.stateMismatch) {
+        try ChatGPTPlanOAuth.validate(
+            callbackURL: URL(string: "http://127.0.0.1:1455/auth/callback?code=code&state=wrong&client_id=oaiapp_123")!,
+            for: attempt
+        )
+    }
+}
+
+@Test("ChatGPT Plan token claims must belong to the authorization attempt")
+func chatGPTPlanTokenClaimsRejectMismatchedNonce() {
+    #expect(throws: ChatGPTPlanOAuthError.identityMismatch) {
+        try ChatGPTPlanOAuth.identity(
+            from: "eyJhbGciOiJub25lIn0.eyJlbWFpbCI6InJlYWRlckBleGFtcGxlLmNvbSIsInN1YiI6InVzZXItMTIzIiwibm9uY2UiOiJ3cm9uZyJ9.signature",
+            expectedNonce: "expected", clientID: "issued-client"
+        )
+    }
+}
 
 @Suite("Models")
 struct ModelsTests {
 
     @Test("Translation engine registry defines display, credential, and context capabilities")
     func translationEngineRegistryDefinesCapabilities() {
-        #expect(TranslationEngineRegistry.engines == [.deepL, .google, .openAI, .githubCopilot])
+        #expect(TranslationEngineRegistry.engines == [.deepL, .google, .openAI, .chatGPTPlan, .githubCopilot])
         #expect(TranslationEngineRegistry.engines == TranslationEngine.allCases)
         #expect(TranslationEngineRegistry.credentialDescriptors.map(\.engine) == [.deepL, .google, .openAI])
         #expect(TranslationEngine.deepL.displayName == "DeepL")

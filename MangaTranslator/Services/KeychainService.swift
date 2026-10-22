@@ -196,3 +196,28 @@ struct KeychainService {
         return String(data: data, encoding: .utf8)
     }
 }
+
+/// Keeps the OAuth record as one atomic Keychain value, so token rotation can
+/// never leave an access token paired with an older refresh token.
+struct ChatGPTPlanSessionStore {
+    private let keychain: KeychainService
+
+    init(keychain: KeychainService = KeychainService()) {
+        self.keychain = keychain
+    }
+
+    func load() -> ChatGPTPlanSession? {
+        guard let encoded = keychain.retrieve(for: .chatGPTPlan)?.rawValue,
+              let data = Data(base64Encoded: encoded) else { return nil }
+        return try? JSONDecoder().decode(ChatGPTPlanSession.self, from: data)
+    }
+
+    func save(_ session: ChatGPTPlanSession) {
+        guard let data = try? JSONEncoder().encode(session) else { return }
+        keychain.store(APIKey(data.base64EncodedString()), for: .chatGPTPlan)
+    }
+
+    func clear() {
+        keychain.delete(for: .chatGPTPlan)
+    }
+}

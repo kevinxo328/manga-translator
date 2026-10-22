@@ -27,6 +27,7 @@
 		A100000100000000000000C1 /* ChatCompletionsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000100000000000000C1 /* ChatCompletionsClient.swift */; };
 		A10000010000000000000015 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000039 /* CacheService.swift */; };
 		A10000010000000000000016 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* KeychainService.swift */; };
+		CG10000000000000000000001 /* ChatGPTPlanAccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CG20000000000000000000001 /* ChatGPTPlanAccountService.swift */; };
 		A10000010000000000000017 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* PreferencesService.swift */; };
 		A10000010000000000000018 /* FileInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000042 /* FileInputService.swift */; };
 		A10000010000000000000019 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000050 /* TranslationViewModel.swift */; };
@@ -101,6 +102,7 @@
 		U10000010000000000000001 /* MangaTranslatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = U20000010000000000000002 /* MangaTranslatorUITests.swift */; };
 		T10000010000000000000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000004 /* KeychainServiceTests.swift */; };
 		T10000010000000000000005 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000005 /* ModelsTests.swift */; };
+		CG10000000000000000000002 /* ChatGPTPlanAccountServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CG20000000000000000000002 /* ChatGPTPlanAccountServiceTests.swift */; };
 		T10000010000000000000014 /* EditActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000014 /* EditActionTests.swift */; };
 		T10000010000000000000015 /* ReadingOrderSorterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000015 /* ReadingOrderSorterTests.swift */; };
 		T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000006 /* CopilotEnvironmentTests.swift */; };
@@ -200,6 +202,7 @@
 		A200000100000000000000C1 /* ChatCompletionsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCompletionsClient.swift; sourceTree = "<group>"; };
 		A20000010000000000000039 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
 		A20000010000000000000040 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		CG20000000000000000000001 /* ChatGPTPlanAccountService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTPlanAccountService.swift; sourceTree = "<group>"; };
 		A20000010000000000000041 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
 		A20000010000000000000042 /* FileInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileInputService.swift; sourceTree = "<group>"; };
 		A20000010000000000000050 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
@@ -268,6 +271,7 @@
 		T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIViewCorrectnessTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000005 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		CG20000000000000000000002 /* ChatGPTPlanAccountServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTPlanAccountServiceTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000014 /* EditActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditActionTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000015 /* ReadingOrderSorterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingOrderSorterTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000006 /* CopilotEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotEnvironmentTests.swift; sourceTree = "<group>"; };
@@ -414,6 +418,7 @@
 				A20000010000000000000064 /* GlossarySubstitution.swift */,
 				A20000010000000000000065 /* BaseURLValidator.swift */,
 				A20000010000000000000040 /* KeychainService.swift */,
+				CG20000000000000000000001 /* ChatGPTPlanAccountService.swift */,
 				A20000010000000000000041 /* PreferencesService.swift */,
 				A20000010000000000000042 /* FileInputService.swift */,
 				AE20000010000000000000001 /* ArchiveExtractor.swift */,
@@ -508,6 +513,7 @@
 				T20000010000000000000003 /* SwiftUIViewCorrectnessTests.swift */,
 				T20000010000000000000004 /* KeychainServiceTests.swift */,
 				T20000010000000000000005 /* ModelsTests.swift */,
+				CG20000000000000000000002 /* ChatGPTPlanAccountServiceTests.swift */,
 				T20000010000000000000014 /* EditActionTests.swift */,
 				T20000010000000000000015 /* ReadingOrderSorterTests.swift */,
 				T20000010000000000000006 /* CopilotEnvironmentTests.swift */,
@@ -796,6 +802,7 @@
 				A100000100000000000000C1 /* ChatCompletionsClient.swift in Sources */,
 				A10000010000000000000015 /* CacheService.swift in Sources */,
 				A10000010000000000000016 /* KeychainService.swift in Sources */,
+				CG10000000000000000000001 /* ChatGPTPlanAccountService.swift in Sources */,
 				A10000010000000000000017 /* PreferencesService.swift in Sources */,
 				A10000010000000000000018 /* FileInputService.swift in Sources */,
 				AE10000010000000000000001 /* ArchiveExtractor.swift in Sources */,
@@ -868,6 +875,7 @@
 				T10000010000000000000003 /* SwiftUIViewCorrectnessTests.swift in Sources */,
 				T10000010000000000000004 /* KeychainServiceTests.swift in Sources */,
 				T10000010000000000000005 /* ModelsTests.swift in Sources */,
+				CG10000000000000000000002 /* ChatGPTPlanAccountServiceTests.swift in Sources */,
 				T10000010000000000000014 /* EditActionTests.swift in Sources */,
 				T10000010000000000000015 /* ReadingOrderSorterTests.swift in Sources */,
 				T10000010000000000000006 /* CopilotEnvironmentTests.swift in Sources */,

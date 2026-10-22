@@ -71,7 +71,11 @@ struct SettingsView: View {
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
     @State private var copilotModelState: CopilotModelLoadState
     @State private var copilotToken: String?
+    @State private var chatGPTPlanSession: ChatGPTPlanSession?
+    @State private var chatGPTPlanError: String?
+    @State private var chatGPTPlanBusy = false
     private let copilotModelStateOverride: CopilotModelLoadState?
+    private let chatGPTPlanAccount = ChatGPTPlanAccountService()
 
     #if arch(arm64)
     @StateObject private var paddleOCRViewModel: PaddleOCRSettingsViewModel = {
@@ -145,6 +149,7 @@ struct SettingsView: View {
             normalizeActiveTabIdentifier()
         }
         .task {
+            chatGPTPlanSession = await chatGPTPlanAccount.session()
             if let copilotModelStateOverride {
                 copilotAvailability = .available(token: "ui-test")
                 copilotToken = "ui-test"
@@ -229,6 +234,34 @@ struct SettingsView: View {
             }
 
             Section {
+                if let session = chatGPTPlanSession {
+                    LabeledContent("Connected account", value: session.email)
+                    Button("Log Out", role: .destructive, action: signOutOfChatGPTPlan)
+                        .disabled(chatGPTPlanBusy)
+                } else {
+                    Text("Use an eligible ChatGPT account for direct Responses API translation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Sign in with ChatGPT", action: signInToChatGPTPlan)
+                        .disabled(chatGPTPlanBusy)
+                        .accessibilityIdentifier("settings.chatgptPlan.signIn")
+                }
+                if chatGPTPlanBusy {
+                    ProgressView("Connecting…")
+                        .controlSize(.small)
+                }
+                if let chatGPTPlanError {
+                    Text(chatGPTPlanError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Label("ChatGPT Plan (Preview)", systemImage: "person.badge.key")
+            } footer: {
+                Text("Plan eligibility, limits, and available models may change.")
+            }
+
+            Section {
                 switch copilotAvailability {
                 case .available:
                     Label("Copilot CLI detected", systemImage: "checkmark.circle.fill")
@@ -289,6 +322,35 @@ struct SettingsView: View {
         guard copilotModelStateOverride == nil else { return }
         Task {
             await loadCopilotModels(token: token)
+        }
+    }
+
+    private func signInToChatGPTPlan() {
+        chatGPTPlanBusy = true
+        chatGPTPlanError = nil
+        Task {
+            do {
+                chatGPTPlanSession = try await chatGPTPlanAccount.signIn()
+            } catch {
+                chatGPTPlanError = "ChatGPT sign-in could not be completed. Please try again."
+            }
+            chatGPTPlanBusy = false
+        }
+    }
+
+    private func signOutOfChatGPTPlan() {
+        chatGPTPlanBusy = true
+        chatGPTPlanError = nil
+        Task {
+            do {
+                try await chatGPTPlanAccount.signOut()
+                chatGPTPlanSession = nil
+            } catch {
+                // The credential is removed even if remote revocation is unavailable.
+                chatGPTPlanSession = nil
+                chatGPTPlanError = "ChatGPT was disconnected locally, but remote revocation could not be confirmed."
+            }
+            chatGPTPlanBusy = false
         }
     }
 

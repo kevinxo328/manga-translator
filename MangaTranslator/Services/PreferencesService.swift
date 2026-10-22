@@ -81,8 +81,24 @@ extension TranslationEngineRegistry {
                 baseURL: preferences.openAIBaseURL,
                 keychainService: keychainService
             )
+        case .chatGPTPlan:
+            ChatGPTPlanTranslationService()
         case .githubCopilot:
             CopilotTranslationService(model: preferences.copilotModel)
         }
+    }
+}
+
+/// Inference is added by the streaming-responses ticket. Until then, an explicit
+/// Plan selection reports the same ordinary provider error as an unsigned-in account.
+struct ChatGPTPlanTranslationService: TranslationService {
+    let engine = TranslationEngine.chatGPTPlan
+
+    func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
+        throw TranslationError.missingAPIKey(.chatGPTPlan)
+    }
+
+    func translateBatch(pageInputs: [BatchPageInput], from source: Language, to target: Language, priorContext: TranslationContext) async throws -> [BatchPageOutput] {
+        throw TranslationError.missingAPIKey(.chatGPTPlan)
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import CryptoKit
 
 enum Language: String, CaseIterable, Identifiable, Codable {
     case ja = "ja"
@@ -55,6 +56,7 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
     case deepL = "deepl"
     case google = "google"
     case openAI = "openai"
+    case chatGPTPlan = "chatgpt-plan"
     case githubCopilot = "github-copilot"
 
     var id: String { rawValue }
@@ -80,6 +82,7 @@ enum TranslationEngineRegistry {
         TranslationEngineDescriptor(engine: .deepL, displayName: "DeepL", requiresAPIKey: true, usesRecentPageContext: false),
         TranslationEngineDescriptor(engine: .google, displayName: "Google Translate", requiresAPIKey: true, usesRecentPageContext: false),
         TranslationEngineDescriptor(engine: .openAI, displayName: "OpenAI Compatible", requiresAPIKey: true, usesRecentPageContext: true),
+        TranslationEngineDescriptor(engine: .chatGPTPlan, displayName: "ChatGPT Plan (Preview)", requiresAPIKey: false, usesRecentPageContext: true),
         TranslationEngineDescriptor(engine: .githubCopilot, displayName: "GitHub Copilot", requiresAPIKey: false, usesRecentPageContext: true)
     ]
 
@@ -99,6 +102,138 @@ enum TranslationEngineRegistry {
 
 enum TranslationPipelineLimits {
     static let maximumConcurrentPages = 3
+}
+
+/// The complete OAuth credential lifecycle for the one linked ChatGPT account.
+/// It must only be persisted in protected storage and is intentionally opaque in diagnostics.
+struct ChatGPTPlanSession: Codable, Equatable, Sendable, CustomStringConvertible {
+    let email: String
+    let subject: String
+    let clientID: String
+    let idToken: String
+    let accessToken: String
+    let refreshToken: String
+    let expiresAt: Date
+    let scopes: Set<String>
+
+    var description: String { "[REDACTED]" }
+
+    var isAuthorizedForPlanUsage: Bool {
+        scopes.contains("chatgpt.tokens.use.direct")
+    }
+}
+
+struct ChatGPTPlanAuthorizationAttempt: Sendable {
+    let state: String
+    let nonce: String
+    let verifier: String
+    let redirectURI: URL
+    let clientID: String
+    let isNewRegistration: Bool
+
+    static func make(redirectURI: URL, issuedClientID: String? = nil) -> ChatGPTPlanAuthorizationAttempt {
+        ChatGPTPlanAuthorizationAttempt(
+            state: randomURLSafeValue(), nonce: randomURLSafeValue(), verifier: randomURLSafeValue(),
+            redirectURI: redirectURI, clientID: issuedClientID ?? "dynamic_agent_client",
+            isNewRegistration: issuedClientID == nil
+        )
+    }
+
+    var codeChallenge: String {
+        Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncodedString()
+    }
+
+    private static func randomURLSafeValue() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64URLEncodedString()
+    }
+}
+
+enum ChatGPTPlanOAuthError: LocalizedError, Equatable {
+    case invalidCallback
+    case stateMismatch
+    case authorizationDenied
+    case missingIssuedClientID
+    case unexpectedClientID
+    case identityMismatch
+    case missingPlanScope
+
+    var errorDescription: String? { "ChatGPT sign-in could not be completed. Please try again." }
+}
+
+struct ChatGPTPlanAuthorizationCallback: Sendable, Equatable {
+    let code: String
+    let clientID: String?
+}
+
+enum ChatGPTPlanOAuth {
+    static let authorizationEndpoint = URL(string: "https://auth.openai.com/api/accounts/authorize")!
+    static let tokenEndpoint = URL(string: "https://auth.openai.com/api/accounts/oauth/token")!
+    static let resource = "https://api.openai.com/v1"
+    static let requiredScopes = ["openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"]
+
+    static func authorizationURL(for attempt: ChatGPTPlanAuthorizationAttempt, hostID: String) -> URL {
+        var components = URLComponents(url: authorizationEndpoint, resolvingAgainstBaseURL: false)!
+        var items = [
+            URLQueryItem(name: "client_id", value: attempt.clientID),
+            URLQueryItem(name: "ext_agent_host_id", value: hostID),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "redirect_uri", value: attempt.redirectURI.absoluteString),
+            URLQueryItem(name: "scope", value: requiredScopes.joined(separator: " ")),
+            URLQueryItem(name: "resource", value: resource),
+            URLQueryItem(name: "state", value: attempt.state),
+            URLQueryItem(name: "nonce", value: attempt.nonce),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "code_challenge", value: attempt.codeChallenge)
+        ]
+        if attempt.isNewRegistration { items.append(URLQueryItem(name: "agent_name_hint", value: "MangaTranslator")) }
+        components.queryItems = items
+        return components.url!
+    }
+
+    static func validate(callbackURL: URL, for attempt: ChatGPTPlanAuthorizationAttempt) throws -> ChatGPTPlanAuthorizationCallback {
+        guard let items = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems else { throw ChatGPTPlanOAuthError.invalidCallback }
+        let values = Dictionary(uniqueKeysWithValues: items.compactMap { item in item.value.map { (item.name, $0) } })
+        guard values["state"] == attempt.state else { throw ChatGPTPlanOAuthError.stateMismatch }
+        if values["error"] != nil { throw ChatGPTPlanOAuthError.authorizationDenied }
+        guard let code = values["code"], !code.isEmpty else { throw ChatGPTPlanOAuthError.invalidCallback }
+        let callbackClientID = values["client_id"]
+        if attempt.isNewRegistration && (callbackClientID == nil || callbackClientID == "dynamic_agent_client") { throw ChatGPTPlanOAuthError.missingIssuedClientID }
+        if !attempt.isNewRegistration, let callbackClientID, callbackClientID != attempt.clientID { throw ChatGPTPlanOAuthError.unexpectedClientID }
+        return ChatGPTPlanAuthorizationCallback(code: code, clientID: callbackClientID)
+    }
+
+    static func identity(from idToken: String, expectedNonce: String, clientID: String, now: Date = Date()) throws -> (email: String, subject: String) {
+        let parts = idToken.split(separator: ".")
+        guard parts.count == 3,
+              let payload = Data(base64URLEncoded: String(parts[1])),
+              let claims = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              claims["nonce"] as? String == expectedNonce,
+              claims["iss"] as? String == "https://auth.openai.com",
+              claims["email_verified"] as? Bool == true,
+              (claims["aud"] as? String == clientID || (claims["aud"] as? [String])?.contains(clientID) == true),
+              (claims["exp"] as? TimeInterval ?? 0) > now.timeIntervalSince1970,
+              let email = claims["email"] as? String,
+              let subject = claims["sub"] as? String,
+              !email.isEmpty, !subject.isEmpty else {
+            throw ChatGPTPlanOAuthError.identityMismatch
+        }
+        return (email, subject)
+    }
+}
+
+private extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private extension Data {
+    init?(base64URLEncoded value: String) {
+        let padding = String(repeating: "=", count: (4 - value.count % 4) % 4)
+        self.init(base64Encoded: value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/") + padding)
+    }
 }
 
 struct CopilotModel: Identifiable, Hashable {
