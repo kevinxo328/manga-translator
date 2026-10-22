@@ -70,7 +70,6 @@
 		DL10000010000000000000002 /* DebugLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000002 /* DebugLogStore.swift */; };
 		DL10000010000000000000003 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000003 /* DebugLogView.swift */; };
 		DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000004 /* DebugLogStoreTests.swift */; };
-		DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000005 /* DebugLogGuardTests.swift */; };
 		DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DL20000010000000000000006 /* DebugLogViewTests.swift */; };
 		E10000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E10000010000000000000002 /* Sparkle */; };
 		E10000010000000000000010 /* CheckForUpdatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000010000000000000010 /* CheckForUpdatesView.swift */; };
@@ -243,7 +242,6 @@
 		DL20000010000000000000002 /* DebugLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStore.swift; sourceTree = "<group>"; };
 		DL20000010000000000000003 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
 		DL20000010000000000000004 /* DebugLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStoreTests.swift; sourceTree = "<group>"; };
-		DL20000010000000000000005 /* DebugLogGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogGuardTests.swift; sourceTree = "<group>"; };
 		DL20000010000000000000006 /* DebugLogViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogViewTests.swift; sourceTree = "<group>"; };
 		E20000010000000000000010 /* CheckForUpdatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckForUpdatesView.swift; sourceTree = "<group>"; };
 		F20000010000000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
@@ -525,7 +523,6 @@
 				AS20000010000000000000005 /* GoogleTranslationServiceTests.swift */,
 				AS20000010000000000000006 /* DebugLoggerAPIErrorTests.swift */,
 				DL20000010000000000000004 /* DebugLogStoreTests.swift */,
-				DL20000010000000000000005 /* DebugLogGuardTests.swift */,
 				DL20000010000000000000006 /* DebugLogViewTests.swift */,
 				TV20000010000000000000001 /* TranslationViewModelTests.swift */,
 				T2000001000000000000000F /* BubblePolarityClassifierTests.swift */,
@@ -857,7 +854,6 @@
 				AS10000010000000000000005 /* GoogleTranslationServiceTests.swift in Sources */,
 				AS10000010000000000000006 /* DebugLoggerAPIErrorTests.swift in Sources */,
 				DL10000010000000000000004 /* DebugLogStoreTests.swift in Sources */,
-				DL10000010000000000000005 /* DebugLogGuardTests.swift in Sources */,
 				DL10000010000000000000006 /* DebugLogViewTests.swift in Sources */,
 				TV10000010000000000000001 /* TranslationViewModelTests.swift in Sources */,
 				T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */,

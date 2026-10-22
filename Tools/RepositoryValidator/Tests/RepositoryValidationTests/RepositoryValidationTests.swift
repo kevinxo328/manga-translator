@@ -57,6 +57,37 @@ struct RepositoryValidationTests {
         #expect(result.output.isEmpty)
     }
 
+    @Test("Logging policy rejects executable direct logging but ignores comments and strings")
+    func loggingPolicyFindsOnlyExecutableCalls() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeSource(
+            """
+            let example = "print(\\\"not a call\\\")"
+            // NSLog("not a call")
+            /* Logger(subsystem: "example", category: "example") */
+            print("debug")
+            NSLog("debug")
+            let logger = Logger(subsystem: "example", category: "example")
+            """,
+            named: "Feature.swift",
+            at: root
+        )
+        try writeSource(
+            "let logger = Logger(subsystem: \"example\", category: \"example\")",
+            named: "DebugLogger.swift",
+            at: root
+        )
+
+        let violations = RepositoryValidator.validate(root: root).violations
+
+        #expect(violations.map(\.code) == [
+            "logging.direct-print",
+            "logging.direct-nslog",
+            "logging.direct-logger"
+        ])
+    }
+
     private func makeFixture(withProject: Bool) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("RepositoryValidationTests-\(UUID().uuidString)", isDirectory: true)
@@ -68,6 +99,16 @@ struct RepositoryValidationTests {
             )
         }
         return root
+    }
+
+    private func writeSource(_ source: String, named name: String, at root: URL) throws {
+        let directory = root.appendingPathComponent("MangaTranslator", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try source.write(
+            to: directory.appendingPathComponent(name),
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     private func runCLI(root: URL) throws -> (status: Int32, output: Data) {
