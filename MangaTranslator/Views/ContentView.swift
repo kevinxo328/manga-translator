@@ -43,6 +43,12 @@ struct ContentView: View {
         return false
     }
 
+    private func toolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .medium))
+            .frame(width: 20, height: 20)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Left: Image viewer
@@ -414,7 +420,11 @@ struct ContentView: View {
                 guard !isEditing else { return }
                 showFileImporter = true
             }) {
-                Label("Open", systemImage: "plus.rectangle.on.folder")
+                Label {
+                    Text("Open")
+                } icon: {
+                    toolbarIcon("plus.rectangle.on.folder")
+                }
             }
             .help("Open image, folder or archive")
             .disabled(viewModel.isTranslationInFlight || isEditing)
@@ -424,12 +434,20 @@ struct ContentView: View {
             ToolbarItem {
                 ControlGroup {
                     Button(action: { viewModel.previousPage() }) {
-                        Label("Previous", systemImage: "chevron.left")
+                        Label {
+                            Text("Previous")
+                        } icon: {
+                            toolbarIcon("chevron.left")
+                        }
                     }
                     .disabled(viewModel.currentPageIndex == 0 || isEditing)
 
                     Button(action: { viewModel.nextPage() }) {
-                        Label("Next", systemImage: "chevron.right")
+                        Label {
+                            Text("Next")
+                        } icon: {
+                            toolbarIcon("chevron.right")
+                        }
                     }
                     .disabled(viewModel.currentPageIndex >= viewModel.pages.count - 1 || isEditing)
                 }
@@ -476,9 +494,8 @@ struct ContentView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "text.book.closed")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                    toolbarIcon("text.book.closed")
+                        .foregroundStyle(.secondary)
                     Text(viewModel.activeGlossary?.name ?? "Glossary")
                         .font(.subheadline)
                         .fixedSize(horizontal: true, vertical: false)
@@ -508,9 +525,8 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
 
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.secondary)
+                toolbarIcon("arrow.right")
+                    .foregroundStyle(.secondary)
 
                 Menu {
                     Picker("Target", selection: $viewModel.preferences.targetLanguage) {
@@ -534,9 +550,8 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // Engine
             HStack(spacing: 4) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                toolbarIcon("sparkles.2")
+                    .foregroundStyle(.secondary)
 
                 Menu {
                     Picker("Engine", selection: $viewModel.preferences.translationEngine) {
@@ -565,7 +580,7 @@ struct ContentView: View {
                     Button {
                         viewModel.cancelTranslation()
                     } label: {
-                        Image(systemName: "xmark")
+                        toolbarIcon("xmark")
                     }
                     .accessibilityIdentifier("toolbar.cancelBatchTranslation")
                     .help("Cancel batch translation")
@@ -574,15 +589,13 @@ struct ContentView: View {
                         guard !isEditing else { return }
                         viewModel.startRetranslateAllPages()
                     } label: {
-                        Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                        toolbarIcon("arrow.clockwise")
                     }
                     .accessibilityIdentifier("toolbar.retranslateAllPages")
                     .disabled(viewModel.isTranslationInFlight || isEditing)
                     .help("Re-translate all pages using current settings")
                 }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
             .onChange(of: viewModel.preferences.translationEngine) { _, _ in
                 guard !isEditing else { return }
                 viewModel.startSwitchEngineForCurrentPage()
