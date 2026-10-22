@@ -11,3 +11,7 @@
 - [ ] A temporary direct logging violation turns the replacement check red; restoring it returns green.
 - [ ] The obsolete logging guard test is removed only after the replacement is proven.
 
+## Comments
+
+- Verification: adding `print("logging-policy-probe")` to `BaseURLValidator` made the validator return `logging.direct-print`; removing that exact probe returned the validator to green. The focused `BaseURLValidatorTests` Xcode run passed after restoration.
+

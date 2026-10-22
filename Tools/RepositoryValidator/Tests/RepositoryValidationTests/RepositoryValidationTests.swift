@@ -57,6 +57,31 @@ struct RepositoryValidationTests {
         #expect(result.output.isEmpty)
     }
 
+    @Test("The CLI fails with a logging violation")
+    func commandLineFailsForDirectLogging() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeSource("print(\"debug\")", named: "Feature.swift", at: root)
+
+        let result = try runCLI(root: root)
+
+        #expect(result.status != 0)
+        #expect(try JSONDecoder().decode(ValidationResult.self, from: result.output).violations.map(\.code) == [
+            "logging.direct-print"
+        ])
+    }
+
+    @Test("Unreadable Swift source fails closed")
+    func unreadableSourceFailsClosed() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceDirectory = root.appendingPathComponent("MangaTranslator", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        try Data([0xFF]).write(to: sourceDirectory.appendingPathComponent("Invalid.swift"))
+
+        #expect(RepositoryValidator.validate(root: root).violations.map(\.code) == ["source.unreadable"])
+    }
+
     @Test("Logging policy rejects executable direct logging but ignores comments and strings")
     func loggingPolicyFindsOnlyExecutableCalls() throws {
         let root = try makeFixture(withProject: true)
@@ -64,6 +89,9 @@ struct RepositoryValidationTests {
         try writeSource(
             """
             let example = "print(\\\"not a call\\\")"
+            let multiline = \"\"\"
+            print("not a call")
+            \"\"\"
             // NSLog("not a call")
             /* Logger(subsystem: "example", category: "example") */
             print("debug")
