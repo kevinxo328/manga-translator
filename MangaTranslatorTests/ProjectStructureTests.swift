@@ -58,43 +58,6 @@ final class ProjectStructureTests: XCTestCase {
         }
     }
 
-    func testMLXTargetsDeclareTransitivePackageProductsExplicitly() throws {
-        let projectContents = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator.xcodeproj/project.pbxproj"),
-            encoding: .utf8
-        )
-        let requiredProducts = ["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics"]
-
-        let mlxTargetBlock = try XCTUnwrap(nativeTargetBlock(named: "MangaTranslatorMLX", in: projectContents))
-        for product in requiredProducts {
-            XCTAssertTrue(mlxTargetBlock.contains("/* \(product) */"))
-        }
-
-        let appTargetBlock = try XCTUnwrap(nativeTargetBlock(named: "MangaTranslator", in: projectContents))
-        for product in requiredProducts + ["PaddleOCRVL"] {
-            XCTAssertFalse(appTargetBlock.contains("/* \(product) */"))
-        }
-    }
-
-    func testMLXPackageUsesPatchedForkRevision() throws {
-        let projectContents = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator.xcodeproj/project.pbxproj"),
-            encoding: .utf8
-        )
-        let paddlePackageContents = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Vendor/paddleocr-vl.swift/Package.swift"),
-            encoding: .utf8
-        )
-        let patchedRevision = "4b421e0137a901855882abfea9e2296101cfc9c1"
-
-        XCTAssertTrue(projectContents.contains(#"repositoryURL = "https://github.com/kevinxo328/mlx-swift";"#))
-        XCTAssertTrue(projectContents.contains("revision = \(patchedRevision);"))
-        XCTAssertTrue(paddlePackageContents.contains(#".package(url: "https://github.com/kevinxo328/mlx-swift", revision: "\#(patchedRevision)")"#))
-        XCTAssertFalse(projectContents.contains(#"relativePath = "Vendor/mlx-swift";"#))
-        XCTAssertFalse(projectContents.contains(#"repositoryURL = "https://github.com/ml-explore/mlx-swift";"#))
-        XCTAssertFalse(paddlePackageContents.contains(#"https://github.com/ml-explore/mlx-swift"#))
-    }
-
     func testUpdateSettingControlsOnlyAutomaticChecks() throws {
         let settingsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/Views/SettingsView.swift"),
@@ -108,15 +71,15 @@ final class ProjectStructureTests: XCTestCase {
         )
     }
 
-    private func nativeTargetBlock(named targetName: String, in projectContents: String) -> String? {
-        guard let nameRange = projectContents.range(of: "name = \(targetName);") else { return nil }
-        guard let start = projectContents[..<nameRange.lowerBound].range(of: "\t\t", options: .backwards)?.lowerBound else {
-            return nil
-        }
-        guard let end = projectContents[nameRange.upperBound...].range(of: "\n\t\t};")?.upperBound else {
-            return nil
-        }
-        return String(projectContents[start..<end])
+    func testVendoredPaddleOCRPackageUsesPatchedMLXRevision() throws {
+        let packageContents = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Vendor/paddleocr-vl.swift/Package.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(packageContents.contains("https://github.com/kevinxo328/mlx-swift"))
+        XCTAssertTrue(packageContents.contains("revision: \"4b421e0137a901855882abfea9e2296101cfc9c1\""))
+        XCTAssertFalse(packageContents.contains(#"https://github.com/ml-explore/mlx-swift"#))
     }
 
 }

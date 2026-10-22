@@ -79,6 +79,68 @@ struct RepositoryValidationTests {
             "project.mlx-import-boundary"
         ])
     }
+
+    @Test("MLX implementation target owns the MLX and PaddleOCRVL imports")
+    func projectContractsRequireMLXImplementationImports() throws {
+        let root = try makeProjectContractFixture(withMLXImports: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(RepositoryValidator.mlxOwnershipViolations(root: root).map(\.code) == [
+            "project.mlx-implementation-boundary"
+        ])
+
+        try writeMLXSource("import MLX\nimport PaddleOCRVL", at: root)
+
+        #expect(RepositoryValidator.mlxOwnershipViolations(root: root).isEmpty)
+    }
+
+    @Test("Application target cannot link MLX package products directly")
+    func projectContractsRejectDirectMLXTargetLinkage() throws {
+        let root = try makeProjectContractFixture(appProducts: ["MLX"])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(RepositoryValidator.projectTargetOwnershipViolations(root: root).map(\.code) == [
+            "project.target-ownership"
+        ])
+
+        try writeProjectObjects(at: root)
+
+        #expect(RepositoryValidator.projectTargetOwnershipViolations(root: root).isEmpty)
+    }
+
+    @Test("MLX package reference uses the patched fork revision")
+    func projectContractsRejectUnpinnedMLXPackage() throws {
+        let root = try makeProjectContractFixture(mlxPackageRevision: "unpatched")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(RepositoryValidator.projectTargetOwnershipViolations(root: root).map(\.code) == [
+            "project.mlx-package-reference"
+        ])
+
+        try writeProjectObjects(at: root)
+
+        #expect(RepositoryValidator.projectTargetOwnershipViolations(root: root).isEmpty)
+    }
+
+    @Test("Release artifact requires the MLX Metal library")
+    func releaseArtifactRejectsMissingMetalLibrary() throws {
+        let appBundle = try makeReleaseAppFixture()
+        defer { try? FileManager.default.removeItem(at: appBundle) }
+
+        let failedResult = try runCLI(arguments: ["--release-app", appBundle.path])
+        #expect(failedResult.status != 0)
+        #expect(try JSONDecoder().decode(ValidationResult.self, from: failedResult.output).violations.map(\.code) == [
+            "release.mlx-metallib"
+        ])
+
+        let metallib = appBundle.appendingPathComponent(
+            "Contents/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib"
+        )
+        try FileManager.default.createDirectory(at: metallib.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: metallib)
+
+        #expect(try runCLI(arguments: ["--release-app", appBundle.path]).status == 0)
+    }
     @Test("A MangaTranslator repository root passes foundation validation")
     func validRepositoryRootPasses() throws {
         let root = try makeFixture(withProject: true)
@@ -251,13 +313,54 @@ struct RepositoryValidationTests {
         return root
     }
 
-    private func makeProjectContractFixture() throws -> URL {
+    private func makeProjectContractFixture(
+        withMLXImports: Bool = true,
+        appProducts: [String] = [],
+        mlxPackageRevision: String = "4b421e0137a901855882abfea9e2296101cfc9c1"
+    ) throws -> URL {
         let root = try makeFixture(withProject: true)
         try FileManager.default.createDirectory(
             at: root.appendingPathComponent("MangaTranslatorMLX", isDirectory: true),
             withIntermediateDirectories: true
         )
+        if withMLXImports {
+            try writeMLXSource("import MLX\nimport PaddleOCRVL", at: root)
+        }
+        try writeProjectObjects(at: root, appProducts: appProducts, mlxPackageRevision: mlxPackageRevision)
         return root
+    }
+
+    private func writeProjectObjects(
+        at root: URL,
+        appProducts: [String] = [],
+        mlxPackageRevision: String = "4b421e0137a901855882abfea9e2296101cfc9c1"
+    ) throws {
+        let requiredProducts = ["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics", "PaddleOCRVL"]
+        var objects: [String: Any] = [
+            "app": [
+                "isa": "PBXNativeTarget",
+                "name": "MangaTranslator",
+                "packageProductDependencies": appProducts
+            ],
+            "mlx": [
+                "isa": "PBXNativeTarget",
+                "name": "MangaTranslatorMLX",
+                "packageProductDependencies": requiredProducts
+            ],
+            "mlx-package": [
+                "isa": "XCRemoteSwiftPackageReference",
+                "repositoryURL": "https://github.com/kevinxo328/mlx-swift",
+                "requirement": ["revision": mlxPackageRevision]
+            ]
+        ]
+        for product in requiredProducts {
+            objects[product] = ["productName": product]
+        }
+        try writePropertyList(
+            ["objects": objects],
+            named: "MangaTranslator.xcodeproj/project.pbxproj",
+            at: root
+        )
     }
 
     private func writePropertyList(_ propertyList: [String: Any], named name: String, at root: URL) throws {
@@ -278,7 +381,23 @@ struct RepositoryValidationTests {
         )
     }
 
+    private func writeMLXSource(_ source: String, at root: URL) throws {
+        let destination = root.appendingPathComponent("MangaTranslatorMLX/Feature.swift")
+        try source.write(to: destination, atomically: true, encoding: .utf8)
+    }
+
+    private func makeReleaseAppFixture() throws -> URL {
+        let appBundle = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MangaTranslator-\(UUID().uuidString).app", isDirectory: true)
+        try FileManager.default.createDirectory(at: appBundle, withIntermediateDirectories: true)
+        return appBundle
+    }
+
     private func runCLI(root: URL) throws -> (status: Int32, output: Data) {
+        try runCLI(arguments: [root.path])
+    }
+
+    private func runCLI(arguments: [String]) throws -> (status: Int32, output: Data) {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -286,7 +405,7 @@ struct RepositoryValidationTests {
         let process = Process()
         process.executableURL = packageRoot
             .appendingPathComponent(".build/out/Products/Debug/repository-validator")
-        process.arguments = [root.path]
+        process.arguments = arguments
         let output = Pipe()
         process.standardOutput = output
         try process.run()

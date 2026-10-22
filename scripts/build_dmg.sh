@@ -40,18 +40,13 @@ EXPORT_PATH="${BUILD_DIR}/export"
 mkdir -p "$EXPORT_PATH"
 cp -R "${BUILD_DIR}/${PROJECT_NAME}.xcarchive/Products/Applications/${PROJECT_NAME}.app" "$EXPORT_PATH/"
 
-# 5. Verify the metallib actually exists before signing.
-# mlx-swift_Cmlx.bundle is copied into Resources by the Xcode build phase
-# "Copy mlx-swift_Cmlx.bundle" in MangaTranslator.xcodeproj.
+# 5. Verify the release artifact before signing.
 APP_BUNDLE_PATH="$EXPORT_PATH/${PROJECT_NAME}.app"
-APP_RESOURCES="$APP_BUNDLE_PATH/Contents/Resources"
-METALLIB_PATH="$APP_RESOURCES/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib"
-if [ ! -f "$METALLIB_PATH" ]; then
-    echo "❌ default.metallib missing at $METALLIB_PATH. Aborting."
-    echo "   The 'Copy mlx-swift_Cmlx.bundle' build phase in MangaTranslator.xcodeproj should have placed it here."
+if ! swift run --package-path Tools/RepositoryValidator repository-validator --release-app "$APP_BUNDLE_PATH"; then
+    echo "❌ Release artifact validation failed. Aborting."
     exit 1
 fi
-echo "✅ default.metallib present ($(du -h "$METALLIB_PATH" | cut -f1))"
+echo "✅ Release artifact validation passed"
 
 # 5. Ad-hoc code sign the app to prevent "damaged" error on macOS
 echo "🔏 Ad-hoc signing the app..."

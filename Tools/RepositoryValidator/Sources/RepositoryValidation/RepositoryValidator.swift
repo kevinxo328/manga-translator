@@ -21,6 +21,10 @@ public struct ValidationResult: Codable, Sendable {
 }
 
 public enum RepositoryValidator {
+    private static let mlxPackageProducts: Set<String> = ["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics", "PaddleOCRVL"]
+    private static let mlxForkURL = "https://github.com/kevinxo328/mlx-swift"
+    private static let mlxForkRevision = "4b421e0137a901855882abfea9e2296101cfc9c1"
+
     public static func appBuildSettings(
         root: URL,
         configuration: String
@@ -96,31 +100,81 @@ public enum RepositoryValidator {
         violations += sparkleViolations(in: root)
         violations += entitlementViolations(in: root)
         violations += mlxOwnershipViolations(root: root)
+        violations += projectTargetOwnershipViolations(root: root)
         return violations
+    }
+
+    public static func projectTargetOwnershipViolations(root: URL) -> [ValidationViolation] {
+        let project = root.appendingPathComponent("MangaTranslator.xcodeproj/project.pbxproj")
+        guard let objects = projectObjects(at: project),
+              let appTarget = nativeTarget(named: "MangaTranslator", in: objects),
+              let mlxTarget = nativeTarget(named: "MangaTranslatorMLX", in: objects) else {
+            return [ValidationViolation(
+                code: "project.target-ownership",
+                message: "Cannot read MangaTranslator target ownership"
+            )]
+        }
+
+        let appProducts = packageProducts(for: appTarget, in: objects)
+        guard appProducts.isDisjoint(with: mlxPackageProducts) else {
+            return [ValidationViolation(
+                code: "project.target-ownership",
+                message: "MangaTranslator must not link MLX or PaddleOCRVL package products directly"
+            )]
+        }
+
+        let mlxProducts = packageProducts(for: mlxTarget, in: objects)
+        guard mlxPackageProducts.isSubset(of: mlxProducts) else {
+            return [ValidationViolation(
+                code: "project.target-ownership",
+                message: "MangaTranslatorMLX must link all MLX and PaddleOCRVL package products"
+            )]
+        }
+        let packageReferences = objects.values.filter { $0["isa"] as? String == "XCRemoteSwiftPackageReference" }
+        guard packageReferences.contains(where: { reference in
+            reference["repositoryURL"] as? String == mlxForkURL &&
+                (reference["requirement"] as? [String: Any])?["revision"] as? String == mlxForkRevision
+        }) else {
+            return [ValidationViolation(
+                code: "project.mlx-package-reference",
+                message: "MLX must use the patched fork revision"
+            )]
+        }
+        return []
     }
 
     public static func mlxOwnershipViolations(root: URL) -> [ValidationViolation] {
         let appSources = root.appendingPathComponent("MangaTranslator", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(at: appSources, includingPropertiesForKeys: nil) else {
+        guard let appImports = imports(in: appSources) else {
             return [ValidationViolation(code: "project.mlx-import-boundary", message: "Cannot enumerate app sources")]
         }
-        let forbidden = Set(["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics", "PaddleOCRVL"])
-        let files = enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
-        for file in files {
-            guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-                return [ValidationViolation(
-                    code: "project.mlx-import-boundary",
-                    message: "Cannot read \(file.lastPathComponent) while checking MLX imports"
-                )]
-            }
-            let visitor = ImportVisitor(viewMode: .sourceAccurate)
-            visitor.walk(Parser.parse(source: source))
-            if !visitor.modules.isDisjoint(with: forbidden) {
-                return [ValidationViolation(
-                    code: "project.mlx-import-boundary",
-                    message: "MLX implementation imports belong in MangaTranslatorMLX"
-                )]
-            }
+        guard appImports.isDisjoint(with: mlxPackageProducts) else {
+            return [ValidationViolation(
+                code: "project.mlx-import-boundary",
+                message: "MLX implementation imports belong in MangaTranslatorMLX"
+            )]
+        }
+
+        let mlxSources = root.appendingPathComponent("MangaTranslatorMLX", isDirectory: true)
+        guard let mlxImports = imports(in: mlxSources),
+              Set(["MLX", "PaddleOCRVL"]).isSubset(of: mlxImports) else {
+            return [ValidationViolation(
+                code: "project.mlx-implementation-boundary",
+                message: "MangaTranslatorMLX must own the MLX and PaddleOCRVL imports"
+            )]
+        }
+        return []
+    }
+
+    public static func releaseArtifactViolations(appBundle: URL) -> [ValidationViolation] {
+        let metallib = appBundle.appendingPathComponent(
+            "Contents/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib"
+        )
+        guard FileManager.default.fileExists(atPath: metallib.path) else {
+            return [ValidationViolation(
+                code: "release.mlx-metallib",
+                message: "Release app bundle is missing mlx-swift_Cmlx.bundle/default.metallib"
+            )]
         }
         return []
     }
@@ -157,6 +211,56 @@ public enum RepositoryValidator {
     private static func propertyList(at url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+    }
+
+    private static func imports(in directory: URL) -> Set<String>? {
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        var modules: Set<String> = []
+        for file in enumerator.compactMap({ $0 as? URL }).filter({ $0.pathExtension == "swift" }) {
+            guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+                return nil
+            }
+            let visitor = ImportVisitor(viewMode: .sourceAccurate)
+            visitor.walk(Parser.parse(source: source))
+            modules.formUnion(visitor.modules)
+        }
+        return modules
+    }
+
+    private static func projectObjects(at project: URL) -> [String: [String: Any]]? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
+        process.arguments = ["-convert", "json", "-o", "-", project.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let project = try JSONSerialization.jsonObject(
+                    with: output.fileHandleForReading.readDataToEndOfFile()
+                  ) as? [String: Any],
+                  let objects = project["objects"] as? [String: [String: Any]] else {
+                return nil
+            }
+            return objects
+        } catch {
+            return nil
+        }
+    }
+
+    private static func nativeTarget(named name: String, in objects: [String: [String: Any]]) -> [String: Any]? {
+        objects.values.first { object in
+            object["isa"] as? String == "PBXNativeTarget" && object["name"] as? String == name
+        }
+    }
+
+    private static func packageProducts(for target: [String: Any], in objects: [String: [String: Any]]) -> Set<String> {
+        let references = target["packageProductDependencies"] as? [String] ?? []
+        return Set(references.compactMap { objects[$0]?["productName"] as? String })
     }
 
     private static func loggingViolations(in root: URL) -> [ValidationViolation] {

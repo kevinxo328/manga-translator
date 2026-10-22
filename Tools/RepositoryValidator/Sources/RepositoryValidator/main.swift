@@ -2,6 +2,19 @@ import Foundation
 import RepositoryValidation
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.first == "--release-app", let appPath = arguments.dropFirst().first {
+    let result = ValidationResult(violations: RepositoryValidator.releaseArtifactViolations(
+        appBundle: URL(fileURLWithPath: appPath, isDirectory: true)
+    ))
+    guard result.violations.isEmpty else {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        FileHandle.standardOutput.write(try encoder.encode(result))
+        FileHandle.standardOutput.write(Data("\n".utf8))
+        exit(1)
+    }
+    exit(0)
+}
 let rootPath = arguments.first ?? FileManager.default.currentDirectoryPath
 let root = URL(fileURLWithPath: rootPath, isDirectory: true)
 var violations = RepositoryValidator.validate(root: root).violations
