@@ -59,21 +59,46 @@ enum TranslationEngine: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    var displayName: String {
-        switch self {
-        case .deepL: return "DeepL"
-        case .google: return "Google Translate"
-        case .openAI: return "OpenAI Compatible"
-        case .githubCopilot: return "GitHub Copilot"
-        }
+    var displayName: String { TranslationEngineRegistry.descriptor(for: self).displayName }
+
+    var requiresAPIKey: Bool { TranslationEngineRegistry.descriptor(for: self).requiresAPIKey }
+
+    var usesRecentPageContext: Bool { TranslationEngineRegistry.descriptor(for: self).usesRecentPageContext }
+}
+
+struct TranslationEngineDescriptor: Equatable, Identifiable {
+    let engine: TranslationEngine
+    let displayName: String
+    let requiresAPIKey: Bool
+    let usesRecentPageContext: Bool
+
+    var id: TranslationEngine { engine }
+}
+
+enum TranslationEngineRegistry {
+    static let descriptors: [TranslationEngineDescriptor] = [
+        TranslationEngineDescriptor(engine: .deepL, displayName: "DeepL", requiresAPIKey: true, usesRecentPageContext: false),
+        TranslationEngineDescriptor(engine: .google, displayName: "Google Translate", requiresAPIKey: true, usesRecentPageContext: false),
+        TranslationEngineDescriptor(engine: .openAI, displayName: "OpenAI Compatible", requiresAPIKey: true, usesRecentPageContext: true),
+        TranslationEngineDescriptor(engine: .githubCopilot, displayName: "GitHub Copilot", requiresAPIKey: false, usesRecentPageContext: true)
+    ]
+
+    static var engines: [TranslationEngine] { descriptors.map(\.engine) }
+
+    static var credentialDescriptors: [TranslationEngineDescriptor] {
+        descriptors.filter(\.requiresAPIKey)
     }
 
-    var isLLM: Bool {
-        switch self {
-        case .openAI, .githubCopilot: return true
-        case .deepL, .google: return false
+    static func descriptor(for engine: TranslationEngine) -> TranslationEngineDescriptor {
+        guard let descriptor = descriptors.first(where: { $0.engine == engine }) else {
+            preconditionFailure("Missing translation-engine descriptor for \(engine.rawValue)")
         }
+        return descriptor
     }
+}
+
+enum TranslationPipelineLimits {
+    static let maximumConcurrentPages = 3
 }
 
 struct CopilotModel: Identifiable, Hashable {

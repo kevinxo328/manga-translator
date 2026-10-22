@@ -65,9 +65,7 @@ struct SettingsView: View {
     var onFetchCacheSize: (() -> Int64)?
     private let updater: SPUUpdater?
 
-    @State private var deepLKey = ""
-    @State private var googleKey = ""
-    @State private var openAIKey = ""
+    @State private var apiKeys: [TranslationEngine: String] = [:]
     @State private var showClearCacheAlert = false
     @State private var cacheSizeBytes: Int64 = 0
     @State private var copilotAvailability: CopilotAvailability = .notInstalled
@@ -188,62 +186,46 @@ struct SettingsView: View {
 
     private var apiKeysTab: some View {
         Form {
-            Section {
-                SecureField("API Key", text: $deepLKey)
+            ForEach(TranslationEngineRegistry.credentialDescriptors) { descriptor in
+                Section {
+                    SecureField("API Key", text: apiKeyBinding(for: descriptor.engine))
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: deepLKey) { _, newValue in
-                        saveKey(newValue, for: .deepL)
-                    }
-            } header: {
-                Label("DeepL", systemImage: "globe.europe.africa")
-            }
-
-            Section {
-                SecureField("API Key", text: $googleKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: googleKey) { _, newValue in
-                        saveKey(newValue, for: .google)
-                    }
-            } header: {
-                Label("Google Translate", systemImage: "g.circle")
-            }
-
-            Section {
-                SecureField("API Key", text: $openAIKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: openAIKey) { _, newValue in
-                        saveKey(newValue, for: .openAI)
+                    .onChange(of: apiKeys[descriptor.engine, default: ""]) { _, newValue in
+                        saveKey(newValue, for: descriptor.engine)
                     }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        TextField("Base URL", text: $preferences.openAIBaseURL)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Reset") {
-                            preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
+                    if descriptor.engine == .openAI {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                TextField("Base URL", text: $preferences.openAIBaseURL)
+                                    .textFieldStyle(.roundedBorder)
+                                Button("Reset") {
+                                    preferences.openAIBaseURL = PreferencesService.defaultOpenAIBaseURL
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(preferences.openAIBaseURL == PreferencesService.defaultOpenAIBaseURL)
+                            }
+
+                            if let error = baseURLValidationError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
                         }
-                        .buttonStyle(.borderless)
-                        .disabled(preferences.openAIBaseURL == PreferencesService.defaultOpenAIBaseURL)
-                    }
 
-                    if let error = baseURLValidationError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                        HStack {
+                            TextField("Model", text: $preferences.openAIModel)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Reset") {
+                                preferences.openAIModel = PreferencesService.defaultOpenAIModel
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(preferences.openAIModel == PreferencesService.defaultOpenAIModel)
+                        }
                     }
+                } header: {
+                    Text(descriptor.displayName)
                 }
-
-                HStack {
-                    TextField("Model", text: $preferences.openAIModel)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Reset") {
-                        preferences.openAIModel = PreferencesService.defaultOpenAIModel
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(preferences.openAIModel == PreferencesService.defaultOpenAIModel)
-                }
-            } header: {
-                Label("OpenAI Compatible", systemImage: "brain")
             }
 
             Section {
@@ -324,7 +306,7 @@ struct SettingsView: View {
                     }
                 }
                 Picker("Translation Engine", selection: $preferences.translationEngine) {
-                    ForEach(TranslationEngine.allCases.filter {
+                    ForEach(TranslationEngineRegistry.engines.filter {
                         $0 != .githubCopilot || copilotAvailability.allowsEngineSelection(
                             modelState: copilotModelState
                         )
@@ -400,9 +382,15 @@ struct SettingsView: View {
     }
 
     private func loadKeys() {
-        deepLKey = keychainService.retrieve(for: .deepL)?.rawValue ?? ""
-        googleKey = keychainService.retrieve(for: .google)?.rawValue ?? ""
-        openAIKey = keychainService.retrieve(for: .openAI)?.rawValue ?? ""
+        apiKeys = Dictionary(uniqueKeysWithValues: TranslationEngineRegistry.credentialDescriptors
+            .map { ($0.engine, keychainService.retrieve(for: $0.engine)?.rawValue ?? "") })
+    }
+
+    private func apiKeyBinding(for engine: TranslationEngine) -> Binding<String> {
+        Binding(
+            get: { apiKeys[engine, default: ""] },
+            set: { apiKeys[engine] = $0 }
+        )
     }
 
     private func saveKey(_ key: String, for engine: TranslationEngine) {

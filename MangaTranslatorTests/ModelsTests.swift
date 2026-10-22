@@ -4,6 +4,19 @@ import Testing
 @Suite("Models")
 struct ModelsTests {
 
+    @Test("Translation engine registry defines display, credential, and context capabilities")
+    func translationEngineRegistryDefinesCapabilities() {
+        #expect(TranslationEngineRegistry.engines == [.deepL, .google, .openAI, .githubCopilot])
+        #expect(TranslationEngineRegistry.engines == TranslationEngine.allCases)
+        #expect(TranslationEngineRegistry.credentialDescriptors.map(\.engine) == [.deepL, .google, .openAI])
+        #expect(TranslationEngine.deepL.displayName == "DeepL")
+        #expect(TranslationEngine.google.requiresAPIKey)
+        #expect(TranslationEngine.openAI.usesRecentPageContext)
+        #expect(!TranslationEngine.githubCopilot.requiresAPIKey)
+        #expect(TranslationEngine.githubCopilot.usesRecentPageContext)
+        #expect(TranslationPipelineLimits.maximumConcurrentPages == 3)
+    }
+
     @Test("Language.displayName returns correct display labels")
     func languageDisplayNameLabels() {
         #expect(Language.en.displayName == "🇺🇸 English")

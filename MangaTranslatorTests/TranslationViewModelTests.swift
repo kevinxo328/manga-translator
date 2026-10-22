@@ -1228,27 +1228,33 @@ final class TranslationViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentPageIndex, 0)
     }
 
-    func testLoadFolderTranslatesNoMoreThanThreePagesConcurrently() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        for index in 1...6 {
-            try writeTestPNG(at: root.appendingPathComponent("page_\(index).png"))
-        }
+    func testSelectedEngineBuildsMatchingProductionService() {
+        for engine in TranslationEngineRegistry.engines {
+            let preferences = makePrefs(source: .ja, target: .zhHant)
+            preferences.translationEngine = engine
+            let viewModel = TranslationViewModel(preferences: preferences)
 
-        let router = await makeSingleRegionRouterSequential(texts: ["page"])
-        let translationService = ConcurrencyTrackingTranslationService(delay: 50_000_000)
-        let vm = TranslationViewModel(
-            preferences: makePrefs(source: .ja, target: .zhHant),
-            ocrRouter: router,
-            translationService: translationService
+            XCTAssertEqual(
+                viewModel.translationService.engine,
+                engine,
+                "Selecting \(engine.displayName) must construct its matching translation service"
+            )
+        }
+    }
+
+    func testLoadFolderTranslatesExactlyThreeNonContextPagesConcurrently() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: Array(repeating: 1, count: 6),
+            engine: .deepL,
+            perPageDelay: 50_000_000
         )
+        defer { try? FileManager.default.removeItem(at: root) }
 
         await vm.loadFolder(root)
 
         XCTAssertEqual(vm.pages.count, 6)
-        let maxConcurrent = await translationService.maxConcurrent()
-        XCTAssertLessThanOrEqual(maxConcurrent, 3)
+        let maxConcurrent = service.maximumConcurrentPerPageTranslations
+        XCTAssertEqual(maxConcurrent, 3, "Batch translation must preserve the three-page concurrency limit")
     }
 
     // Decoded bitmaps are the dominant per-page memory cost (a 1MB JPEG can
@@ -3330,47 +3336,6 @@ private final class CapturingTranslationService: TranslationService {
     }
 }
 
-private final class ConcurrencyTrackingTranslationService: TranslationService {
-    var engine: TranslationEngine { .githubCopilot }
-    private let delay: UInt64
-    private let counter = ConcurrencyCounter()
-
-    init(delay: UInt64) {
-        self.delay = delay
-    }
-
-    func maxConcurrent() async -> Int {
-        await counter.maxConcurrent
-    }
-
-    func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
-        await counter.enter()
-
-        try await Task.sleep(nanoseconds: delay)
-
-        await counter.leave()
-
-        let translated = bubbles.map {
-            TranslatedBubble(bubble: $0, translatedText: $0.text, index: $0.index)
-        }
-        return TranslationOutput(bubbles: translated, detectedTerms: [])
-    }
-}
-
-private actor ConcurrencyCounter {
-    private var current = 0
-    private(set) var maxConcurrent = 0
-
-    func enter() {
-        current += 1
-        maxConcurrent = max(maxConcurrent, current)
-    }
-
-    func leave() {
-        current -= 1
-    }
-}
-
 // CacheServiceProtocol double used by 3.x tests. Each mutation may be
 // configured to throw a specific CacheError; reads always degrade.
 private final class MockCacheService: CacheServiceProtocol {
@@ -3697,6 +3662,9 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
     private let lock = NSLock()
     private var _batchCalls: [(pageIds: [String], summaries: [String], glossarySources: [String])] = []
     private var _perPageCalls: [(input: String, summaries: [String])] = []
+    private var currentPerPageTranslations = 0
+    private var _maximumConcurrentPerPageTranslations = 0
+    private let perPageDelay: UInt64
     var failBatchForPageIds: Set<String> = []
     var suspendBatchUntilCancel: Bool = false
     // Optional hook fired after translateBatch has produced outputs but before returning.
@@ -3704,8 +3672,9 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
     // view-model persisting the batch outputs.
     var onBatchSuccessBeforeReturn: (@Sendable () async -> Void)?
 
-    init(engine: TranslationEngine = .githubCopilot) {
+    init(engine: TranslationEngine = .githubCopilot, perPageDelay: UInt64 = 0) {
         self.engineKind = engine
+        self.perPageDelay = perPageDelay
     }
 
     var batchCalls: [(pageIds: [String], summaries: [String], glossarySources: [String])] {
@@ -3716,6 +3685,10 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
         lock.lock(); defer { lock.unlock() }
         return _perPageCalls
     }
+    var maximumConcurrentPerPageTranslations: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _maximumConcurrentPerPageTranslations
+    }
 
     func translate(
         bubbles: [BubbleCluster],
@@ -3724,7 +3697,18 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
         context: TranslationContext
     ) async throws -> TranslationOutput {
         let input = bubbles.first?.text ?? ""
-        lock.withLock { _perPageCalls.append((input: input, summaries: context.recentPageSummaries)) }
+        lock.withLock {
+            _perPageCalls.append((input: input, summaries: context.recentPageSummaries))
+            currentPerPageTranslations += 1
+            _maximumConcurrentPerPageTranslations = max(
+                _maximumConcurrentPerPageTranslations,
+                currentPerPageTranslations
+            )
+        }
+        defer { lock.withLock { currentPerPageTranslations -= 1 } }
+        if perPageDelay > 0 {
+            try await Task.sleep(nanoseconds: perPageDelay)
+        }
         let translated = bubbles.map {
             TranslatedBubble(bubble: $0, translatedText: "T:\($0.text)", index: $0.index)
         }
@@ -3797,7 +3781,8 @@ private final class DelayingUniqueTextRecognizer: @unchecked Sendable, OCRRecogn
 private func makeBatchSchedulerFixture(
     bubbleCountsByPage: [Int],
     engine: TranslationEngine = .githubCopilot,
-    recognizer: (any OCRRecognizing)? = nil
+    recognizer: (any OCRRecognizing)? = nil,
+    perPageDelay: UInt64 = 0
 ) async throws -> (root: URL, service: RecordingBatchTranslationService, vm: TranslationViewModel, cache: CacheService) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -3818,7 +3803,7 @@ private func makeBatchSchedulerFixture(
         downloadManager: MockDownloadManager(state: .notDownloaded, enabled: false),
         paddleOCRFactory: { throw PaddleOCRError.modelUnavailable }
     )
-    let translationService = RecordingBatchTranslationService(engine: engine)
+    let translationService = RecordingBatchTranslationService(engine: engine, perPageDelay: perPageDelay)
     let cache = makeTempCache()
     let prefs = makePrefs(source: .ja, target: .zhHant)
     // Align preferences.translationEngine with the fake service's engine so cache

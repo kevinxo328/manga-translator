@@ -63,3 +63,26 @@ final class PreferencesService: ObservableObject {
         self.showPathBar = showP
     }
 }
+
+extension TranslationEngineRegistry {
+    static func makeService(
+        for engine: TranslationEngine,
+        preferences: PreferencesService,
+        keychainService: KeychainService
+    ) -> any TranslationService {
+        switch engine {
+        case .deepL:
+            DeepLTranslationService(keychainService: keychainService)
+        case .google:
+            GoogleTranslationService(keychainService: keychainService)
+        case .openAI:
+            OpenAITranslationService(
+                model: preferences.openAIModel,
+                baseURL: preferences.openAIBaseURL,
+                keychainService: keychainService
+            )
+        case .githubCopilot:
+            CopilotTranslationService(model: preferences.copilotModel)
+        }
+    }
+}

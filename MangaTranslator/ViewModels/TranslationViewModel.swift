@@ -122,7 +122,7 @@ final class TranslationViewModel: ObservableObject {
     // Engine boundary: only OpenAI-compatible and GitHub Copilot consume recent-page summaries.
     // DeepL and Google receive glossary terms but never recent-page context.
     private func usesRecentPageContext(_ engine: TranslationEngine) -> Bool {
-        engine.isLLM
+        engine.usesRecentPageContext
     }
 
     // Returns up to `count` summaries from translated pages whose index is
@@ -296,12 +296,11 @@ final class TranslationViewModel: ObservableObject {
 
     var translationService: any TranslationService {
         if let override = translationServiceOverride { return override }
-        switch preferences.translationEngine {
-        case .deepL: return DeepLTranslationService(keychainService: keychainService)
-        case .google: return GoogleTranslationService(keychainService: keychainService)
-        case .openAI: return OpenAITranslationService(model: preferences.openAIModel, baseURL: preferences.openAIBaseURL, keychainService: keychainService)
-        case .githubCopilot: return CopilotTranslationService(model: preferences.copilotModel)
-        }
+        return TranslationEngineRegistry.makeService(
+            for: preferences.translationEngine,
+            preferences: preferences,
+            keychainService: keychainService
+        )
     }
 
     // MARK: - Input Handling
@@ -496,7 +495,7 @@ final class TranslationViewModel: ObservableObject {
             await runPipelinedLLMBatch(mode: mode, service: service)
         } else {
             await withTaskGroup(of: Void.self) { group in
-                let maxConcurrent = 3
+                let maxConcurrent = TranslationPipelineLimits.maximumConcurrentPages
                 var started = 0
                 for i in pages.indices {
                     if started >= maxConcurrent {
@@ -592,7 +591,7 @@ final class TranslationViewModel: ObservableObject {
         }
 
         await withTaskGroup(of: (Int, PagePreparation).self) { group in
-            let maxConcurrent = 3
+            let maxConcurrent = TranslationPipelineLimits.maximumConcurrentPages
             var started = 0
             for i in pages.indices {
                 if cancelled { break }
@@ -687,7 +686,7 @@ final class TranslationViewModel: ObservableObject {
             return .sameLanguageSkip
         }
 
-        if translationServiceOverride == nil && service.engine != .githubCopilot {
+        if translationServiceOverride == nil && service.engine.requiresAPIKey {
             guard keychainService.hasKey(for: preferences.translationEngine) else {
                 showMissingKeyAlert = true
                 return .missingKey

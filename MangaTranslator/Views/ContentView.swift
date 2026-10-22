@@ -540,7 +540,7 @@ struct ContentView: View {
 
                 Menu {
                     Picker("Engine", selection: $viewModel.preferences.translationEngine) {
-                        ForEach(TranslationEngine.allCases) { engine in
+                        ForEach(TranslationEngineRegistry.engines) { engine in
                             Text(engine.displayName).tag(engine)
                         }
                     }
