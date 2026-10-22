@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** claimed
+**Status:** completed
 
-- [ ] A focused macOS UI-test target can launch the app deterministically.
-- [ ] Critical controls expose stable accessibility identifiers without changing user-facing copy.
-- [ ] State-to-action decisions have a narrow fast-test seam.
-- [ ] Removing a test-only critical control/action mapping demonstrably makes the focused test red and restoration green.
+- [x] A focused macOS UI-test target can launch the app deterministically.
+- [x] Critical controls expose stable accessibility identifiers without changing user-facing copy.
+- [x] State-to-action decisions have a narrow fast-test seam.
+- [x] Removing a test-only critical control/action mapping demonstrably makes the focused test red and restoration green.
 
