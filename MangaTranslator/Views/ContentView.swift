@@ -2,6 +2,15 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+enum ToolbarBatchAction: Equatable {
+    case cancel
+    case retranslateAll
+
+    static func resolve(canCancelTranslation: Bool) -> ToolbarBatchAction {
+        canCancelTranslation ? .cancel : .retranslateAll
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
     let mainWindowRegistry: MainWindowRegistry
@@ -551,14 +560,15 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // Re-translate All
             Group {
-                if viewModel.canCancelTranslation {
+                switch ToolbarBatchAction.resolve(canCancelTranslation: viewModel.canCancelTranslation) {
+                case .cancel:
                     Button {
                         viewModel.cancelTranslation()
                     } label: {
                         Image(systemName: "xmark")
                     }
                     .help("Cancel batch translation")
-                } else {
+                case .retranslateAll:
                     Button {
                         guard !isEditing else { return }
                         viewModel.startRetranslateAllPages()

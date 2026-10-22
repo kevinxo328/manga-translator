@@ -304,18 +304,9 @@ struct SwiftUIViewCorrectnessTests {
     }
 
     @Test("Toolbar batch action becomes a cancel action while processing")
-    func toolbarBatchActionBecomesCancelActionWhileProcessing() throws {
-        let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let sourceURL = testsURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("MangaTranslator/Views/ContentView.swift")
-        let source = try String(contentsOf: sourceURL)
-
-        #expect(source.contains("if viewModel.canCancelTranslation"))
-        #expect(source.contains("viewModel.cancelTranslation()"))
-        #expect(source.contains("viewModel.startRetranslateAllPages()"))
-        #expect(source.contains("viewModel.startSwitchEngineForCurrentPage()"))
-        #expect(source.contains("Image(systemName: \"xmark\")"))
+    func toolbarBatchActionBecomesCancelActionWhileProcessing() {
+        #expect(ToolbarBatchAction.resolve(canCancelTranslation: true) == .cancel)
+        #expect(ToolbarBatchAction.resolve(canCancelTranslation: false) == .retranslateAll)
     }
 
     @Test("Glossary create sheet validation blocks empty, overlong, and duplicate names")

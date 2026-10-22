@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] A focused macOS UI-test target can launch the app deterministically.
 - [ ] Critical controls expose stable accessibility identifiers without changing user-facing copy.
