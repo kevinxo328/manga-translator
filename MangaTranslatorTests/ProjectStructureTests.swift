@@ -58,6 +58,24 @@ final class ProjectStructureTests: XCTestCase {
         }
     }
 
+    func testMLXTargetsDeclareTransitivePackageProductsExplicitly() throws {
+        let projectContents = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let requiredProducts = ["MLX", "MLXNN", "MLXFast", "MLXRandom", "Numerics"]
+
+        let mlxTargetBlock = try XCTUnwrap(nativeTargetBlock(named: "MangaTranslatorMLX", in: projectContents))
+        for product in requiredProducts {
+            XCTAssertTrue(mlxTargetBlock.contains("/* \(product) */"))
+        }
+
+        let appTargetBlock = try XCTUnwrap(nativeTargetBlock(named: "MangaTranslator", in: projectContents))
+        for product in requiredProducts + ["PaddleOCRVL"] {
+            XCTAssertFalse(appTargetBlock.contains("/* \(product) */"))
+        }
+    }
+
     func testMLXPackageUsesPatchedForkRevision() throws {
         let projectContents = try String(
             contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator.xcodeproj/project.pbxproj"),
@@ -88,6 +106,17 @@ final class ProjectStructureTests: XCTestCase {
             settingsSource.contains("updater.automaticallyDownloadsUpdates"),
             "The automatic-check preference must not opt the user into background downloads."
         )
+    }
+
+    private func nativeTargetBlock(named targetName: String, in projectContents: String) -> String? {
+        guard let nameRange = projectContents.range(of: "name = \(targetName);") else { return nil }
+        guard let start = projectContents[..<nameRange.lowerBound].range(of: "\t\t", options: .backwards)?.lowerBound else {
+            return nil
+        }
+        guard let end = projectContents[nameRange.upperBound...].range(of: "\n\t\t};")?.upperBound else {
+            return nil
+        }
+        return String(projectContents[start..<end])
     }
 
 }
