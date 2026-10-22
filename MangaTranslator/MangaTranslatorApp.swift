@@ -93,6 +93,12 @@ struct MangaTranslatorApp: App {
     private let windows = AppWindowHolder()
     private let mainWindows = MainWindowRegistry()
 
+    private static var copilotModelStateOverride: CopilotModelLoadState? {
+        ProcessInfo.processInfo.environment["MANGATRANSLATOR_UI_TEST_COPILOT_STATE"] == "failed"
+            ? .failed("UI test")
+            : nil
+    }
+
     init() {
         let prefs = PreferencesService()
         _preferences = StateObject(wrappedValue: prefs)
@@ -154,7 +160,7 @@ struct MangaTranslatorApp: App {
         }
 
         Window("Settings", id: "settings") {
-            SettingsView(preferences: preferences, viewModel: viewModel, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater, copilotModelStateOverride: CopilotModelLoadState.uiTestOverride)
+            SettingsView(preferences: preferences, viewModel: viewModel, onClearCache: viewModel.clearCacheAndResetPages, onFetchCacheSize: viewModel.translationCacheSize, updater: updateChecker.updater, copilotModelStateOverride: Self.copilotModelStateOverride)
         }
         .defaultSize(width: ViewLayout.Settings.width, height: ViewLayout.Settings.height)
         .windowResizability(.contentMinSize)
