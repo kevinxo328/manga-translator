@@ -1673,12 +1673,12 @@ final class TranslationViewModelTests: XCTestCase {
         // Pre-populate the cache for page 3 so its preparation completes
         // without touching the (slow) OCR actor.
         let page3Data = try Data(contentsOf: root.appendingPathComponent("page_3.png"))
-        try cache.store(
+        try cache.store(identity: CacheIdentity(
             imageHash: CacheService.imageHash(data: page3Data),
             source: .ja,
             target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [TranslatedBubble(
+            engine: .githubCopilot
+        ), bubbles: [TranslatedBubble(
                 bubble: BubbleCluster(boundingBox: CGRect(x: 0, y: 0, width: 10, height: 10), text: "x3", observations: []),
                 translatedText: "T:x3-cached",
                 index: 0
@@ -3954,13 +3954,9 @@ final class BatchSchedulerTests: XCTestCase {
             translatedText: "cached-T",
             index: 0
         )
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [cachedBubble]
-        )
+        try cache.store(identity: CacheIdentity(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot
+        ), bubbles: [cachedBubble])
 
         await vm.loadFolder(root)
 
@@ -3989,13 +3985,9 @@ final class BatchSchedulerTests: XCTestCase {
             translatedText: "cached-text",
             index: 0
         )
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [cachedBubble]
-        )
+        try cache.store(identity: CacheIdentity(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot
+        ), bubbles: [cachedBubble])
 
         await vm.loadFolder(root)
 

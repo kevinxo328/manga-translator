@@ -187,15 +187,6 @@ final class CacheService: CacheServiceProtocol {
         return CachedTranslationResult(bubbles: bubbles)
     }
 
-    @available(*, deprecated, message: "Use lookup(identity:) to require complete cache identity")
-    func lookup(
-        imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> CachedTranslationResult? {
-        lookup(identity: CacheIdentity(
-            imageHash: imageHash, source: source, target: target, engine: engine
-        ))
-    }
-
     func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws {
         guard isAvailable, let db else { throw CacheError.unavailable }
         guard let jsonString = encodeBubbles(bubbles) else {
@@ -231,19 +222,6 @@ final class CacheService: CacheServiceProtocol {
         if stepResult != SQLITE_DONE {
             throw CacheService.makeError(db: db, operation: "CacheService.store")
         }
-    }
-
-    @available(*, deprecated, message: "Use store(identity:bubbles:) to require complete cache identity")
-    func store(
-        imageHash: String,
-        source: Language,
-        target: Language,
-        engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
-    ) throws {
-        try store(identity: CacheIdentity(
-            imageHash: imageHash, source: source, target: target, engine: engine
-        ), bubbles: bubbles)
     }
 
     func clearAll() throws {

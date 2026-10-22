@@ -42,15 +42,10 @@ final class CacheServiceTests: XCTestCase {
         let translated = TranslatedBubble(bubble: bubble, translatedText: "hola", index: 7)
         let hash = "cache-test-\(UUID().uuidString)"
 
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [translated]
-        )
+        let identity = CacheIdentity(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot)
+        try cache.store(identity: identity, bubbles: [translated])
 
-        let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot)
+        let result = cache.lookup(identity: identity)
         XCTAssertNotNil(result)
         XCTAssertEqual(result?.bubbles.first?.bubble.isInverted, true)
         XCTAssertEqual(result?.bubbles.first?.bubble.text, "hello")
@@ -66,13 +61,9 @@ final class CacheServiceTests: XCTestCase {
         // Simulate a database written before masks stopped being persisted.
         do {
             let legacy = CacheService(databasePath: path)
-            try legacy.store(
-                imageHash: "legacy-hash",
-                source: .ja,
-                target: .zhHant,
-                engine: .openAI,
-                bubbles: []
-            )
+            try legacy.store(identity: CacheIdentity(
+                imageHash: "legacy-hash", source: .ja, target: .zhHant, engine: .openAI
+            ), bubbles: [])
             XCTAssertEqual(
                 legacy._executeSQL("ALTER TABLE translation_cache ADD COLUMN text_pixel_mask_png BLOB"),
                 SQLITE_OK
@@ -87,7 +78,9 @@ final class CacheServiceTests: XCTestCase {
         let reopened = CacheService(databasePath: path)
         XCTAssertEqual(reopened._legacyMaskBlobCount(), 0, "Legacy mask BLOBs must be purged on open")
         XCTAssertNotNil(
-            reopened.lookup(imageHash: "legacy-hash", source: .ja, target: .zhHant, engine: .openAI),
+            reopened.lookup(identity: CacheIdentity(
+                imageHash: "legacy-hash", source: .ja, target: .zhHant, engine: .openAI
+            )),
             "Purging masks must not drop the cached bubble data in the same row"
         )
     }
@@ -105,18 +98,13 @@ final class CacheServiceTests: XCTestCase {
         let translated = TranslatedBubble(bubble: bubble, translatedText: "快取", index: 0)
         let hash = "clear-cache-\(UUID().uuidString)"
 
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [translated]
-        )
-        XCTAssertNotNil(cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot))
+        let identity = CacheIdentity(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot)
+        try cache.store(identity: identity, bubbles: [translated])
+        XCTAssertNotNil(cache.lookup(identity: identity))
 
         try cache.clearAll()
 
-        XCTAssertNil(cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .githubCopilot))
+        XCTAssertNil(cache.lookup(identity: identity))
     }
 
     func testGlossaryCRUDRoundTripsTermsAndDeleteRemovesTerms() throws {
@@ -210,7 +198,9 @@ final class CacheServiceTests: XCTestCase {
         XCTAssertThrowsError(try cache.clearAll()) { error in
             XCTAssertEqual(error as? CacheError, .unavailable)
         }
-        let lookup = cache.lookup(imageHash: "x", source: .ja, target: .zhHant, engine: .githubCopilot)
+        let lookup = cache.lookup(identity: CacheIdentity(
+            imageHash: "x", source: .ja, target: .zhHant, engine: .githubCopilot
+        ))
         XCTAssertNil(lookup)
     }
 
@@ -242,13 +232,9 @@ final class CacheServiceTests: XCTestCase {
             translatedText: "T",
             index: 0
         )
-        try cache.store(
-            imageHash: "h-\(UUID().uuidString)",
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [translated]
-        )
+        try cache.store(identity: CacheIdentity(
+            imageHash: "h-\(UUID().uuidString)", source: .ja, target: .zhHant, engine: .githubCopilot
+        ), bubbles: [translated])
         let triggerResult = cache._executeSQL("""
             CREATE TRIGGER reject_translation_cache_delete
             BEFORE DELETE ON translation_cache
@@ -278,13 +264,15 @@ final class CacheServiceTests: XCTestCase {
             translatedText: "T",
             index: 0
         )
-        try cache.store(imageHash: hashA, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated])
-        try cache.store(imageHash: hashB, source: .ja, target: .zhHant, engine: .githubCopilot, bubbles: [translated])
+        let identityA = CacheIdentity(imageHash: hashA, source: .ja, target: .zhHant, engine: .githubCopilot)
+        let identityB = CacheIdentity(imageHash: hashB, source: .ja, target: .zhHant, engine: .githubCopilot)
+        try cache.store(identity: identityA, bubbles: [translated])
+        try cache.store(identity: identityB, bubbles: [translated])
 
         try cache.clearAll()
 
-        XCTAssertNil(cache.lookup(imageHash: hashA, source: .ja, target: .zhHant, engine: .githubCopilot))
-        XCTAssertNil(cache.lookup(imageHash: hashB, source: .ja, target: .zhHant, engine: .githubCopilot))
+        XCTAssertNil(cache.lookup(identity: identityA))
+        XCTAssertNil(cache.lookup(identity: identityB))
     }
 
     // 1.5 store failure throws CacheError with code + message.
@@ -304,13 +292,9 @@ final class CacheServiceTests: XCTestCase {
             translatedText: "T",
             index: 0
         )
-        XCTAssertThrowsError(try cache.store(
-            imageHash: "x",
-            source: .ja,
-            target: .zhHant,
-            engine: .githubCopilot,
-            bubbles: [translated]
-        )) { error in
+        XCTAssertThrowsError(try cache.store(identity: CacheIdentity(
+            imageHash: "x", source: .ja, target: .zhHant, engine: .githubCopilot
+        ), bubbles: [translated])) { error in
             guard case .sqlite(let code, let message, _) = error as? CacheError else {
                 return XCTFail("Expected .sqlite error, got \(error)")
             }
@@ -362,7 +346,9 @@ final class CacheServiceTests: XCTestCase {
     func testLookupOnUnavailableCacheReturnsNil() {
         let cache = CacheService(databasePath: "/nonexistent-\(UUID().uuidString)/cache.sqlite")
         XCTAssertFalse(cache.isAvailable)
-        let result = cache.lookup(imageHash: "x", source: .ja, target: .zhHant, engine: .githubCopilot)
+        let result = cache.lookup(identity: CacheIdentity(
+            imageHash: "x", source: .ja, target: .zhHant, engine: .githubCopilot
+        ))
         XCTAssertNil(result)
     }
 
@@ -641,15 +627,10 @@ final class CacheServiceTests: XCTestCase {
         let translated = TranslatedBubble(bubble: bubble, translatedText: "畫的", index: 0)
         let hash = "ismanual-roundtrip-\(UUID().uuidString)"
 
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .openAI,
-            bubbles: [translated]
-        )
+        let identity = CacheIdentity(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
+        try cache.store(identity: identity, bubbles: [translated])
 
-        let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
+        let result = cache.lookup(identity: identity)
         XCTAssertEqual(result?.bubbles.first?.bubble.isManual, true)
     }
 
@@ -672,12 +653,9 @@ final class CacheServiceTests: XCTestCase {
             isManual: true
         )
         let hash = "ismanual-key-emission-\(UUID().uuidString)"
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .openAI,
-            bubbles: [
+        try cache.store(identity: CacheIdentity(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .openAI
+        ), bubbles: [
                 TranslatedBubble(bubble: bubbleA, translatedText: "自動", index: 0),
                 TranslatedBubble(bubble: bubbleB, translatedText: "手繪", index: 1)
             ]
@@ -710,13 +688,9 @@ final class CacheServiceTests: XCTestCase {
             index: 0
         )
         let hash = "ismanual-legacy-\(UUID().uuidString)"
-        try cache.store(
-            imageHash: hash,
-            source: .ja,
-            target: .zhHant,
-            engine: .openAI,
-            bubbles: [TranslatedBubble(bubble: placeholder, translatedText: "x", index: 0)]
-        )
+        try cache.store(identity: CacheIdentity(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .openAI
+        ), bubbles: [TranslatedBubble(bubble: placeholder, translatedText: "x", index: 0)])
 
         // Overwrite the JSON with a legacy payload that omits `isManual`.
         let legacy = """
@@ -731,7 +705,9 @@ final class CacheServiceTests: XCTestCase {
         )
         XCTAssertEqual(writeStatus, SQLITE_OK)
 
-        let result = cache.lookup(imageHash: hash, source: .ja, target: .zhHant, engine: .openAI)
+        let result = cache.lookup(identity: CacheIdentity(
+            imageHash: hash, source: .ja, target: .zhHant, engine: .openAI
+        ))
         XCTAssertEqual(result?.bubbles.count, 1)
         XCTAssertEqual(result?.bubbles.first?.bubble.isManual, false)
         XCTAssertEqual(result?.bubbles.first?.bubble.text, "old")

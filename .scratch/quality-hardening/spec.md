@@ -11,7 +11,7 @@ Create a fail-closed quality system for pull requests. It will run the normal ap
 1. As a contributor, I want every pull request to receive a deterministic application-test and policy result, so that regressions are found before merge.
 2. As a maintainer, I want main-branch merging to require successful quality checks, so that CI results cannot be ignored.
 3. As a contributor, I want a fast feedback lane, so that normal code changes do not wait on model-heavy OCR diagnostics.
-4. As an OCR maintainer, I want benchmark and parity diagnostics to remain runnable separately, so that quality investigation is not lost when PR CI is kept fast.
+4. As an OCR maintainer, I want benchmark and parity diagnostics to remain runnable locally and separately, so that quality investigation is not lost when PR CI is kept fast.
 5. As a maintainer, I want tests to prove user-observable behaviour, so that harmless refactors do not fail merely because implementation spelling changed.
 6. As a user, I want toolbar cancellation to work during processing, so that I can stop a batch rather than wait for it to finish.
 7. As a user, I want Copilot settings to present the controls appropriate to the current loading state, so that retry and model selection remain usable.
@@ -29,7 +29,7 @@ Create a fail-closed quality system for pull requests. It will run the normal ap
 
 - The repository remains dependency-light: validators are versioned local Swift tooling or scripts. The validator package alone may depend on pinned SwiftSyntax/SwiftParser for source-accurate AST analysis; no third-party lint or dependency-graph package is introduced into the app target.
 - The PR lane runs the normal MangaTranslator test scheme, repository-local policy/config validation, and the focused macOS UI tests. It does not run OCRBenchmark or PaddleOCRParityDiagnostic.
-- OCRBenchmark and PaddleOCR parity diagnostics are exposed as scheduled and manually dispatched GitHub Actions workflows with their existing data/artifact prerequisites made explicit.
+- OCRBenchmark and PaddleOCR parity diagnostics remain local, separately runnable suites with their existing data/artifact prerequisites made explicit. They are not GitHub Actions workflows.
 - A local validator owns source-policy and project-policy checks. It parses structured inputs where available and avoids line-oriented substring scanning as the policy mechanism.
 - Direct logging, secret persistence, target ownership, deployment/release configuration, and forbidden dependency directions become fail-closed validator rules.
 - A small macOS UI-test target verifies critical interactive controls through stable accessibility identifiers. Pure state-to-action decisions are extracted behind a narrow seam and tested in the existing fast test target.
