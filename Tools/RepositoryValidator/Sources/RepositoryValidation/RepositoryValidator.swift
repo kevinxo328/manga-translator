@@ -71,7 +71,67 @@ public enum RepositoryValidator {
                 )
             ])
         }
-        return ValidationResult(violations: loggingViolations(in: root))
+        return ValidationResult(violations: loggingViolations(in: root) + qualityWorkflowViolations(root: root))
+    }
+
+    public static func qualityWorkflowViolations(root: URL) -> [ValidationViolation] {
+        let workflows = root.appendingPathComponent(".github/workflows", isDirectory: true)
+        let quality = workflow(at: workflows.appendingPathComponent("quality.yml"))
+        let diagnostics = workflow(at: workflows.appendingPathComponent("ocr-diagnostics.yml"))
+        var violations: [ValidationViolation] = []
+
+        guard let quality else {
+            violations.append(ValidationViolation(
+                code: "quality.pr-workflow",
+                message: "Missing .github/workflows/quality.yml"
+            ))
+            return violations + missingDiagnosticsViolation()
+        }
+        if !workflowTriggers(quality, event: "pull_request") {
+            violations.append(ValidationViolation(
+                code: "quality.pr-trigger",
+                message: "quality.yml must run on pull_request"
+            ))
+        }
+        let qualityCommands = workflowCommands(quality)
+        if !qualityCommands.contains(where: { $0.contains("-scheme MangaTranslator") }) ||
+            !qualityCommands.contains(where: { $0.contains("repository-validator") }) {
+            violations.append(ValidationViolation(
+                code: "quality.pr-checks",
+                message: "quality.yml must run MangaTranslator tests and repository-validator"
+            ))
+        }
+        if qualityCommands.contains(where: { $0.contains("OCRBenchmark") || $0.contains("PaddleOCRParityDiagnostic") }) {
+            violations.append(ValidationViolation(
+                code: "quality.pr-fast-lane",
+                message: "quality.yml must not run OCR diagnostic schemes"
+            ))
+        }
+
+        guard let diagnostics else {
+            return violations + missingDiagnosticsViolation()
+        }
+        if !workflowTriggers(diagnostics, event: "workflow_dispatch") || !workflowTriggers(diagnostics, event: "schedule") {
+            violations.append(ValidationViolation(
+                code: "quality.diagnostics-triggers",
+                message: "ocr-diagnostics.yml must support manual and scheduled execution"
+            ))
+        }
+        let diagnosticCommands = workflowCommands(diagnostics)
+        if !diagnosticCommands.contains(where: { $0.contains("-scheme OCRBenchmark") }) ||
+            diagnosticCommands.contains(where: { $0.contains("-scheme PaddleOCRParityDiagnostic") }) {
+            violations.append(ValidationViolation(
+                code: "quality.diagnostics-schemes",
+                message: "ocr-diagnostics.yml must run OCRBenchmark without hosted PaddleOCR parity"
+            ))
+        }
+        if !FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/quality-diagnostics.md").path) {
+            violations.append(ValidationViolation(
+                code: "quality.diagnostics-documentation",
+                message: "Missing docs/quality-diagnostics.md"
+            ))
+        }
+        return violations
     }
 
     public static func projectContractViolations(
@@ -211,6 +271,36 @@ public enum RepositoryValidator {
     private static func propertyList(at url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+    }
+
+    private static func missingDiagnosticsViolation() -> [ValidationViolation] {
+        [ValidationViolation(
+            code: "quality.diagnostics-workflow",
+            message: "Missing .github/workflows/ocr-diagnostics.yml"
+        )]
+    }
+
+    private static func workflow(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let workflow = object as? [String: Any] else {
+            return nil
+        }
+        return workflow
+    }
+
+    private static func workflowTriggers(_ workflow: [String: Any], event: String) -> Bool {
+        guard let triggers = workflow["on"] as? [String: Any] else { return false }
+        return triggers[event] != nil
+    }
+
+    private static func workflowCommands(_ workflow: [String: Any]) -> [String] {
+        guard let jobs = workflow["jobs"] as? [String: Any] else { return [] }
+        return jobs.values.flatMap { job in
+            guard let job = job as? [String: Any],
+                  let steps = job["steps"] as? [[String: Any]] else { return [String]() }
+            return steps.compactMap { $0["run"] as? String }
+        }
     }
 
     private static func imports(in directory: URL) -> Set<String>? {

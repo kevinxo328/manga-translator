@@ -1,0 +1,37 @@
+{
+  "name": "PR Quality",
+  "on": {
+    "pull_request": {}
+  },
+  "jobs": {
+    "application-tests": {
+      "name": "MangaTranslator tests",
+      "runs-on": "macos-26",
+      "steps": [
+        {
+          "uses": "actions/checkout@v6",
+          "with": {
+            "lfs": true
+          }
+        },
+        {
+          "name": "Run application regression suite",
+          "run": "xcodebuild test -project MangaTranslator.xcodeproj -scheme MangaTranslator -destination 'platform=macOS'"
+        }
+      ]
+    },
+    "repository-validation": {
+      "name": "Repository validation",
+      "runs-on": "macos-26",
+      "steps": [
+        {
+          "uses": "actions/checkout@v6"
+        },
+        {
+          "name": "Run repository validator",
+          "run": "swift run --package-path Tools/RepositoryValidator repository-validator ."
+        }
+      ]
+    }
+  }
+}
