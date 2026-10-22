@@ -36,19 +36,33 @@ public enum RepositoryValidator {
 
     private static func loggingViolations(in root: URL) -> [ValidationViolation] {
         let sourceDirectory = root.appendingPathComponent("MangaTranslator", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: sourceDirectory.path) else {
+            return [
+                ValidationViolation(
+                    code: "source.directory.unreadable",
+                    message: "Cannot enumerate MangaTranslator source directory"
+                )
+            ]
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: sourceDirectory,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return []
+            return [
+                ValidationViolation(
+                    code: "source.directory.unreadable",
+                    message: "Cannot enumerate MangaTranslator source directory"
+                )
+            ]
         }
 
-        let exemptPaths: Set<String> = ["Services/DebugLogger.swift", "Services/DebugLogStore.swift"]
+        let exemptPaths = Set(["Services/DebugLogger.swift", "Services/DebugLogStore.swift"]
+            .map { sourceDirectory.appendingPathComponent($0).standardizedFileURL.path })
         let files = enumerator.compactMap { $0 as? URL }
             .filter {
                 $0.pathExtension == "swift" &&
-                !exemptPaths.contains($0.path.replacingOccurrences(of: sourceDirectory.path + "/", with: ""))
+                !exemptPaths.contains($0.standardizedFileURL.path)
             }
             .sorted { $0.path < $1.path }
 
@@ -65,10 +79,10 @@ public enum RepositoryValidator {
             }
             for call in directLoggingCalls(in: source) {
                 violations.append(
-                ValidationViolation(
-                    code: "logging.direct-\(call.lowercased())",
-                    message: "\(file.lastPathComponent) directly calls \(call)"
-                )
+                    ValidationViolation(
+                        code: "logging.direct-\(call.lowercased())",
+                        message: "\(file.lastPathComponent) directly calls \(call)"
+                    )
                 )
             }
         }

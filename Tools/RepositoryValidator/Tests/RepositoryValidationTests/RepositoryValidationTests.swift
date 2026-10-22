@@ -71,6 +71,16 @@ struct RepositoryValidationTests {
         ])
     }
 
+    @Test("A missing production source directory fails closed")
+    func missingSourceDirectoryFailsClosed() throws {
+        let root = try makeFixture(withProject: true, withSourceDirectory: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(RepositoryValidator.validate(root: root).violations.map(\.code) == [
+            "source.directory.unreadable"
+        ])
+    }
+
     @Test("Unreadable Swift source fails closed")
     func unreadableSourceFailsClosed() throws {
         let root = try makeFixture(withProject: true)
@@ -140,13 +150,29 @@ struct RepositoryValidationTests {
         #expect(RepositoryValidator.validate(root: root).violations.map(\.code) == ["logging.direct-print"])
     }
 
-    private func makeFixture(withProject: Bool) throws -> URL {
+    @Test("Explicit logging wrapper paths remain usable")
+    func loggingPolicyExemptsOnlySupportedWrappers() throws {
+        let root = try makeFixture(withProject: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeSource("print(\"debug\")", named: "Services/DebugLogger.swift", at: root)
+        try writeSource("Logger(subsystem: \"example\", category: \"example\")", named: "Services/DebugLogStore.swift", at: root)
+
+        #expect(RepositoryValidator.validate(root: root).violations.isEmpty)
+    }
+
+    private func makeFixture(withProject: Bool, withSourceDirectory: Bool = true) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("RepositoryValidationTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         if withProject {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent("MangaTranslator.xcodeproj", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
+        if withSourceDirectory {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("MangaTranslator", isDirectory: true),
                 withIntermediateDirectories: true
             )
         }
