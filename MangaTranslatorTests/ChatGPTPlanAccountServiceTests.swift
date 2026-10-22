@@ -4,6 +4,119 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("catalog keeps only displayable models in a stable order")
+    func catalogFiltersDisplayableModels() throws {
+        let data = """
+        {
+          "data": [
+            { "id": "gpt-5", "object": "model" },
+            { "id": "", "object": "model" },
+            { "id": "gpt-5", "object": "model" },
+            { "id": "not-a-model", "object": "other" },
+            { "id": "chatgpt-5", "object": "model" }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        #expect(try ChatGPTPlanModelCatalogService.parseModels(data).map(\.id) == ["chatgpt-5", "gpt-5"])
+    }
+
+    @Test("catalog cache reuses an account catalog for five minutes")
+    func catalogCacheExpiresAfterFiveMinutes() async throws {
+        let clock = ChatGPTPlanCatalogTestClock(Date(timeIntervalSince1970: 1_000))
+        let store = ChatGPTPlanModelCatalogStore(now: clock.now)
+        let calls = ChatGPTPlanCatalogCallCounter()
+
+        let first = try await store.models(accountID: "reader") {
+            await calls.increment()
+            return [ChatGPTPlanModel(id: "gpt-5")]
+        }
+        clock.advance(by: 299)
+        let cached = try await store.models(accountID: "reader") {
+            await calls.increment()
+            return [ChatGPTPlanModel(id: "different")]
+        }
+        clock.advance(by: 1)
+        let refreshed = try await store.models(accountID: "reader") {
+            await calls.increment()
+            return [ChatGPTPlanModel(id: "gpt-5.1")]
+        }
+
+        #expect(first.map(\.id) == ["gpt-5"])
+        #expect(cached.map(\.id) == ["gpt-5"])
+        #expect(refreshed.map(\.id) == ["gpt-5.1"])
+        #expect(await calls.value == 2)
+    }
+
+    @Test("catalog state exposes retry after a loading failure")
+    func catalogFailureExposesRetry() {
+        let state = ChatGPTPlanModelLoadState.failed(from: URLError(.timedOut))
+
+        #expect(state == .failed("Couldn’t load ChatGPT models."))
+        #expect(ChatGPTPlanModelControls.forState(state) == .retry)
+    }
+
+    @Test("failed catalog fetch is not cached so retry fetches again")
+    func failedCatalogFetchCanRetry() async throws {
+        let store = ChatGPTPlanModelCatalogStore()
+        let calls = ChatGPTPlanCatalogCallCounter()
+
+        await #expect(throws: URLError(.timedOut)) {
+            try await store.models(accountID: "reader") {
+                await calls.increment()
+                throw URLError(.timedOut)
+            }
+        }
+        let models = try await store.models(accountID: "reader") {
+            await calls.increment()
+            return [ChatGPTPlanModel(id: "gpt-5")]
+        }
+
+        #expect(models.map(\.id) == ["gpt-5"])
+        #expect(await calls.value == 2)
+    }
+
+    @Test("catalog defaults only an unset selection and never replaces a saved model")
+    func catalogPreservesUnavailableSavedSelection() {
+        let models = [ChatGPTPlanModel(id: "gpt-5")]
+
+        #expect(ChatGPTPlanModelSelection.defaulting(nil, from: models) == "gpt-5")
+        #expect(ChatGPTPlanModelSelection.defaulting("retired-model", from: models) == "retired-model")
+    }
+
+    @Test("model selection persists with the linked account")
+    func selectedModelPersistsWithLinkedAccount() async throws {
+        let store = SessionBox(session: session())
+        let service = ChatGPTPlanAccountService(
+            transport: OAuthTransportStub(),
+            load: { store.session },
+            save: { store.session = $0 },
+            clear: { store.session = nil }
+        )
+
+        let updated = try await service.selectModel("gpt-5")
+
+        #expect(updated.selectedModel == "gpt-5")
+        #expect(store.session?.selectedModel == "gpt-5")
+    }
+
+    @Test("settings loading defaults and saves only an unset selection")
+    @MainActor
+    func settingsLoadingDefaultsAndSavesSelection() async {
+        var saved: [String?] = []
+        let state = ChatGPTPlanModelSettingsState(
+            selectedModel: nil,
+            fetch: { [ChatGPTPlanModel(id: "gpt-5")] },
+            save: { saved.append($0) }
+        )
+
+        await state.load()
+
+        #expect(state.loadState == .selectable([ChatGPTPlanModel(id: "gpt-5")]))
+        #expect(state.selectedModel == "gpt-5")
+        #expect(saved == ["gpt-5"])
+    }
+
     @Test("Expired credentials refresh once and atomically replace rotated tokens")
     func refreshesRotatingCredentials() async throws {
         let store = SessionBox(session: session(expiresAt: .distantPast))
@@ -37,6 +150,31 @@ struct ChatGPTPlanAccountServiceTests {
     private func token(access: String, refresh: String) -> ChatGPTPlanTokenResponse {
         ChatGPTPlanTokenResponse(accessToken: access, refreshToken: refresh, idToken: "id", expiresIn: 3_600, scope: "openid chatgpt.tokens.use.direct")
     }
+}
+
+private final class ChatGPTPlanCatalogTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Date
+
+    init(_ value: Date) { self.value = value }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        value.addTimeInterval(interval)
+        lock.unlock()
+    }
+}
+
+private actor ChatGPTPlanCatalogCallCounter {
+    private(set) var value = 0
+
+    func increment() { value += 1 }
 }
 
 private final class SessionBox: @unchecked Sendable {

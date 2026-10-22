@@ -115,6 +115,29 @@ struct ChatGPTPlanSession: Codable, Equatable, Sendable, CustomStringConvertible
     let refreshToken: String
     let expiresAt: Date
     let scopes: Set<String>
+    let selectedModel: String?
+
+    init(
+        email: String,
+        subject: String,
+        clientID: String,
+        idToken: String,
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Date,
+        scopes: Set<String>,
+        selectedModel: String? = nil
+    ) {
+        self.email = email
+        self.subject = subject
+        self.clientID = clientID
+        self.idToken = idToken
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.expiresAt = expiresAt
+        self.scopes = scopes
+        self.selectedModel = selectedModel
+    }
 
     var description: String { "[REDACTED]" }
 

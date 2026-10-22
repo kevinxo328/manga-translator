@@ -72,6 +72,8 @@ struct SettingsView: View {
     @State private var copilotModelState: CopilotModelLoadState
     @State private var copilotToken: String?
     @State private var chatGPTPlanSession: ChatGPTPlanSession?
+    @State private var chatGPTPlanModelState: ChatGPTPlanModelLoadState = .idle
+    @State private var chatGPTPlanModel: String?
     @State private var chatGPTPlanError: String?
     @State private var chatGPTPlanBusy = false
     private let copilotModelStateOverride: CopilotModelLoadState?
@@ -150,6 +152,9 @@ struct SettingsView: View {
         }
         .task {
             chatGPTPlanSession = await chatGPTPlanAccount.session()
+            if let chatGPTPlanSession {
+                await loadChatGPTPlanModels(for: chatGPTPlanSession)
+            }
             if let copilotModelStateOverride {
                 copilotAvailability = .available(token: "ui-test")
                 copilotToken = "ui-test"
@@ -236,6 +241,7 @@ struct SettingsView: View {
             Section {
                 if let session = chatGPTPlanSession {
                     LabeledContent("Connected account", value: session.email)
+                    chatGPTPlanModelControls
                     Button("Log Out", role: .destructive, action: signOutOfChatGPTPlan)
                         .disabled(chatGPTPlanBusy)
                 } else {
@@ -316,6 +322,49 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var chatGPTPlanModelControls: some View {
+        switch ChatGPTPlanModelControls.forState(chatGPTPlanModelState) {
+        case .none:
+            EmptyView()
+        case .loading:
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking models…")
+            }
+        case .picker(let models):
+            Picker("Model", selection: chatGPTPlanModelBinding) {
+                ForEach(models) { model in
+                    Text(model.displayName).tag(Optional(model.id))
+                }
+            }
+        case .noModels:
+            Text("No ChatGPT models are available for this account.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .retry:
+            Text("Couldn’t load ChatGPT models.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Retry", action: retryChatGPTPlanModels)
+                .accessibilityIdentifier("settings.chatgptPlan.retry")
+        }
+    }
+
+    private var chatGPTPlanModelBinding: Binding<String?> {
+        Binding(
+            get: { chatGPTPlanModel },
+            set: { selectedModel in
+                chatGPTPlanModel = selectedModel
+                Task {
+                    guard let updated = try? await chatGPTPlanAccount.selectModel(selectedModel) else { return }
+                    chatGPTPlanSession = updated
+                }
+            }
+        )
+    }
+
     private func retryCopilotModels() {
         guard let token = copilotToken else { return }
         copilotModelState = .loading
@@ -331,6 +380,9 @@ struct SettingsView: View {
         Task {
             do {
                 chatGPTPlanSession = try await chatGPTPlanAccount.signIn()
+                if let chatGPTPlanSession {
+                    await loadChatGPTPlanModels(for: chatGPTPlanSession)
+                }
             } catch {
                 chatGPTPlanError = "ChatGPT sign-in could not be completed. Please try again."
             }
@@ -345,12 +397,40 @@ struct SettingsView: View {
             do {
                 try await chatGPTPlanAccount.signOut()
                 chatGPTPlanSession = nil
+                chatGPTPlanModelState = .idle
             } catch {
                 // The credential is removed even if remote revocation is unavailable.
                 chatGPTPlanSession = nil
+                chatGPTPlanModelState = .idle
                 chatGPTPlanError = "ChatGPT was disconnected locally, but remote revocation could not be confirmed."
             }
             chatGPTPlanBusy = false
+        }
+    }
+
+    @MainActor
+    private func loadChatGPTPlanModels(for session: ChatGPTPlanSession) async {
+        let state = ChatGPTPlanModelSettingsState(
+            selectedModel: session.selectedModel,
+            fetch: {
+                let accessToken = try await chatGPTPlanAccount.validAccessToken()
+                return try await ChatGPTPlanModelCatalogStore.shared.models(accountID: session.subject) {
+                    try await ChatGPTPlanModelCatalogService.fetchModels(accessToken: accessToken)
+                }
+            },
+            save: { selectedModel in
+                chatGPTPlanSession = try await chatGPTPlanAccount.selectModel(selectedModel)
+            }
+        )
+        await state.load()
+        chatGPTPlanModelState = state.loadState
+        chatGPTPlanModel = state.selectedModel
+    }
+
+    private func retryChatGPTPlanModels() {
+        guard let chatGPTPlanSession else { return }
+        Task {
+            await loadChatGPTPlanModels(for: chatGPTPlanSession)
         }
     }
 

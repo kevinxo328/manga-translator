@@ -2,6 +2,161 @@ import AppKit
 import Foundation
 import Network
 
+struct ChatGPTPlanModel: Identifiable, Hashable {
+    let id: String
+
+    var displayName: String { id }
+}
+
+actor ChatGPTPlanModelCatalogStore {
+    static let shared = ChatGPTPlanModelCatalogStore()
+
+    private struct Entry {
+        let models: [ChatGPTPlanModel]
+        let fetchedAt: Date
+    }
+
+    private let now: @Sendable () -> Date
+    private var entries: [String: Entry] = [:]
+    private var inFlight: [String: Task<[ChatGPTPlanModel], Error>] = [:]
+
+    init(now: @escaping @Sendable () -> Date = Date.init) {
+        self.now = now
+    }
+
+    func models(
+        accountID: String,
+        fetch: @escaping @Sendable () async throws -> [ChatGPTPlanModel]
+    ) async throws -> [ChatGPTPlanModel] {
+        let currentTime = now()
+        entries = entries.filter { currentTime.timeIntervalSince($0.value.fetchedAt) < 300 }
+        if let entry = entries[accountID] {
+            return entry.models
+        }
+        if let task = inFlight[accountID] {
+            return try await task.value
+        }
+
+        let task = Task { try await fetch() }
+        inFlight[accountID] = task
+        do {
+            let models = try await task.value
+            inFlight[accountID] = nil
+            entries[accountID] = Entry(models: models, fetchedAt: now())
+            return models
+        } catch {
+            inFlight[accountID] = nil
+            throw error
+        }
+    }
+}
+
+struct ChatGPTPlanModelCatalogService {
+    static let modelsEndpoint = URL(string: "https://api.openai.com/v1/models")!
+
+    static func fetchModels(accessToken: String, session: URLSession = .shared) async throws -> [ChatGPTPlanModel] {
+        var request = URLRequest(url: modelsEndpoint)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse).map({ 200 ..< 300 ~= $0.statusCode }) == true else {
+            throw TranslationError.invalidResponse
+        }
+        return try parseModels(data)
+    }
+
+    static func parseModels(_ data: Data) throws -> [ChatGPTPlanModel] {
+        struct Response: Decodable {
+            struct Model: Decodable {
+                let id: String
+                let object: String?
+            }
+
+            let data: [Model]
+        }
+
+        let response = try JSONDecoder().decode(Response.self, from: data)
+        let uniqueIDs = Set(response.data.compactMap { model -> String? in
+            guard model.object == "model", !model.id.isEmpty else { return nil }
+            return model.id
+        })
+        return uniqueIDs.sorted().map(ChatGPTPlanModel.init(id:))
+    }
+}
+
+enum ChatGPTPlanModelLoadState: Equatable {
+    case idle
+    case loading
+    case selectable([ChatGPTPlanModel])
+    case noModels
+    case failed(String)
+
+    static func loaded(_ models: [ChatGPTPlanModel]) -> ChatGPTPlanModelLoadState {
+        models.isEmpty ? .noModels : .selectable(models)
+    }
+
+    static func failed(from error: Error) -> ChatGPTPlanModelLoadState {
+        _ = error
+        return .failed("Couldn’t load ChatGPT models.")
+    }
+}
+
+enum ChatGPTPlanModelControls: Equatable {
+    case none
+    case loading
+    case picker([ChatGPTPlanModel])
+    case noModels
+    case retry
+
+    static func forState(_ state: ChatGPTPlanModelLoadState) -> ChatGPTPlanModelControls {
+        switch state {
+        case .idle: .none
+        case .loading: .loading
+        case .selectable(let models): .picker(models)
+        case .noModels: .noModels
+        case .failed: .retry
+        }
+    }
+}
+
+enum ChatGPTPlanModelSelection {
+    static func defaulting(_ savedModelID: String?, from models: [ChatGPTPlanModel]) -> String? {
+        savedModelID ?? models.first?.id
+    }
+}
+
+@MainActor
+final class ChatGPTPlanModelSettingsState {
+    private let fetch: () async throws -> [ChatGPTPlanModel]
+    private let save: (String?) async throws -> Void
+    private(set) var loadState: ChatGPTPlanModelLoadState = .idle
+    private(set) var selectedModel: String?
+
+    init(
+        selectedModel: String?,
+        fetch: @escaping () async throws -> [ChatGPTPlanModel],
+        save: @escaping (String?) async throws -> Void
+    ) {
+        self.selectedModel = selectedModel
+        self.fetch = fetch
+        self.save = save
+    }
+
+    func load() async {
+        loadState = .loading
+        do {
+            let models = try await fetch()
+            let selection = ChatGPTPlanModelSelection.defaulting(selectedModel, from: models)
+            if selection != selectedModel {
+                try await save(selection)
+                selectedModel = selection
+            }
+            loadState = .loaded(models)
+        } catch {
+            loadState = .failed(from: error)
+        }
+    }
+}
+
 protocol ChatGPTPlanOAuthTransport: Sendable {
     func exchange(code: String, clientID: String, redirectURI: URL, verifier: String) async throws -> ChatGPTPlanTokenResponse
     func refresh(refreshToken: String, clientID: String) async throws -> ChatGPTPlanTokenResponse
@@ -141,6 +296,23 @@ actor ChatGPTPlanAccountService {
 
     func session() -> ChatGPTPlanSession? { load() }
 
+    func selectModel(_ modelID: String?) throws -> ChatGPTPlanSession {
+        guard let session = load() else { throw TranslationError.missingAPIKey(.chatGPTPlan) }
+        let updated = ChatGPTPlanSession(
+            email: session.email,
+            subject: session.subject,
+            clientID: session.clientID,
+            idToken: session.idToken,
+            accessToken: session.accessToken,
+            refreshToken: session.refreshToken,
+            expiresAt: session.expiresAt,
+            scopes: session.scopes,
+            selectedModel: modelID
+        )
+        save(updated)
+        return updated
+    }
+
     func signIn() async throws -> ChatGPTPlanSession {
         let listener = await MainActor.run { ChatGPTPlanLoopbackListener() }
         let redirectURI = try await listener.start()
@@ -164,7 +336,7 @@ actor ChatGPTPlanAccountService {
         if let refreshTask { return try await refreshTask.value.accessToken }
         let task = Task { [transport, now, save] () throws -> ChatGPTPlanSession in
             let token = try await transport.refresh(refreshToken: session.refreshToken, clientID: session.clientID)
-            let updated = ChatGPTPlanSession(email: session.email, subject: session.subject, clientID: session.clientID, idToken: token.idToken, accessToken: token.accessToken, refreshToken: token.refreshToken, expiresAt: now().addingTimeInterval(token.expiresIn), scopes: Set(token.scope.split(separator: " ").map(String.init)))
+            let updated = ChatGPTPlanSession(email: session.email, subject: session.subject, clientID: session.clientID, idToken: token.idToken, accessToken: token.accessToken, refreshToken: token.refreshToken, expiresAt: now().addingTimeInterval(token.expiresIn), scopes: Set(token.scope.split(separator: " ").map(String.init)), selectedModel: session.selectedModel)
             guard updated.isAuthorizedForPlanUsage else { throw ChatGPTPlanOAuthError.missingPlanScope }
             save(updated); return updated
         }
