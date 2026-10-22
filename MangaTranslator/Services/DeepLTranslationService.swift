@@ -37,7 +37,7 @@ struct DeepLTranslationService: TranslationService {
             let chunk = bubbles[chunkStart..<min(chunkStart + Self.maxTextsPerRequest, bubbles.count)]
             let textsToSend = chunk.map { GlossarySubstitution.applyXML(to: $0.text, terms: terms) }
             let translatedTexts = try await translateTexts(
-                textsToSend, from: source, to: target, apiKey: apiKey, useXML: !terms.isEmpty
+                textsToSend, from: source, to: target, apiKey: apiKey.rawValue, useXML: !terms.isEmpty
             )
             for (bubble, translated) in zip(chunk, translatedTexts) {
                 results.append(TranslatedBubble(

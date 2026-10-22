@@ -134,17 +134,12 @@ final class TranslationViewModelTests: XCTestCase {
         private(set) var lookupCount = 0
         private(set) var storedBubbleSets: [[TranslatedBubble]] = []
 
-        func lookup(
-            imageHash: String, source: Language, target: Language, engine: TranslationEngine
-        ) -> CacheService.CachedTranslationResult? {
+        func lookup(identity: CacheIdentity) -> CacheService.CachedTranslationResult? {
             lookupCount += 1
             return lookupResult
         }
         func translationCacheSize() -> Int64 { 0 }
-        func store(
-            imageHash: String, source: Language, target: Language,
-            engine: TranslationEngine, bubbles: [TranslatedBubble]
-        ) throws {
+        func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws {
             storedBubbleSets.append(bubbles)
         }
         func clearAll() throws {}
@@ -3054,18 +3049,10 @@ private final class CapturingCacheService: CacheServiceProtocol, @unchecked Send
     let glossaryService: GlossaryService = GlossaryService(db: nil, isAvailable: false)
     private(set) var storedBubbleSets: [[TranslatedBubble]] = []
 
-    func lookup(
-        imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> CacheService.CachedTranslationResult? { nil }
+    func lookup(identity: CacheIdentity) -> CacheService.CachedTranslationResult? { nil }
     func translationCacheSize() -> Int64 { 0 }
 
-    func store(
-        imageHash: String,
-        source: Language,
-        target: Language,
-        engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
-    ) throws {
+    func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws {
         if let storeError { throw storeError }
         storedBubbleSets.append(bubbles)
     }
@@ -3399,21 +3386,13 @@ private final class MockCacheService: CacheServiceProtocol {
         self.glossaryService = GlossaryService(db: nil, isAvailable: false)
     }
 
-    func lookup(
-        imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> CacheService.CachedTranslationResult? {
+    func lookup(identity: CacheIdentity) -> CacheService.CachedTranslationResult? {
         return nil
     }
 
     func translationCacheSize() -> Int64 { 0 }
 
-    func store(
-        imageHash: String,
-        source: Language,
-        target: Language,
-        engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
-    ) throws {
+    func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws {
         storeCallCount += 1
         if let storeError { throw storeError }
     }

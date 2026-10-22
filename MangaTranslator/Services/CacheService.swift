@@ -11,6 +11,14 @@ enum CacheError: Error, Equatable {
     case sqlite(code: Int32, message: String, operation: String)
 }
 
+/// The complete context that identifies a cached translation.
+struct CacheIdentity: Equatable, Sendable {
+    let imageHash: String
+    let source: Language
+    let target: Language
+    let engine: TranslationEngine
+}
+
 // Validation errors thrown before any SQL is executed. These identify invalid
 // caller input and are distinct from database-level failures.
 enum GlossaryValidationError: Error, Equatable {
@@ -25,19 +33,11 @@ protocol CacheServiceProtocol: AnyObject {
     var isAvailable: Bool { get }
     var glossaryService: GlossaryService { get }
 
-    func lookup(
-        imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> CacheService.CachedTranslationResult?
+    func lookup(identity: CacheIdentity) -> CacheService.CachedTranslationResult?
 
     func translationCacheSize() -> Int64
 
-    func store(
-        imageHash: String,
-        source: Language,
-        target: Language,
-        engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
-    ) throws
+    func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws
 
     func clearAll() throws
 }
@@ -163,9 +163,7 @@ final class CacheService: CacheServiceProtocol {
         let bubbles: [TranslatedBubble]
     }
 
-    func lookup(
-        imageHash: String, source: Language, target: Language, engine: TranslationEngine
-    ) -> CachedTranslationResult? {
+    func lookup(identity: CacheIdentity) -> CachedTranslationResult? {
         guard isAvailable, let db else { return nil }
         let sql = """
         SELECT bubbles_json FROM translation_cache
@@ -176,10 +174,10 @@ final class CacheService: CacheServiceProtocol {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, imageHash, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 2, source.rawValue, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 1, identity.imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, identity.source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, identity.target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, identity.engine.rawValue, -1, CacheService.sqliteTransient)
 
         guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
 
@@ -189,13 +187,16 @@ final class CacheService: CacheServiceProtocol {
         return CachedTranslationResult(bubbles: bubbles)
     }
 
-    func store(
-        imageHash: String,
-        source: Language,
-        target: Language,
-        engine: TranslationEngine,
-        bubbles: [TranslatedBubble]
-    ) throws {
+    @available(*, deprecated, message: "Use lookup(identity:) to require complete cache identity")
+    func lookup(
+        imageHash: String, source: Language, target: Language, engine: TranslationEngine
+    ) -> CachedTranslationResult? {
+        lookup(identity: CacheIdentity(
+            imageHash: imageHash, source: source, target: target, engine: engine
+        ))
+    }
+
+    func store(identity: CacheIdentity, bubbles: [TranslatedBubble]) throws {
         guard isAvailable, let db else { throw CacheError.unavailable }
         guard let jsonString = encodeBubbles(bubbles) else {
             throw CacheError.sqlite(code: SQLITE_ERROR, message: "Failed to encode bubbles to JSON", operation: "CacheService.store")
@@ -219,10 +220,10 @@ final class CacheService: CacheServiceProtocol {
         }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, imageHash, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 2, source.rawValue, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 3, target.rawValue, -1, CacheService.sqliteTransient)
-        sqlite3_bind_text(stmt, 4, engine.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 1, identity.imageHash, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 2, identity.source.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 3, identity.target.rawValue, -1, CacheService.sqliteTransient)
+        sqlite3_bind_text(stmt, 4, identity.engine.rawValue, -1, CacheService.sqliteTransient)
         sqlite3_bind_text(stmt, 5, jsonString, -1, CacheService.sqliteTransient)
         sqlite3_bind_double(stmt, 6, Date().timeIntervalSince1970)
 
@@ -230,6 +231,19 @@ final class CacheService: CacheServiceProtocol {
         if stepResult != SQLITE_DONE {
             throw CacheService.makeError(db: db, operation: "CacheService.store")
         }
+    }
+
+    @available(*, deprecated, message: "Use store(identity:bubbles:) to require complete cache identity")
+    func store(
+        imageHash: String,
+        source: Language,
+        target: Language,
+        engine: TranslationEngine,
+        bubbles: [TranslatedBubble]
+    ) throws {
+        try store(identity: CacheIdentity(
+            imageHash: imageHash, source: source, target: target, engine: engine
+        ), bubbles: bubbles)
     }
 
     func clearAll() throws {

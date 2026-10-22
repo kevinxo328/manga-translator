@@ -725,12 +725,12 @@ final class TranslationViewModel: ObservableObject {
         // matches the page's committed bubble set — a stale layout (bubbles
         // drawn, moved, deleted, or reordered since the entry was written)
         // falls through to the preserve-and-retranslate branch below.
-        if mode != .retranslate, let cached = cacheService.lookup(
+        if mode != .retranslate, let cached = cacheService.lookup(identity: CacheIdentity(
             imageHash: imageHash,
             source: preferences.sourceLanguage,
             target: preferences.targetLanguage,
             engine: preferences.translationEngine
-        ) {
+        )) {
             if case .translated(let existing) = previousPage.state, !existing.isEmpty, mode == .engineSwitch {
                 if Self.layoutMatches(committed: existing, cached: cached.bubbles) {
                     return .cacheHit(bubbles: cached.bubbles)
@@ -890,13 +890,12 @@ final class TranslationViewModel: ObservableObject {
         }
         let translated = output.bubbles.sorted { $0.index < $1.index }
         do {
-            try cacheService.store(
+            try cacheService.store(identity: CacheIdentity(
                 imageHash: item.imageHash,
                 source: preferences.sourceLanguage,
                 target: preferences.targetLanguage,
-                engine: preferences.translationEngine,
-                bubbles: translated
-            )
+                engine: preferences.translationEngine
+            ), bubbles: translated)
         } catch {
             logCacheMutationFailure(error, operation: "CacheService.store")
         }
@@ -935,13 +934,12 @@ final class TranslationViewModel: ObservableObject {
         case .noMeaningfulBubbles(let imageHash):
             pages[index].state = .translated([])
             do {
-                try cacheService.store(
-                    imageHash: imageHash,
-                    source: preferences.sourceLanguage,
-                    target: preferences.targetLanguage,
-                    engine: preferences.translationEngine,
-                    bubbles: []
-                )
+            try cacheService.store(identity: CacheIdentity(
+                imageHash: imageHash,
+                source: preferences.sourceLanguage,
+                target: preferences.targetLanguage,
+                engine: preferences.translationEngine
+            ), bubbles: [])
             } catch {
                 logCacheMutationFailure(error, operation: "CacheService.store")
             }
@@ -964,13 +962,12 @@ final class TranslationViewModel: ObservableObject {
                 }
                 let translated = output.bubbles.sorted { $0.index < $1.index }
                 do {
-                    try cacheService.store(
+                    try cacheService.store(identity: CacheIdentity(
                         imageHash: imageHash,
                         source: preferences.sourceLanguage,
                         target: preferences.targetLanguage,
-                        engine: preferences.translationEngine,
-                        bubbles: translated
-                    )
+                        engine: preferences.translationEngine
+                    ), bubbles: translated)
                 } catch {
                     logCacheMutationFailure(error, operation: "CacheService.store")
                 }
@@ -1246,13 +1243,12 @@ final class TranslationViewModel: ObservableObject {
         if workingOrdered.isEmpty {
             if let hash = pages[pageIndex].imageHash {
                 do {
-                    try cacheService.store(
+                    try cacheService.store(identity: CacheIdentity(
                         imageHash: hash,
                         source: preferences.sourceLanguage,
                         target: preferences.targetLanguage,
-                        engine: preferences.translationEngine,
-                        bubbles: []
-                    )
+                        engine: preferences.translationEngine
+                    ), bubbles: [])
                 } catch {
                     logCacheMutationFailure(error, operation: "CacheService.store [edit commit empty]", level: .warning)
                 }
@@ -1332,13 +1328,12 @@ final class TranslationViewModel: ObservableObject {
         // affect the user-visible commit.
         if let hash = pages[pageIndex].imageHash {
             do {
-                try cacheService.store(
+                try cacheService.store(identity: CacheIdentity(
                     imageHash: hash,
                     source: preferences.sourceLanguage,
                     target: preferences.targetLanguage,
-                    engine: preferences.translationEngine,
-                    bubbles: output.bubbles
-                )
+                    engine: preferences.translationEngine
+                ), bubbles: output.bubbles)
             } catch {
                 logCacheMutationFailure(error, operation: "CacheService.store [edit commit]", level: .warning)
             }

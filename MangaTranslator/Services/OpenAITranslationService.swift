@@ -37,7 +37,7 @@ struct OpenAITranslationService: TranslationService {
             from: source,
             to: target,
             context: context,
-            authToken: apiKey
+            authToken: apiKey.rawValue
         )
     }
 
@@ -59,7 +59,7 @@ struct OpenAITranslationService: TranslationService {
             from: source,
             to: target,
             priorContext: priorContext,
-            authToken: apiKey
+            authToken: apiKey.rawValue
         )
     }
 

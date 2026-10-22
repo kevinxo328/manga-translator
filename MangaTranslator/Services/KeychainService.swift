@@ -1,12 +1,28 @@
 import Foundation
 import Security
 
+/// Provider credential material. Its textual representation is always redacted
+/// so it cannot be exposed accidentally through diagnostics.
+struct APIKey: Equatable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+    let rawValue: String
+
+    init(_ rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    init(stringLiteral value: String) {
+        self.init(value)
+    }
+
+    var description: String { "[REDACTED]" }
+}
+
 struct KeychainService {
     private static let serviceName = "com.chunweiliu.MangaTranslator"
 
     // In-memory cache shared across all instances within a session.
     // Reduces Keychain access after the initial authorization prompt.
-    private static var cache: [String: String] = [:]
+    private static var cache: [String: APIKey] = [:]
     private static let cacheLock = NSLock()
 
     // Injectable for testing; nil means use the real Security API.
@@ -18,8 +34,8 @@ struct KeychainService {
 
     // MARK: - Public API
 
-    func store(_ apiKey: String, for engine: TranslationEngine) {
-        guard let data = apiKey.data(using: .utf8) else { return }
+    func store(_ apiKey: APIKey, for engine: TranslationEngine) {
+        guard let data = apiKey.rawValue.data(using: .utf8) else { return }
         let account = engine.rawValue
 
         let searchQuery: [String: Any] = [
@@ -53,7 +69,7 @@ struct KeychainService {
         }
     }
 
-    func retrieve(for engine: TranslationEngine) -> String? {
+    func retrieve(for engine: TranslationEngine) -> APIKey? {
         let account = engine.rawValue
 
         if usesCache, let cached = Self.cachedValue(for: account) {
@@ -75,10 +91,12 @@ struct KeychainService {
         guard status == errSecSuccess, let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else { return nil }
 
+        let apiKey = APIKey(value)
+
         if usesCache {
-            Self.setCachedValue(value, for: account)
+            Self.setCachedValue(apiKey, for: account)
         }
-        return value
+        return apiKey
     }
 
     func delete(for engine: TranslationEngine) {
@@ -105,13 +123,13 @@ struct KeychainService {
         clearCachedValues()
     }
 
-    private static func cachedValue(for account: String) -> String? {
+    private static func cachedValue(for account: String) -> APIKey? {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         return cache[account]
     }
 
-    private static func setCachedValue(_ value: String, for account: String) {
+    private static func setCachedValue(_ value: APIKey, for account: String) {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         cache[account] = value

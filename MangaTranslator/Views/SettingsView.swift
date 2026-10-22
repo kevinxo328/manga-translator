@@ -400,16 +400,16 @@ struct SettingsView: View {
     }
 
     private func loadKeys() {
-        deepLKey = keychainService.retrieve(for: .deepL) ?? ""
-        googleKey = keychainService.retrieve(for: .google) ?? ""
-        openAIKey = keychainService.retrieve(for: .openAI) ?? ""
+        deepLKey = keychainService.retrieve(for: .deepL)?.rawValue ?? ""
+        googleKey = keychainService.retrieve(for: .google)?.rawValue ?? ""
+        openAIKey = keychainService.retrieve(for: .openAI)?.rawValue ?? ""
     }
 
     private func saveKey(_ key: String, for engine: TranslationEngine) {
         if key.isEmpty {
             keychainService.delete(for: engine)
         } else {
-            keychainService.store(key, for: engine)
+            keychainService.store(APIKey(key), for: engine)
         }
     }
 }

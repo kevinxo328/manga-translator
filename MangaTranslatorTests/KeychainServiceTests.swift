@@ -6,6 +6,14 @@ import Security
 @Suite("KeychainService", .serialized)
 struct KeychainServiceTests {
 
+    @Test("APIKey redacts its diagnostic representation")
+    func apiKeyRedactsDiagnosticRepresentation() {
+        let apiKey = APIKey("provider-secret-value")
+
+        #expect(apiKey.description == "[REDACTED]")
+        #expect(!apiKey.description.contains(apiKey.rawValue))
+    }
+
     init() {
         KeychainService.clearCache()
         let service = KeychainService()
@@ -189,8 +197,8 @@ struct KeychainServiceTests {
                         service.secItemDelete = { _ in errSecSuccess }
                         service.secItemCopyMatching = { _, _ in errSecItemNotFound }
 
-                        service.store(operation.1, for: operation.0)
-                        #expect(service.retrieve(for: operation.0) == operation.1)
+                        service.store(APIKey(operation.1), for: operation.0)
+                        #expect(service.retrieve(for: operation.0)?.rawValue == operation.1)
                         #expect(service.hasKey(for: operation.0))
                         service.delete(for: operation.0)
                     }
@@ -204,8 +212,8 @@ struct KeychainServiceTests {
             service.secItemAdd = { _, _ in errSecSuccess }
             service.secItemUpdate = { _, _ in errSecSuccess }
 
-            service.store(finalValue, for: engine)
-            #expect(service.retrieve(for: engine) == finalValue,
+            service.store(APIKey(finalValue), for: engine)
+            #expect(service.retrieve(for: engine)?.rawValue == finalValue,
                     "Final deterministic store must win after bounded concurrent cache access")
         }
     }

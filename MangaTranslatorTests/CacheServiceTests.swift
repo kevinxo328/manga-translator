@@ -5,6 +5,27 @@ import AppKit
 import SQLite3
 
 final class CacheServiceTests: XCTestCase {
+
+    func testCacheIdentityKeepsTranslationContextsSeparate() throws {
+        let cache = makeCache()
+        let imageHash = "identity-test-\(UUID().uuidString)"
+        let japaneseToTraditionalChinese = CacheIdentity(
+            imageHash: imageHash, source: .ja, target: .zhHant, engine: .openAI
+        )
+        let japaneseToEnglish = CacheIdentity(
+            imageHash: imageHash, source: .ja, target: .en, engine: .openAI
+        )
+
+        let bubble = BubbleCluster(
+            boundingBox: .zero, text: "identity", observations: [], index: 0
+        )
+        try cache.store(identity: japaneseToTraditionalChinese, bubbles: [
+            TranslatedBubble(bubble: bubble, translatedText: "身分", index: 0)
+        ])
+
+        XCTAssertNotNil(cache.lookup(identity: japaneseToTraditionalChinese))
+        XCTAssertNil(cache.lookup(identity: japaneseToEnglish))
+    }
     // MARK: - Existing happy-path tests, migrated to throws API
 
     func testLookupRoundTripsBubblePolarity() throws {
