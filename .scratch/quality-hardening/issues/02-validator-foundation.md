@@ -4,10 +4,14 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] The validator has a stable command-line entry point and machine-readable failure output.
-- [ ] Fixture tests prove accepted and rejected policy examples.
-- [ ] The command succeeds against the current repository before downstream rules are added.
-- [ ] A deliberately invalid fixture makes the validator fail, and restoration makes it pass.
+- [x] The validator has a stable command-line entry point and machine-readable failure output.
+- [x] Fixture tests prove accepted and rejected policy examples.
+- [x] The command succeeds against the current repository before downstream rules are added.
+- [x] A deliberately invalid fixture makes the validator fail, and restoration makes it pass.
+
+## Comments
+
+- Delivered by `ed2062d` and `90e9f40`: `repository-validator` emits JSON violations and a nonzero exit for invalid roots; fixture and executable tests cover the command contract.
 

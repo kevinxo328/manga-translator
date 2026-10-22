@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Build the repository-local validator foundation.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] MLX and PaddleOCRVL target ownership is checked without PBX object-ID assertions.
 - [ ] Deployment, entitlement, Sparkle, and required resource contracts are validated structurally.
