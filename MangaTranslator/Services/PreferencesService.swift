@@ -129,13 +129,14 @@ struct ChatGPTPlanTranslationService: TranslationService {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        let requestBody: [String: Any] = [
             "model": model,
             "instructions": systemPrompt,
-            "input": userPrompt,
+            "input": [["role": "user", "content": userPrompt]],
             "store": false,
             "stream": true
-        ])
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
         let (bytes, response) = try await urlSession.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {

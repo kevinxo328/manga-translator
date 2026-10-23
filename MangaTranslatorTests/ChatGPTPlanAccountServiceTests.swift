@@ -184,6 +184,10 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(body["store"] as? Bool == false)
         #expect((body["instructions"] as? String)?.contains("Glossary") == true)
         #expect((body["instructions"] as? String)?.contains("Recent context") == true)
+        let input = try #require(body["input"] as? [[String: Any]])
+        #expect(input.count == 1)
+        #expect(input[0]["role"] as? String == "user")
+        #expect((input[0]["content"] as? String)?.contains("こんにちは") == true)
         #expect(body["temperature"] == nil)
         #expect(body["max_output_tokens"] == nil)
     }

@@ -409,14 +409,21 @@ final class ChatGPTPlanLoopbackListener {
     private func receive(_ connection: NWConnection) {
         connection.start(queue: networkQueue)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 8_192) { [weak self] data, _, _, error in
-            defer { connection.cancel(); Task { @MainActor in self?.cancel() } }
             guard error == nil, let data, let request = String(data: data, encoding: .utf8), let target = request.split(separator: "\n").first?.split(separator: " ").dropFirst().first, let url = URL(string: "http://127.0.0.1\(target)") else {
-                Task { @MainActor in self?.finish(.failure(ChatGPTPlanOAuthError.invalidCallback)) }; return
+                connection.cancel()
+                Task { @MainActor in
+                    self?.finish(.failure(ChatGPTPlanOAuthError.invalidCallback))
+                    self?.cancel()
+                }
+                return
             }
             let page = "You may return to MangaTranslator."
             let response = "HTTP/1.1 200 OK\r\nContent-Length: \(page.utf8.count)\r\n\r\n\(page)"
-            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in })
             Task { @MainActor in self?.finish(.success(url)) }
+            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
+                connection.cancel()
+                Task { @MainActor in self?.cancel() }
+            })
         }
     }
 
