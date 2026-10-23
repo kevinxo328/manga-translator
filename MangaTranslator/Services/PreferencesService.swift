@@ -180,7 +180,7 @@ struct ChatGPTPlanTranslationService: TranslationService {
             var data = Data()
             for try await byte in bytes { data.append(byte) }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            if structuredOutput, Self.isStructuredOutputUnsupported(responseData: data) {
+            if structuredOutput, Self.isStructuredOutputUnsupported(statusCode: statusCode, responseData: data) {
                 throw ChatGPTPlanStructuredOutputUnsupportedError()
             }
             let sanitized = APIErrorSanitizer.sanitize(
@@ -219,15 +219,21 @@ struct ChatGPTPlanTranslationService: TranslationService {
         defaults.set(records, forKey: Self.unsupportedStructuredOutputModelsKey)
     }
 
-    private static func isStructuredOutputUnsupported(responseData: Data) -> Bool {
-        guard let body = String(data: responseData, encoding: .utf8)?.lowercased() else { return false }
-        let identifiesStructuredOutput = body.contains("structured output")
-            || body.contains("structured_output")
-            || body.contains("json_schema")
-        let identifiesUnsupportedCapability = body.contains("unsupported")
-            || body.contains("not supported")
-            || body.contains("does not support")
-        return identifiesStructuredOutput && identifiesUnsupportedCapability
+    private static func isStructuredOutputUnsupported(statusCode: Int, responseData: Data) -> Bool {
+        guard (400...499).contains(statusCode), statusCode != 401, statusCode != 403, statusCode != 429,
+              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let error = response["error"] as? [String: Any],
+              let code = error["code"] as? String else {
+            return false
+        }
+        if code == "structured_output_unsupported" { return true }
+        guard code == "unsupported_parameter" else { return false }
+        let parameter = (error["param"] as? String)?.lowercased() ?? ""
+        let message = (error["message"] as? String)?.lowercased() ?? ""
+        return parameter.contains("text.format")
+            || parameter.contains("response_format")
+            || message.contains("structured output")
+            || message.contains("json_schema")
     }
 
     private static let multiPageStructuredOutputFormat: [String: Any] = [

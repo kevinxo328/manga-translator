@@ -339,6 +339,34 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(captured.requests.count == 3)
         #expect(captured.requests[2].jsonMockBody()["text"] != nil)
     }
+
+    @Test("Plan batch does not cache a temporary provider refusal as unsupported output")
+    func planBatchDoesNotCacheTemporaryProviderRefusal() async throws {
+        let captured = RequestListBox()
+        var calls = 0
+        let success = completedBatchSSE(#"{"pages":[{"page_id":"1","bubbles":[{"index":0,"translation":"Hello"}],"detected_terms":[]}]}"#)
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.requests.append(request)
+            calls += 1
+            if calls == 1 {
+                let body = #"{"error":{"code":"rate_limit_exceeded","message":"Structured output requests are temporarily unavailable"}}"#
+                return (HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(success.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")), urlSession: httpSession, defaults: isolatedDefaults()
+        )
+
+        await #expect(throws: TranslationError.self) {
+            _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+        }
+        _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+
+        #expect(captured.requests.count == 2)
+        #expect(captured.requests.allSatisfy { $0.jsonMockBody()["text"] != nil })
+    }
     @Test("catalog keeps displayable plan models in server order")
     func catalogFiltersDisplayableModels() throws {
         let data = """
