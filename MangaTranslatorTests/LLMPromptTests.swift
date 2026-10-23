@@ -124,6 +124,18 @@ struct LLMResponseParserTests {
         #expect(byIndex[3]?.bubble.text == "C")
     }
 
+    @Test("parser converts literal escaped newlines in LLM translations into line breaks")
+    func parserConvertsLiteralEscapedNewlines() throws {
+        let bubbles = [makeBubble(index: 0)]
+        let json = #"""
+        [{"index": 0, "translation": "竟……竟然！\\n那不就像指揮官一樣嗎！"}]
+        """#
+
+        let (translated, _) = try LLMResponseParser.parse(json, bubbles: bubbles)
+
+        #expect(translated.first?.translatedText == "竟……竟然！\n那不就像指揮官一樣嗎！")
+    }
+
     // MARK: - Strict index validation
 
     @Test("parser rejects items with unknown index")
@@ -269,6 +281,18 @@ struct LLMResponseParserTests {
         #expect(outputs[0].bubbles.first?.translatedText == "T1")
         #expect(outputs[1].bubbles.first?.translatedText == "T2")
         #expect(outputs[2].bubbles.first?.translatedText == "T3")
+    }
+
+    @Test("parseMultiPage converts literal escaped newlines in LLM translations into line breaks")
+    func parserMultiPageConvertsLiteralEscapedNewlines() throws {
+        let inputs = [makePageInput(pageId: "1", bubbleIndices: [0])]
+        let json = #"""
+        {"pages": [{"page_id": "1", "bubbles": [{"index": 0, "translation": "第一行\\n第二行"}]}]}
+        """#
+
+        let outputs = try LLMResponseParser.parseMultiPage(json, pageInputs: inputs)
+
+        #expect(outputs.first?.bubbles.first?.translatedText == "第一行\n第二行")
     }
 
     @Test("parseMultiPage throws MultiPageParseError.missingPage when a requested page id is absent")

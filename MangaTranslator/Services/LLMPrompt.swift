@@ -266,6 +266,15 @@ enum LLMResponseParser {
         }
     }
 
+    // Some LLM responses double-escape line breaks, so JSON decoding leaves a visible "\\n".
+    // Convert only line-break escapes, preserving all other backslashes in translated text.
+    private static func normalizeLineBreakEscapes(in translation: String) -> String {
+        translation
+            .replacingOccurrences(of: "\\r\\n", with: "\n")
+            .replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\\r", with: "\n")
+    }
+
     // Parses a multi-page batch response and returns outputs in the order of `pageInputs`.
     // Throws MultiPageParseError when the response is malformed, missing a requested page,
     // contains an unexpected page, repeats a page id, or omits/duplicates/invents a bubble
@@ -333,7 +342,7 @@ enum LLMResponseParser {
                 guard let originalBubble = bubbleByIndex[item.index] else { return nil }
                 return TranslatedBubble(
                     bubble: originalBubble,
-                    translatedText: item.translation,
+                    translatedText: normalizeLineBreakEscapes(in: item.translation),
                     index: originalBubble.index
                 )
             }
@@ -367,7 +376,7 @@ enum LLMResponseParser {
             guard let originalBubble = bubbleByIndex[item.index] else { return nil }
             return TranslatedBubble(
                 bubble: originalBubble,
-                translatedText: item.translation,
+                translatedText: normalizeLineBreakEscapes(in: item.translation),
                 index: originalBubble.index
             )
         }
