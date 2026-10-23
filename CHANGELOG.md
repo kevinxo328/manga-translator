@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.2 (2026-10-24)
+
+### Bug Fixes
+
+- Fixed translated text showing literal "\n" instead of actual line breaks in speech bubbles.
+
 ## v1.6.1 (2026-10-23)
 
 ### Bug Fixes
