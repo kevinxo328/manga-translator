@@ -4,6 +4,33 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("Sign-in persists the verified account after the browser callback")
+    @MainActor
+    func signInCompletesThroughInjectedBrowserAndCallback() async throws {
+        let browser = BrowserStub()
+        let listener = CallbackListenerStub { browser.authorizationURL }
+        let store = SessionBox(session: nil)
+        let transport = OAuthTransportStub(exchange: { await browser.tokenResponse() })
+        let service = ChatGPTPlanAccountService(
+            transport: transport,
+            idTokenVerifier: IDTokenVerifierStub(),
+            load: { store.session }, save: { store.session = $0 }, clear: { store.session = nil },
+            now: { Date(timeIntervalSince1970: 1_000) },
+            listenerFactory: { listener },
+            openBrowser: { url in browser.authorizationURL = url; return true }
+        )
+        listener.callbackURL = { [weak browser] in
+            let items = URLComponents(url: browser?.authorizationURL ?? URL(string: "https://invalid.example")!, resolvingAgainstBaseURL: false)?.queryItems
+            let state = items?.first(where: { $0.name == "state" })?.value ?? ""
+            return URL(string: "http://127.0.0.1:1234/callback?code=code&state=\(state)&client_id=issued-client")!
+        }
+
+        let session = try await service.signIn()
+
+        #expect(browser.authorizationURL != nil)
+        #expect(session.email == "reader@example.com")
+        #expect(store.session == session)
+    }
     @Test("ID token verifier rejects unsigned tokens before accepting account claims")
     func idTokenVerifierRejectsUnsignedToken() async {
         let unsignedToken = "eyJhbGciOiJub25lIiwia2lkIjoia2lkIn0.eyJzdWIiOiJ1c2VyIn0."
@@ -49,7 +76,6 @@ struct ChatGPTPlanAccountServiceTests {
         defer { listener.cancel() }
         let redirectURI = try await listener.start()
         let callback = Task { try await listener.waitForCallback() }
-        try await Task.sleep(for: .milliseconds(100))
         let requestURL = URL(string: "\(redirectURI.absoluteString)?code=authorization-code&state=state")!
 
         let (_, response) = try await URLSession.shared.data(from: requestURL)
@@ -423,17 +449,50 @@ private final class RequestListBox: @unchecked Sendable {
     var requests: [URLRequest] = []
 }
 
+@MainActor
+private final class BrowserStub {
+    var authorizationURL: URL?
+
+    func tokenResponse() -> ChatGPTPlanTokenResponse {
+        let nonce = URLComponents(url: authorizationURL!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "nonce" })?.value ?? ""
+        let claims: [String: Any] = [
+            "iss": "https://auth.openai.com", "aud": "issued-client", "nonce": nonce,
+            "email_verified": true, "exp": 2_000.0, "email": "reader@example.com", "sub": "reader"
+        ]
+        let header = Data(#"{"alg":"RS256","kid":"test"}"#.utf8).base64EncodedString()
+        let payload = try! JSONSerialization.data(withJSONObject: claims).base64EncodedString()
+        return ChatGPTPlanTokenResponse(accessToken: "access", refreshToken: "refresh", idToken: "\(header).\(payload).signature", expiresIn: 3_600, scope: "openid chatgpt.tokens.use.direct")
+    }
+}
+
+@MainActor
+private final class CallbackListenerStub: ChatGPTPlanCallbackListening {
+    var callbackURL: (() -> URL)!
+
+    init(_ authorizationURL: @escaping () -> URL?) {}
+
+    func start() async throws -> URL { URL(string: "http://127.0.0.1:1234/callback")! }
+    func waitForCallback() async throws -> URL { callbackURL() }
+    func cancel() {}
+}
+
+private struct IDTokenVerifierStub: ChatGPTPlanIDTokenVerifying {
+    func verifySignature(of idToken: String) async throws {}
+}
+
 private actor OAuthTransportStub: ChatGPTPlanOAuthTransport {
     let refreshResult: ChatGPTPlanTokenResponse
     let revokeError: Error?
+    let exchangeResult: (@Sendable () async -> ChatGPTPlanTokenResponse)?
     var refreshCalls = 0
 
-    init(refreshResult: ChatGPTPlanTokenResponse = ChatGPTPlanTokenResponse(accessToken: "access", refreshToken: "refresh", idToken: "id", expiresIn: 3_600, scope: "openid"), revokeError: Error? = nil) {
+    init(refreshResult: ChatGPTPlanTokenResponse = ChatGPTPlanTokenResponse(accessToken: "access", refreshToken: "refresh", idToken: "id", expiresIn: 3_600, scope: "openid"), revokeError: Error? = nil, exchange: (@Sendable () async -> ChatGPTPlanTokenResponse)? = nil) {
         self.refreshResult = refreshResult
         self.revokeError = revokeError
+        self.exchangeResult = exchange
     }
 
-    func exchange(code: String, clientID: String, redirectURI: URL, verifier: String) async throws -> ChatGPTPlanTokenResponse { refreshResult }
+    func exchange(code: String, clientID: String, redirectURI: URL, verifier: String) async throws -> ChatGPTPlanTokenResponse { await exchangeResult?() ?? refreshResult }
     func refresh(refreshToken: String, clientID: String) async throws -> ChatGPTPlanTokenResponse { refreshCalls += 1; return refreshResult }
     func revoke(refreshToken: String, clientID: String) async throws { if let revokeError { throw revokeError } }
 }

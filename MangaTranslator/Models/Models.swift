@@ -144,6 +144,23 @@ struct ChatGPTPlanSession: Codable, Equatable, Sendable, CustomStringConvertible
     var isAuthorizedForPlanUsage: Bool {
         scopes.contains("chatgpt.tokens.use.direct")
     }
+
+    func selecting(model: String?) -> ChatGPTPlanSession {
+        ChatGPTPlanSession(
+            email: email, subject: subject, clientID: clientID, idToken: idToken,
+            accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresAt,
+            scopes: scopes, selectedModel: model
+        )
+    }
+
+    func rotatingCredentials(with token: ChatGPTPlanTokenResponse, now: Date) -> ChatGPTPlanSession {
+        ChatGPTPlanSession(
+            email: email, subject: subject, clientID: clientID, idToken: token.idToken,
+            accessToken: token.accessToken, refreshToken: token.refreshToken,
+            expiresAt: now.addingTimeInterval(token.expiresIn),
+            scopes: Set(token.scope.split(separator: " ").map(String.init)), selectedModel: selectedModel
+        )
+    }
 }
 
 struct ChatGPTPlanAuthorizationAttempt: Sendable {
@@ -254,7 +271,7 @@ enum ChatGPTPlanOAuth {
     static func identity(from idToken: String, expectedNonce: String, clientID: String, now: Date = Date()) throws -> (email: String, subject: String) {
         let parts = idToken.split(separator: ".")
         guard parts.count == 3,
-              let payload = Data(base64URLEncoded: String(parts[1])),
+              let payload = Data(base64URLString: String(parts[1])),
               let claims = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
               claims["nonce"] as? String == expectedNonce,
               claims["iss"] as? String == "https://auth.openai.com",
@@ -276,8 +293,8 @@ private extension Data {
     }
 }
 
-private extension Data {
-    init?(base64URLEncoded value: String) {
+extension Data {
+    init?(base64URLString value: String) {
         let padding = String(repeating: "=", count: (4 - value.count % 4) % 4)
         self.init(base64Encoded: value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/") + padding)
     }

@@ -343,17 +343,16 @@ struct ChatGPTPlanIDTokenVerifier: ChatGPTPlanIDTokenVerifying {
     }
 }
 
-private extension Data {
-    init?(base64URLString value: String) {
-        let padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        let remainder = padded.count % 4
-        self.init(base64Encoded: remainder == 0 ? padded : padded + String(repeating: "=", count: 4 - remainder))
-    }
-}
-
 /// Owns one browser callback. It listens only on localhost and is started before opening the browser.
 @MainActor
-final class ChatGPTPlanLoopbackListener {
+protocol ChatGPTPlanCallbackListening: AnyObject {
+    func start() async throws -> URL
+    func waitForCallback() async throws -> URL
+    func cancel()
+}
+
+@MainActor
+final class ChatGPTPlanLoopbackListener: ChatGPTPlanCallbackListening {
     private var listener: NWListener?
     private var callback: CheckedContinuation<URL, Error>?
     private var receivedCallback: Result<URL, Error>?
@@ -442,9 +441,11 @@ actor ChatGPTPlanAccountService {
     private let clear: @Sendable () -> Void
     private let now: @Sendable () -> Date
     private let hostID: String
+    private let listenerFactory: @MainActor @Sendable () -> any ChatGPTPlanCallbackListening
+    private let openBrowser: @MainActor @Sendable (URL) -> Bool
     private var refreshTask: Task<ChatGPTPlanSession, Error>?
 
-    init(transport: any ChatGPTPlanOAuthTransport = ChatGPTPlanHTTPTransport(), idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), store: ChatGPTPlanSessionStore = ChatGPTPlanSessionStore(), now: @escaping @Sendable () -> Date = Date.init, hostID: String = ChatGPTPlanAccountService.installationHostID()) {
+    init(transport: any ChatGPTPlanOAuthTransport = ChatGPTPlanHTTPTransport(), idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), store: ChatGPTPlanSessionStore = ChatGPTPlanSessionStore(), now: @escaping @Sendable () -> Date = Date.init, hostID: String = ChatGPTPlanAccountService.installationHostID(), listenerFactory: @escaping @MainActor @Sendable () -> any ChatGPTPlanCallbackListening = { ChatGPTPlanLoopbackListener() }, openBrowser: @escaping @MainActor @Sendable (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
         self.transport = transport
         self.idTokenVerifier = idTokenVerifier
         self.load = { store.load() }
@@ -452,38 +453,31 @@ actor ChatGPTPlanAccountService {
         self.clear = { store.clear() }
         self.now = now
         self.hostID = hostID
+        self.listenerFactory = listenerFactory
+        self.openBrowser = openBrowser
     }
 
-    init(transport: any ChatGPTPlanOAuthTransport, idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), load: @escaping @Sendable () -> ChatGPTPlanSession?, save: @escaping @Sendable (ChatGPTPlanSession) -> Void, clear: @escaping @Sendable () -> Void, now: @escaping @Sendable () -> Date = Date.init, hostID: String = "test-host") {
+    init(transport: any ChatGPTPlanOAuthTransport, idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), load: @escaping @Sendable () -> ChatGPTPlanSession?, save: @escaping @Sendable (ChatGPTPlanSession) -> Void, clear: @escaping @Sendable () -> Void, now: @escaping @Sendable () -> Date = Date.init, hostID: String = "test-host", listenerFactory: @escaping @MainActor @Sendable () -> any ChatGPTPlanCallbackListening = { ChatGPTPlanLoopbackListener() }, openBrowser: @escaping @MainActor @Sendable (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
         self.transport = transport; self.idTokenVerifier = idTokenVerifier; self.load = load; self.save = save; self.clear = clear; self.now = now; self.hostID = hostID
+        self.listenerFactory = listenerFactory; self.openBrowser = openBrowser
     }
 
     func session() -> ChatGPTPlanSession? { load() }
 
     func selectModel(_ modelID: String?) throws -> ChatGPTPlanSession {
         guard let session = load() else { throw TranslationError.missingAPIKey(.chatGPTPlan) }
-        let updated = ChatGPTPlanSession(
-            email: session.email,
-            subject: session.subject,
-            clientID: session.clientID,
-            idToken: session.idToken,
-            accessToken: session.accessToken,
-            refreshToken: session.refreshToken,
-            expiresAt: session.expiresAt,
-            scopes: session.scopes,
-            selectedModel: modelID
-        )
+        let updated = session.selecting(model: modelID)
         save(updated)
         return updated
     }
 
     func signIn() async throws -> ChatGPTPlanSession {
-        let listener = await MainActor.run { ChatGPTPlanLoopbackListener() }
+        let listener = await MainActor.run { listenerFactory() }
         defer { Task { @MainActor in listener.cancel() } }
         let redirectURI = try await listener.start()
         let attempt = ChatGPTPlanAuthorizationAttempt.make(redirectURI: redirectURI, issuedClientID: load()?.clientID)
         let authorizationURL = ChatGPTPlanOAuth.authorizationURL(for: attempt, hostID: hostID)
-        guard await MainActor.run(body: { NSWorkspace.shared.open(authorizationURL) }) else {
+        guard await MainActor.run(body: { openBrowser(authorizationURL) }) else {
             throw ChatGPTPlanOAuthError.browserLaunchFailed
         }
         let callbackURL = try await listener.waitForCallback()
@@ -504,7 +498,7 @@ actor ChatGPTPlanAccountService {
         if let refreshTask { return try await refreshTask.value.accessToken }
         let task = Task { [transport, now, save] () throws -> ChatGPTPlanSession in
             let token = try await transport.refresh(refreshToken: session.refreshToken, clientID: session.clientID)
-            let updated = ChatGPTPlanSession(email: session.email, subject: session.subject, clientID: session.clientID, idToken: token.idToken, accessToken: token.accessToken, refreshToken: token.refreshToken, expiresAt: now().addingTimeInterval(token.expiresIn), scopes: Set(token.scope.split(separator: " ").map(String.init)), selectedModel: session.selectedModel)
+            let updated = session.rotatingCredentials(with: token, now: now())
             guard updated.isAuthorizedForPlanUsage else { throw ChatGPTPlanOAuthError.missingPlanScope }
             save(updated); return updated
         }

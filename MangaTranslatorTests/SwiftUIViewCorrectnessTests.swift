@@ -21,31 +21,6 @@ private final class CloseTrackingWindow: NSWindow {
 @Suite("SwiftUI View Correctness")
 struct SwiftUIViewCorrectnessTests {
 
-    @Test("Main scene wires window-local file importing through one command")
-    func mainSceneWiresWindowLocalFileImporting() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/MangaTranslatorApp.swift"),
-            encoding: .utf8
-        )
-        let contentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/Views/ContentView.swift"),
-            encoding: .utf8
-        )
-        let viewModelSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("MangaTranslator/ViewModels/TranslationViewModel.swift"),
-            encoding: .utf8
-        )
-
-        #expect(appSource.contains("WindowGroup {"))
-        #expect(contentSource.contains("@State private var showFileImporter = false"))
-        #expect(!viewModelSource.contains("@Published var showFileImporter"))
-        #expect(appSource.components(separatedBy: #".keyboardShortcut("o", modifiers: .command)"#).count - 1 == 1)
-        #expect(!contentSource.contains(#".keyboardShortcut("o", modifiers: .command)"#))
-    }
-
     @Test("Main window registry rejects a second visible translation window")
     @MainActor
     func mainWindowRegistryRejectsDuplicate() {

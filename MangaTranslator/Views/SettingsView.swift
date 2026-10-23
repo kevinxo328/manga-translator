@@ -78,7 +78,7 @@ struct SettingsView: View {
     @State private var chatGPTPlanBusy = false
     @State private var chatGPTPlanSignInTask: Task<Void, Never>?
     private let copilotModelStateOverride: CopilotModelLoadState?
-    private let chatGPTPlanAccount = ChatGPTPlanAccountService()
+    private let chatGPTPlanAccount: ChatGPTPlanAccountService
 
     #if arch(arm64)
     @StateObject private var paddleOCRViewModel: PaddleOCRSettingsViewModel = {
@@ -96,7 +96,8 @@ struct SettingsView: View {
         onClearCache: (() -> Void)? = nil,
         onFetchCacheSize: (() -> Int64)? = nil,
         updater: SPUUpdater? = nil,
-        copilotModelStateOverride: CopilotModelLoadState? = nil
+        copilotModelStateOverride: CopilotModelLoadState? = nil,
+        chatGPTPlanAccount: ChatGPTPlanAccountService = ChatGPTPlanAccountService()
     ) {
         self.preferences = preferences
         self.viewModel = viewModel
@@ -104,6 +105,7 @@ struct SettingsView: View {
         self.onFetchCacheSize = onFetchCacheSize
         self.updater = updater
         self.copilotModelStateOverride = copilotModelStateOverride
+        self.chatGPTPlanAccount = chatGPTPlanAccount
         _copilotModelState = State(initialValue: copilotModelStateOverride ?? .idle)
     }
 
@@ -150,10 +152,11 @@ struct SettingsView: View {
         }
         .onChange(of: preferences.activeTabIdentifier) { _, _ in
             normalizeActiveTabIdentifier()
+            refreshChatGPTPlanModelsWhenAPIKeysOpen()
         }
         .task {
             chatGPTPlanSession = await chatGPTPlanAccount.session()
-            if let chatGPTPlanSession {
+            if selectedTabBinding.wrappedValue == .apiKeys, let chatGPTPlanSession {
                 await loadChatGPTPlanModels(for: chatGPTPlanSession)
             }
             if let copilotModelStateOverride {
@@ -437,6 +440,13 @@ struct SettingsView: View {
 
     private func retryChatGPTPlanModels() {
         guard let chatGPTPlanSession else { return }
+        Task {
+            await loadChatGPTPlanModels(for: chatGPTPlanSession)
+        }
+    }
+
+    private func refreshChatGPTPlanModelsWhenAPIKeysOpen() {
+        guard selectedTabBinding.wrappedValue == .apiKeys, let chatGPTPlanSession else { return }
         Task {
             await loadChatGPTPlanModels(for: chatGPTPlanSession)
         }

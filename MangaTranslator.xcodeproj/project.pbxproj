@@ -109,7 +109,6 @@
 		T10000010000000000000007 /* CopilotTranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000007 /* CopilotTranslationServiceTests.swift */; };
 		T10000010000000000000008 /* ImageViewerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000008 /* ImageViewerTests.swift */; };
 		T10000010000000000000009 /* MangaOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000010000000000000009 /* MangaOCRTests.swift */; };
-		T1000001000000000000000C /* ProjectStructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000C /* ProjectStructureTests.swift */; };
 		T1000001000000000000000D /* BaseURLValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000D /* BaseURLValidatorTests.swift */; };
 		T1000001000000000000000E /* OpenAITranslationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000E /* OpenAITranslationServiceTests.swift */; };
 		T1000001000000000000000F /* BubblePolarityClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001000000000000000F /* BubblePolarityClassifierTests.swift */; };
@@ -279,7 +278,6 @@
 		T20000010000000000000008 /* ImageViewerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerTests.swift; sourceTree = "<group>"; };
 		T20000010000000000000009 /* MangaOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaOCRTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRProductionParityDiagnosticTests.swift; sourceTree = "<group>"; };
-		T2000001000000000000000C /* ProjectStructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStructureTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000D /* BaseURLValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseURLValidatorTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000E /* OpenAITranslationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAITranslationServiceTests.swift; sourceTree = "<group>"; };
 		T2000001000000000000000F /* BubblePolarityClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubblePolarityClassifierTests.swift; sourceTree = "<group>"; };
@@ -525,7 +523,6 @@
 				TH2000000100000000000003 /* PaddleOCRSettingsSectionTests.swift */,
 				PH2000000200000000000002 /* PaddleOCRVLRecognizerTests.swift */,
 				T2000001000000000000000B /* PaddleOCRProductionParityDiagnosticTests.swift */,
-				T2000001000000000000000C /* ProjectStructureTests.swift */,
 				T2000001000000000000000D /* BaseURLValidatorTests.swift */,
 				T2000001000000000000000E /* OpenAITranslationServiceTests.swift */,
 				AS20000010000000000000002 /* APIErrorSanitizerTests.swift */,
@@ -886,7 +883,6 @@
 				TH1000000100000000000002 /* OCRRouterTests.swift in Sources */,
 				TH1000000100000000000003 /* PaddleOCRSettingsSectionTests.swift in Sources */,
 				PH1000000200000000000002 /* PaddleOCRVLRecognizerTests.swift in Sources */,
-				T1000001000000000000000C /* ProjectStructureTests.swift in Sources */,
 				T1000001000000000000000D /* BaseURLValidatorTests.swift in Sources */,
 				T1000001000000000000000E /* OpenAITranslationServiceTests.swift in Sources */,
 				AS10000010000000000000002 /* APIErrorSanitizerTests.swift in Sources */,

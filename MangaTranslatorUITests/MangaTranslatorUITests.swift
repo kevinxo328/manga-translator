@@ -17,7 +17,13 @@ final class MangaTranslatorUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["MANGATRANSLATOR_UI_TEST_COPILOT_STATE"] = "failed"
         app.launch()
-        app.typeKey(",", modifierFlags: .command)
+
+        let appMenu = app.menuBars.menuBarItems["MangaTranslator"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 10))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.click()
 
         let retry = app.buttons["settings.copilot.retry"]
         XCTAssertTrue(retry.waitForExistence(timeout: 10))
