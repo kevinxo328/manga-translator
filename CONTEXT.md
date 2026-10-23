@@ -65,3 +65,10 @@ ChatGPT account's OAuth access token. It does not use Codex app-server.
 Every ChatGPT Plan translation request includes the same current-page bubbles,
 glossary terms, and recent-page summaries used by the OpenAI-compatible
 engine. No context is assumed to persist remotely between requests.
+
+## ChatGPT Plan structured-output capability
+
+The per-model, time-limited result of attempting strict structured output on
+the ChatGPT Plan Responses path. An unsupported capability is distinct from a
+temporary translation failure: it selects the compatible request format for
+seven days, without changing the user's selected model or translation engine.
