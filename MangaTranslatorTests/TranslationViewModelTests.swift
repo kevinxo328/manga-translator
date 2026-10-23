@@ -3666,6 +3666,8 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
     private var _maximumConcurrentPerPageTranslations = 0
     private let perPageDelay: UInt64
     var failBatchForPageIds: Set<String> = []
+    var remainingBatchFailuresForPageIds: [String: Int] = [:]
+    var failPerPageForInputPrefixes: Set<String> = []
     var suspendBatchUntilCancel: Bool = false
     // Optional hook fired after translateBatch has produced outputs but before returning.
     // Used to simulate cancellation that arrives between the API completing and the
@@ -3706,6 +3708,9 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
             )
         }
         defer { lock.withLock { currentPerPageTranslations -= 1 } }
+        if failPerPageForInputPrefixes.contains(where: { input.hasPrefix($0) }) {
+            throw LLMResponseParser.MultiPageParseError.malformedJSON
+        }
         if perPageDelay > 0 {
             try await Task.sleep(nanoseconds: perPageDelay)
         }
@@ -3735,6 +3740,13 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
                 try? await Task.sleep(nanoseconds: 5_000_000)
             }
             throw CancellationError()
+        }
+
+        if let failedPageId = pageIds.first(where: { remainingBatchFailuresForPageIds[$0, default: 0] > 0 }) {
+            remainingBatchFailuresForPageIds[failedPageId, default: 0] -= 1
+            throw TranslationError.apiError(SanitizedAPIError(
+                provider: "Test", statusCode: 500, code: nil, message: "forced batch failure"
+            ))
         }
 
         if !failBatchForPageIds.isDisjoint(with: Set(pageIds)) {
@@ -4024,26 +4036,70 @@ final class BatchSchedulerTests: XCTestCase {
         XCTAssertTrue(perPageInputs[2].hasPrefix("w303"), "Third per-page call must be for page 3 (got \(perPageInputs[2]))")
     }
 
-    func testChatGPTPlanBatchFailureStopsWithoutPerPageFallback() async throws {
+    func testChatGPTPlanBatchFailureRetriesOnceBeforeCompletingSilently() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
             bubbleCountsByPage: [4, 4, 20, 20, 5],
             engine: .chatGPTPlan
         )
         defer { try? FileManager.default.removeItem(at: root) }
-        service.failBatchForPageIds = ["1"]
+        service.remainingBatchFailuresForPageIds = ["1": 1]
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"]])
-        XCTAssertTrue(service.perPageCalls.isEmpty, "Plan failures must not retry through per-page translation")
-        if case .translated = vm.pages[0].state {
-            // The completed group remains available.
-        } else {
-            XCTFail("Page 0 should retain its completed translation")
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
+        XCTAssertTrue(service.perPageCalls.isEmpty, "A successful batch retry must not use per-page fallback")
+        XCTAssertNil(vm.errorMessage, "A successful retry must not surface an error")
+        for index in vm.pages.indices {
+            guard case .translated = vm.pages[index].state else {
+                return XCTFail("Page \(index) should be translated after the retry")
+            }
         }
-        for index in 1..<vm.pages.count {
-            if case .pending = vm.pages[index].state { continue }
-            XCTFail("Page \(index) should remain pending after the Plan failure, got \(vm.pages[index].state)")
+    }
+
+    func testChatGPTPlanSecondBatchFailureFallsBackToPagesInOrderSilently() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 20, 20, 5],
+            engine: .chatGPTPlan
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        service.remainingBatchFailuresForPageIds = ["1": 2]
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
+        XCTAssertEqual(service.perPageCalls.map { $0.input.prefix(4) }, ["w301", "w302", "w303"])
+        XCTAssertEqual(service.perPageCalls.map(\.summaries.count), [1, 2, 3])
+        XCTAssertNil(vm.errorMessage, "Successful page recovery must not surface an error")
+        for index in vm.pages.indices {
+            guard case .translated = vm.pages[index].state else {
+                return XCTFail("Page \(index) should be translated after recovery")
+            }
+        }
+    }
+
+    func testChatGPTPlanUnrecoverablePageShowsFriendlyRetryableError() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 20, 20, 5],
+            engine: .chatGPTPlan
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        service.remainingBatchFailuresForPageIds = ["1": 2]
+        service.failPerPageForInputPrefixes = ["w302"]
+
+        await vm.loadFolder(root)
+
+        guard case .translated = vm.pages[0].state else {
+            return XCTFail("A completed page must remain translated")
+        }
+        guard case .error(let message) = vm.pages[2].state else {
+            return XCTFail("An unrecoverable page must remain retryable")
+        }
+        XCTAssertEqual(message, "The translation response was incomplete or unusable. Please try again.")
+        XCTAssertFalse(message.contains("MultiPageParseError"))
+        for index in [1, 3, 4] {
+            guard case .translated = vm.pages[index].state else {
+                return XCTFail("Recoverable page \(index) should still be translated")
+            }
         }
     }
 
@@ -4155,7 +4211,8 @@ final class BatchSchedulerTests: XCTestCase {
     // 6.10
     func testRunBatchPipelineCancelDuringBatchDoesNotFallbackToPerPage() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
-            bubbleCountsByPage: [4, 4, 4]
+            bubbleCountsByPage: [4, 4, 4],
+            engine: .chatGPTPlan
         )
         defer { try? FileManager.default.removeItem(at: root) }
 

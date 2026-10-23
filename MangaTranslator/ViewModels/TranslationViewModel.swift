@@ -805,9 +805,8 @@ final class TranslationViewModel: ObservableObject {
         }
     }
 
-    // Run one multi-page LLM batch. Returns true when later groups must stop. Ordinary LLM
-    // failures fall back to per-page translation, while ChatGPT Plan provider failures must
-    // remain explicit and therefore leave the group pending without a fallback request.
+    // Run one multi-page LLM batch. Returns true when later groups must stop. ChatGPT Plan
+    // retries a failed batch once before using the same per-page recovery as other LLMs.
     private func runBatch(_ group: [BatchPlanItem], service: any TranslationService) async -> Bool {
         guard !group.isEmpty else { return false }
         let pageInputs = group.map {
@@ -819,13 +818,17 @@ final class TranslationViewModel: ObservableObject {
         )
         let itemByPageId = Dictionary(uniqueKeysWithValues: group.map { (String($0.pageIndex), $0) })
 
-        do {
-            let outputs = try await service.translateBatch(
+        func requestBatch() async throws -> [BatchPageOutput] {
+            try await service.translateBatch(
                 pageInputs: pageInputs,
                 from: preferences.sourceLanguage,
                 to: preferences.targetLanguage,
                 priorContext: priorContext
             )
+        }
+
+        do {
+            let outputs = try await requestBatch()
             // Cancellation may have arrived after the API call returned but before persist;
             // honour it so a cancelled batch never writes to pages, cache, or rolling window.
             if Task.isCancelled {
@@ -846,15 +849,36 @@ final class TranslationViewModel: ObservableObject {
             return true
         } catch {
             if service.engine == .chatGPTPlan {
-                revertBatchPagesToPending(group)
-                errorMessage = error.localizedDescription
-                pipelineLogger.log(
-                    "ChatGPT Plan batch failed; preserving pending pages (pages=\(group.count))",
-                    level: .warning,
-                    category: .pipeline,
-                    metadata: ["operation": "chatGPTPlanBatchStop", "page_count": "\(group.count)"]
-                )
-                return true
+                if Task.isCancelled {
+                    revertBatchPagesToPending(group)
+                    return true
+                }
+                do {
+                    pipelineLogger.log("ChatGPT Plan batch retrying", level: .warning, category: .pipeline, metadata: ["operation": "chatGPTPlanBatchRetry", "page_count": "\(group.count)"])
+                    let outputs = try await requestBatch()
+                    if Task.isCancelled {
+                        revertBatchPagesToPending(group)
+                        return true
+                    }
+                    for output in outputs {
+                        guard let item = itemByPageId[output.pageId] else { continue }
+                        persistBatchOutput(output, item: item)
+                    }
+                    return false
+                } catch let urlError as URLError where urlError.code == .cancelled {
+                    revertBatchPagesToPending(group)
+                    return true
+                } catch is CancellationError {
+                    revertBatchPagesToPending(group)
+                    return true
+                } catch {
+                    pipelineLogger.log(
+                        "ChatGPT Plan batch retry failed; falling back to per-page (pages=\(group.count))",
+                        level: .warning,
+                        category: .pipeline,
+                        metadata: ["operation": "chatGPTPlanBatchFallback", "page_count": "\(group.count)"]
+                    )
+                }
             }
             pipelineLogger.log(
                 "Batch failed; falling back to per-page (pages=\(group.count))",
@@ -881,7 +905,8 @@ final class TranslationViewModel: ObservableObject {
                         restoreFrom: item.restoreFrom
                     ),
                     service: service,
-                    usesRecentContext: true
+                    usesRecentContext: true,
+                    usesChatGPTPlanRecoveryError: service.engine == .chatGPTPlan
                 )
             }
             return false
@@ -926,7 +951,7 @@ final class TranslationViewModel: ObservableObject {
 
     // Finalize a page: sets the final state and optionally appends to the recent-context window.
     // The recent-context window is mutated only when `usesRecentContext` is true (LLM engines).
-    private func finalizePage(at index: Int, preparation: PagePreparation, service: any TranslationService, usesRecentContext: Bool) async {
+    private func finalizePage(at index: Int, preparation: PagePreparation, service: any TranslationService, usesRecentContext: Bool, usesChatGPTPlanRecoveryError: Bool = false) async {
         guard pages.indices.contains(index) else { return }
 
         switch preparation {
@@ -986,7 +1011,9 @@ final class TranslationViewModel: ObservableObject {
                 if let restoreFrom {
                     pages[index].state = restoreFrom.state
                 } else {
-                    pages[index].state = .error(error.localizedDescription)
+                    pages[index].state = .error(
+                        usesChatGPTPlanRecoveryError ? chatGPTPlanRecoveryErrorMessage(for: error) : error.localizedDescription
+                    )
                 }
             }
 
@@ -997,6 +1024,13 @@ final class TranslationViewModel: ObservableObject {
                 pages[index].state = .error(message)
             }
         }
+    }
+
+    private func chatGPTPlanRecoveryErrorMessage(for error: Error) -> String {
+        guard !(error is TranslationError) else {
+            return error.localizedDescription
+        }
+        return "The translation response was incomplete or unusable. Please try again."
     }
 
     func clearCacheAndResetPages() {
