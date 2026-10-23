@@ -7,13 +7,13 @@ A native macOS application that automatically detects, recognizes, and translate
 ## Core Features
 
 - **Manga-Optimized OCR** — Powered by the **2025 fine-tuned Manga-OCR** (ONNX). It is specifically optimized for modern manga, providing high accuracy for artistic fonts, vertical text, sound effects (SFX), and furigana. On Apple Silicon with **16GB RAM or more**, an optional downloadable PaddleOCR-VL path provides higher-accuracy recognition.
-- **Multiple Translation Engines** — Supports OpenAI-compatible APIs, DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
-- **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible backend auto-detects new proper nouns during translation and adds them to the active glossary automatically.
-- **Cross-page Context** — When using the OpenAI-compatible engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
+- **Multiple Translation Engines** — Supports OpenAI-compatible APIs, ChatGPT Plan (Preview), DeepL, Google Translate, and GitHub Copilot. The OpenAI-compatible backend supports custom base URLs (for local LLMs, Azure OpenAI, etc.) and free-text model selection. The ChatGPT Plan backend lets you sign in with an eligible ChatGPT account in the browser and pick from the models available to that account — no API key entry required. The GitHub Copilot backend reads the OAuth token from the local keychain (installed by the Copilot CLI) — no API key entry required.
+- **Glossary System** — Create named glossaries to pin character names, technique names, and place names to your preferred translations. Glossary terms are injected into every translation request across all supported engines. The OpenAI-compatible, ChatGPT Plan, and GitHub Copilot backends auto-detect new proper nouns during translation and add them to the active glossary automatically.
+- **Cross-page Context** — When using the OpenAI-compatible, ChatGPT Plan, or GitHub Copilot engine, a rolling window of the last 3 translated pages is included in each prompt, helping the model maintain narrative continuity and consistent character references across pages.
 - **Batch Processing** — Load entire folders or CBZ/ZIP archives and translate all pages concurrently (up to 3 pages in parallel).
 - **Interactive Viewer** — Displays detected speech bubbles as overlays on the original image. Click or use keyboard arrows to navigate between bubbles and pages.
 - **Translation Caching** — SHA256-based content-addressable cache (SQLite) avoids redundant API calls when revisiting pages.
-- **Secure Key Storage** — API keys are stored in the macOS Keychain, not in plaintext.
+- **Secure Key Storage** — API keys and the ChatGPT Plan sign-in session are stored in the macOS Keychain, not in plaintext.
 
 ## Supported Languages
 
@@ -62,7 +62,7 @@ and packaged for this app's optional high-accuracy OCR workflow.
 ### Configuration
 
 1. Launch the app and open **Settings** (`Cmd + ,`).
-2. In the **API Keys** tab, enter credentials for your preferred translation engine(s).
+2. In the **API Keys** tab, enter credentials for your preferred translation engine(s). For ChatGPT Plan, click **Sign in with ChatGPT**, finish signing in in the browser, then choose a model. For GitHub Copilot, install the [Copilot CLI](https://github.com/github/copilot-cli), run `copilot login` in Terminal, then choose a model.
 3. In the **Preferences** tab, select the source/target language pair and default engine.
 
 ## Credits & Resources
