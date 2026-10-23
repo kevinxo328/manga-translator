@@ -93,10 +93,22 @@ struct ChatGPTPlanTranslationService: TranslationService {
     let engine = TranslationEngine.chatGPTPlan
     private let account: ChatGPTPlanAccountService
     private let urlSession: URLSession
+    private let defaults: UserDefaults
+    private let now: @Sendable () -> Date
 
-    init(account: ChatGPTPlanAccountService = ChatGPTPlanAccountService(), urlSession: URLSession = .shared) {
+    private static let unsupportedStructuredOutputModelsKey = "chatGPTPlan.unsupportedStructuredOutputModels"
+    private static let unsupportedStructuredOutputLifetime: TimeInterval = 7 * 24 * 60 * 60
+
+    init(
+        account: ChatGPTPlanAccountService = ChatGPTPlanAccountService(),
+        urlSession: URLSession = .shared,
+        defaults: UserDefaults = .standard,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.account = account
         self.urlSession = urlSession
+        self.defaults = defaults
+        self.now = now
     }
 
     func translate(bubbles: [BubbleCluster], from source: Language, to target: Language, context: TranslationContext) async throws -> TranslationOutput {
@@ -109,14 +121,36 @@ struct ChatGPTPlanTranslationService: TranslationService {
     }
 
     func translateBatch(pageInputs: [BatchPageInput], from source: Language, to target: Language, priorContext: TranslationContext) async throws -> [BatchPageOutput] {
-        let text = try await responseText(
-            systemPrompt: LLMPrompt.multiPageSystemPrompt(from: source, to: target, context: priorContext),
-            userPrompt: LLMPrompt.multiPageUserPrompt(pageInputs: pageInputs)
-        )
+        guard let session = await account.session() else {
+            throw TranslationError.chatGPTPlanNotConnected
+        }
+        guard let model = session.selectedModel, !model.isEmpty else {
+            throw TranslationError.chatGPTPlanModelNotSelected
+        }
+        let systemPrompt = LLMPrompt.multiPageSystemPrompt(from: source, to: target, context: priorContext)
+        let userPrompt = LLMPrompt.multiPageUserPrompt(pageInputs: pageInputs)
+        let useStructuredOutput = !hasUnsupportedStructuredOutput(model: model)
+        let text: String
+        do {
+            text = try await responseText(
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                structuredOutput: useStructuredOutput
+            )
+        } catch is ChatGPTPlanStructuredOutputUnsupportedError where useStructuredOutput {
+            rememberUnsupportedStructuredOutput(model: model)
+            DebugLogger.shared.logAPIDiagnostic(
+                "ChatGPT Plan structured output unsupported; retrying compatible format",
+                category: .translationOpenAI,
+                model: model,
+                endpoint: "https://api.openai.com/v1/responses"
+            )
+            text = try await responseText(systemPrompt: systemPrompt, userPrompt: userPrompt, structuredOutput: false)
+        }
         return try LLMResponseParser.parseMultiPage(text, pageInputs: pageInputs)
     }
 
-    private func responseText(systemPrompt: String, userPrompt: String) async throws -> String {
+    private func responseText(systemPrompt: String, userPrompt: String, structuredOutput: Bool = false) async throws -> String {
         guard let session = await account.session() else {
             throw TranslationError.chatGPTPlanNotConnected
         }
@@ -129,13 +163,16 @@ struct ChatGPTPlanTranslationService: TranslationService {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        let requestBody: [String: Any] = [
+        var requestBody: [String: Any] = [
             "model": model,
             "instructions": systemPrompt,
             "input": [["role": "user", "content": userPrompt]],
             "store": false,
             "stream": true
         ]
+        if structuredOutput {
+            requestBody["text"] = ["format": Self.multiPageStructuredOutputFormat]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
         let (bytes, response) = try await urlSession.bytes(for: request)
@@ -143,6 +180,9 @@ struct ChatGPTPlanTranslationService: TranslationService {
             var data = Data()
             for try await byte in bytes { data.append(byte) }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if structuredOutput, Self.isStructuredOutputUnsupported(responseData: data) {
+                throw ChatGPTPlanStructuredOutputUnsupportedError()
+            }
             let sanitized = APIErrorSanitizer.sanitize(
                 provider: .openAI,
                 providerDisplayName: engine.displayName,
@@ -164,7 +204,82 @@ struct ChatGPTPlanTranslationService: TranslationService {
             throw TranslationError.networkError(error)
         }
     }
+
+    private func hasUnsupportedStructuredOutput(model: String) -> Bool {
+        var records = defaults.dictionary(forKey: Self.unsupportedStructuredOutputModelsKey) as? [String: Double] ?? [:]
+        let currentTime = now().timeIntervalSince1970
+        records = records.filter { $0.value > currentTime }
+        defaults.set(records, forKey: Self.unsupportedStructuredOutputModelsKey)
+        return records[model] != nil
+    }
+
+    private func rememberUnsupportedStructuredOutput(model: String) {
+        var records = defaults.dictionary(forKey: Self.unsupportedStructuredOutputModelsKey) as? [String: Double] ?? [:]
+        records[model] = now().addingTimeInterval(Self.unsupportedStructuredOutputLifetime).timeIntervalSince1970
+        defaults.set(records, forKey: Self.unsupportedStructuredOutputModelsKey)
+    }
+
+    private static func isStructuredOutputUnsupported(responseData: Data) -> Bool {
+        guard let body = String(data: responseData, encoding: .utf8)?.lowercased() else { return false }
+        let identifiesStructuredOutput = body.contains("structured output")
+            || body.contains("structured_output")
+            || body.contains("json_schema")
+        let identifiesUnsupportedCapability = body.contains("unsupported")
+            || body.contains("not supported")
+            || body.contains("does not support")
+        return identifiesStructuredOutput && identifiesUnsupportedCapability
+    }
+
+    private static let multiPageStructuredOutputFormat: [String: Any] = [
+        "type": "json_schema",
+        "name": "manga_translation_batch",
+        "strict": true,
+        "schema": [
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pages"],
+            "properties": [
+                "pages": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["page_id", "bubbles", "detected_terms"],
+                        "properties": [
+                            "page_id": ["type": "string"],
+                            "bubbles": [
+                                "type": "array",
+                                "items": [
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["index", "translation"],
+                                    "properties": [
+                                        "index": ["type": "integer"],
+                                        "translation": ["type": "string"]
+                                    ]
+                                ]
+                            ],
+                            "detected_terms": [
+                                "type": "array",
+                                "items": [
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["source", "target"],
+                                    "properties": [
+                                        "source": ["type": "string"],
+                                        "target": ["type": "string"]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
 }
+
+private struct ChatGPTPlanStructuredOutputUnsupportedError: Error {}
 
 private enum ChatGPTPlanSSEDecoder {
     private struct Event: Decodable {

@@ -254,6 +254,91 @@ struct ChatGPTPlanAccountServiceTests {
             Issue.record("Expected TranslationError.apiError, got \(error)")
         }
     }
+
+    @Test("Plan batch requests strict structured output and validates its page contract")
+    func planBatchRequestsStrictStructuredOutput() async throws {
+        let captured = RequestBox()
+        let sse = completedBatchSSE(#"{"pages":[{"page_id":"1","bubbles":[{"index":0,"translation":"Hello"}],"detected_terms":[]}]}"#)
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.request = request
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(sse.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")),
+            urlSession: httpSession,
+            defaults: isolatedDefaults()
+        )
+
+        let output = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+
+        #expect(output.first?.bubbles.first?.translatedText == "Hello")
+        let format = try #require(captured.request?.jsonMockBody()["text"] as? [String: Any])
+        let schemaFormat = try #require(format["format"] as? [String: Any])
+        #expect(schemaFormat["type"] as? String == "json_schema")
+        #expect(schemaFormat["strict"] as? Bool == true)
+        let schema = try #require(schemaFormat["schema"] as? [String: Any])
+        #expect(schema["additionalProperties"] as? Bool == false)
+    }
+
+    @Test("Plan batch retries a structured-output rejection with prompt-only JSON for seven days")
+    func planBatchFallsBackAfterStructuredOutputRejection() async throws {
+        let captured = RequestListBox()
+        let defaults = isolatedDefaults()
+        var calls = 0
+        let success = completedBatchSSE(#"{"pages":[{"page_id":"1","bubbles":[{"index":0,"translation":"Hello"}],"detected_terms":[]}]}"#)
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.requests.append(request)
+            calls += 1
+            if calls == 1 {
+                let body = #"{"error":{"code":"unsupported_parameter","message":"Structured Outputs are not supported for this model"}}"#
+                return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(success.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")), urlSession: httpSession, defaults: defaults
+        )
+
+        _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+        _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+
+        #expect(captured.requests.count == 3)
+        #expect(captured.requests[0].jsonMockBody()["text"] != nil)
+        #expect(captured.requests[1].jsonMockBody()["text"] == nil)
+        #expect(captured.requests[2].jsonMockBody()["text"] == nil)
+    }
+
+    @Test("Plan batch retries strict output after its unsupported capability expires")
+    func planBatchRetriesStructuredOutputAfterCapabilityExpiry() async throws {
+        let captured = RequestListBox()
+        let defaults = isolatedDefaults()
+        let clock = ChatGPTPlanCatalogTestClock(Date(timeIntervalSince1970: 1_000))
+        var calls = 0
+        let success = completedBatchSSE(#"{"pages":[{"page_id":"1","bubbles":[{"index":0,"translation":"Hello"}],"detected_terms":[]}]}"#)
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.requests.append(request)
+            calls += 1
+            if calls == 1 {
+                let body = #"{"error":{"code":"unsupported_parameter","message":"Structured Outputs are not supported"}}"#
+                return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(success.utf8))
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")), urlSession: httpSession, defaults: defaults, now: { clock.now() }
+        )
+
+        _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+        clock.advance(by: 7 * 24 * 60 * 60 + 1)
+        _ = try await service.translateBatch(pageInputs: [batchPage()], from: .ja, to: .en, priorContext: .empty)
+
+        #expect(captured.requests.count == 3)
+        #expect(captured.requests[2].jsonMockBody()["text"] != nil)
+    }
     @Test("catalog keeps displayable plan models in server order")
     func catalogFiltersDisplayableModels() throws {
         let data = """
@@ -404,6 +489,26 @@ struct ChatGPTPlanAccountServiceTests {
             transport: OAuthTransportStub(),
             load: { store.session }, save: { store.session = $0 }, clear: { store.session = nil }
         )
+    }
+
+    private func isolatedDefaults() -> UserDefaults {
+        let suite = "ChatGPTPlanTranslationServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    private func batchPage() -> BatchPageInput {
+        var bubble = BubbleCluster(boundingBox: .zero, text: "こんにちは", observations: [])
+        bubble.index = 0
+        return BatchPageInput(pageId: "1", bubbles: [bubble])
+    }
+
+    private func completedBatchSSE(_ text: String) -> String {
+        let escaped = text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "data: {\"type\":\"response.output_text.delta\",\"delta\":\"\(escaped)\"}\n\ndata: {\"type\":\"response.completed\"}\n"
     }
 
     private func token(access: String, refresh: String) -> ChatGPTPlanTokenResponse {
