@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.1 (2026-10-23)
+
+### Bug Fixes
+
+- Fixed the language and translation service menus in the toolbar losing their labels on macOS 27, so you can see your current selections again.
+
 ## v1.6.0 (2026-10-23)
 
 ### New Features
