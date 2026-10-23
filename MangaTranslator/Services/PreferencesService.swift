@@ -121,7 +121,7 @@ struct ChatGPTPlanTranslationService: TranslationService {
             throw TranslationError.chatGPTPlanNotConnected
         }
         guard let model = session.selectedModel, !model.isEmpty else {
-            throw TranslationError.invalidResponse
+            throw TranslationError.chatGPTPlanModelNotSelected
         }
         let accessToken = try await account.validAccessToken()
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)

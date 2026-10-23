@@ -55,6 +55,12 @@ func chatGPTPlanAuthorizationUsesUUIDURNHostID() throws {
     #expect(values["ext_agent_host_id"] == "urn:uuid:123e4567-e89b-12d3-a456-426614174000")
 }
 
+@Test("ChatGPT Plan OAuth errors explain the next safe action")
+func chatGPTPlanOAuthErrorsAreActionable() {
+    #expect(ChatGPTPlanOAuthError.authorizationDenied.errorDescription == "ChatGPT sign-in was cancelled in the browser.")
+    #expect(ChatGPTPlanOAuthError.tokenRequestFailed(statusCode: 400).errorDescription == "ChatGPT sign-in could not exchange its authorization code (HTTP 400). Start sign-in again.")
+}
+
 @Test("ChatGPT Plan token claims must belong to the authorization attempt")
 func chatGPTPlanTokenClaimsRejectMismatchedNonce() {
     #expect(throws: ChatGPTPlanOAuthError.identityMismatch) {

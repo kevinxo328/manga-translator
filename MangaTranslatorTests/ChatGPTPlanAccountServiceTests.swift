@@ -4,6 +4,15 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("ID token verifier rejects unsigned tokens before accepting account claims")
+    func idTokenVerifierRejectsUnsignedToken() async {
+        let unsignedToken = "eyJhbGciOiJub25lIiwia2lkIjoia2lkIn0.eyJzdWIiOiJ1c2VyIn0."
+
+        await #expect(throws: ChatGPTPlanOAuthError.invalidIDTokenSignature) {
+            try await ChatGPTPlanIDTokenVerifier().verifySignature(of: unsignedToken)
+        }
+    }
+
     @Test("OAuth listener starts a loopback callback server")
     @MainActor
     func loopbackListenerStarts() async throws {
@@ -33,6 +42,23 @@ struct ChatGPTPlanAccountServiceTests {
         }
     }
 
+    @Test("OAuth listener accepts the browser callback and returns its parameters")
+    @MainActor
+    func loopbackListenerReceivesCallback() async throws {
+        let listener = ChatGPTPlanLoopbackListener()
+        defer { listener.cancel() }
+        let redirectURI = try await listener.start()
+        let callback = Task { try await listener.waitForCallback() }
+        try await Task.sleep(for: .milliseconds(100))
+        let requestURL = URL(string: "\(redirectURI.absoluteString)?code=authorization-code&state=state")!
+
+        let (_, response) = try await URLSession.shared.data(from: requestURL)
+        let returnedURL = try await callback.value
+
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        #expect(URLComponents(url: returnedURL, resolvingAgainstBaseURL: false)?.queryItems?.contains(URLQueryItem(name: "code", value: "authorization-code")) == true)
+    }
+
     @Test("Plan translation reports a disconnected account before checking a model")
     func planTranslationReportsDisconnectedAccount() async {
         let service = ChatGPTPlanTranslationService(
@@ -48,6 +74,20 @@ struct ChatGPTPlanAccountServiceTests {
             // Expected: absence of an account is distinct from malformed output.
         } catch {
             Issue.record("Expected chatGPTPlanNotConnected, got \(error)")
+        }
+    }
+
+    @Test("Plan translation requires a selected account model")
+    func planTranslationReportsMissingModel() async {
+        let service = ChatGPTPlanTranslationService(account: account(with: session()))
+
+        do {
+            _ = try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+            Issue.record("Expected a missing-model error")
+        } catch TranslationError.chatGPTPlanModelNotSelected {
+            // Expected: a session alone is not enough to create a Responses request.
+        } catch {
+            Issue.record("Expected chatGPTPlanModelNotSelected, got \(error)")
         }
     }
 
@@ -72,7 +112,32 @@ struct ChatGPTPlanAccountServiceTests {
 
         let request = try #require(captured.request)
         let form = String(data: request.readMockBody(), encoding: .utf8) ?? ""
-        #expect(form.contains("resource=\(ChatGPTPlanOAuth.resource)"))
+        #expect(form.contains("resource=https%3A%2F%2Fapi.openai.com%2Fv1"))
+    }
+
+    @Test("Refresh and revoke requests preserve the direct-plan OAuth grant")
+    func refreshAndRevokeIncludeRequiredOAuthFields() async throws {
+        let captured = RequestListBox()
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.requests.append(request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"access_token":"access","refresh_token":"refresh","id_token":"id","expires_in":3600,"scope":"openid"}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+
+        let transport = ChatGPTPlanHTTPTransport(session: httpSession)
+        _ = try await transport.refresh(refreshToken: "refresh+/=", clientID: "client-id")
+        try await transport.revoke(refreshToken: "refresh+/=", clientID: "client-id")
+
+        let requests = captured.requests
+        #expect(requests.count == 2)
+        let refreshForm = String(data: requests[0].readMockBody(), encoding: .utf8) ?? ""
+        let revokeForm = String(data: requests[1].readMockBody(), encoding: .utf8) ?? ""
+        #expect(refreshForm.contains("resource=https%3A%2F%2Fapi.openai.com%2Fv1"))
+        #expect(refreshForm.contains("refresh_token=refresh%2B%2F%3D"))
+        #expect(revokeForm.contains("token_type_hint=refresh_token"))
+        #expect(revokeForm.contains("token=refresh%2B%2F%3D"))
     }
 
     @Test("Plan translation streams a complete response with the selected model and full context")
@@ -159,21 +224,22 @@ struct ChatGPTPlanAccountServiceTests {
             Issue.record("Expected TranslationError.apiError, got \(error)")
         }
     }
-    @Test("catalog keeps only displayable models in a stable order")
+    @Test("catalog keeps displayable plan models in server order")
     func catalogFiltersDisplayableModels() throws {
         let data = """
         {
-          "data": [
-            { "id": "gpt-5", "object": "model" },
-            { "id": "", "object": "model" },
-            { "id": "gpt-5", "object": "model" },
-            { "id": "not-a-model", "object": "other" },
-            { "id": "chatgpt-5", "object": "model" }
+          "models": [
+            { "slug": "gpt-5", "display_name": "GPT 5", "visibility": "list" },
+            { "slug": "hidden", "display_name": "Hidden", "visibility": "hidden" },
+            { "slug": "gpt-5", "display_name": "Duplicate", "visibility": "list" },
+            { "slug": "gpt-5-mini", "display_name": "GPT 5 Mini", "visibility": "list" }
           ]
         }
         """.data(using: .utf8)!
 
-        #expect(try ChatGPTPlanModelCatalogService.parseModels(data).map(\.id) == ["chatgpt-5", "gpt-5"])
+        let models = try ChatGPTPlanModelCatalogService.parseModels(data)
+        #expect(models.map(\.id) == ["gpt-5", "gpt-5-mini"])
+        #expect(models.map(\.displayName) == ["GPT 5", "GPT 5 Mini"])
     }
 
     @Test("catalog cache reuses an account catalog for five minutes")
@@ -347,6 +413,10 @@ private final class SessionBox: @unchecked Sendable {
 
 private final class RequestBox: @unchecked Sendable {
     var request: URLRequest?
+}
+
+private final class RequestListBox: @unchecked Sendable {
+    var requests: [URLRequest] = []
 }
 
 private actor OAuthTransportStub: ChatGPTPlanOAuthTransport {

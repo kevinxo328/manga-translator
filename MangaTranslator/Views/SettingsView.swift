@@ -388,7 +388,8 @@ struct SettingsView: View {
             } catch is CancellationError {
                 // The user cancelled before the browser completed the OAuth callback.
             } catch {
-                chatGPTPlanError = "ChatGPT sign-in could not be completed. Please try again."
+                chatGPTPlanError = (error as? LocalizedError)?.errorDescription
+                    ?? "ChatGPT sign-in could not be completed. Please try again."
             }
             chatGPTPlanBusy = false
             chatGPTPlanSignInTask = nil

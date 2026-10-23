@@ -127,6 +127,20 @@ struct APIErrorSanitizerTests {
         #expect(result.message == "Rate limit reached")
     }
 
+    @Test("parses direct-plan admission detail")
+    func parsesOpenAIAdmissionDetail() {
+        let data = Data(#"{"detail":"Direct plan usage is unavailable in this region"}"#.utf8)
+        let result = APIErrorSanitizer.sanitize(
+            provider: .openAI,
+            providerDisplayName: "ChatGPT Plan (Preview)",
+            statusCode: 403,
+            responseData: data
+        )
+
+        #expect(result.code == nil)
+        #expect(result.message == "Direct plan usage is unavailable in this region")
+    }
+
     @Test("falls back to error.type when error.code missing")
     func openAIFallsBackToType() {
         let body = #"{"error":{"message":"Invalid request","type":"invalid_request_error"}}"#

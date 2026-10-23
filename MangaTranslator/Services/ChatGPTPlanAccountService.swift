@@ -1,11 +1,16 @@
 import AppKit
 import Foundation
 import Network
+import Security
 
 struct ChatGPTPlanModel: Identifiable, Hashable {
     let id: String
+    let displayName: String
 
-    var displayName: String { id }
+    init(id: String, displayName: String? = nil) {
+        self.id = id
+        self.displayName = displayName ?? id
+    }
 }
 
 actor ChatGPTPlanModelCatalogStore {
@@ -67,19 +72,26 @@ struct ChatGPTPlanModelCatalogService {
     static func parseModels(_ data: Data) throws -> [ChatGPTPlanModel] {
         struct Response: Decodable {
             struct Model: Decodable {
-                let id: String
-                let object: String?
+                let slug: String
+                let displayName: String
+                let visibility: String
+
+                enum CodingKeys: String, CodingKey {
+                    case slug
+                    case displayName = "display_name"
+                    case visibility
+                }
             }
 
-            let data: [Model]
+            let models: [Model]
         }
 
         let response = try JSONDecoder().decode(Response.self, from: data)
-        let uniqueIDs = Set(response.data.compactMap { model -> String? in
-            guard model.object == "model", !model.id.isEmpty else { return nil }
-            return model.id
-        })
-        return uniqueIDs.sorted().map(ChatGPTPlanModel.init(id:))
+        var seen = Set<String>()
+        return response.models.compactMap { model in
+            guard model.visibility == "list", !model.slug.isEmpty, seen.insert(model.slug).inserted else { return nil }
+            return ChatGPTPlanModel(id: model.slug, displayName: model.displayName)
+        }
     }
 }
 
@@ -192,16 +204,27 @@ struct ChatGPTPlanHTTPTransport: ChatGPTPlanOAuthTransport {
     }
 
     func refresh(refreshToken: String, clientID: String) async throws -> ChatGPTPlanTokenResponse {
-        try await request(["grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": clientID])
+        try await request([
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": clientID,
+            "resource": ChatGPTPlanOAuth.resource
+        ])
     }
 
     func revoke(refreshToken: String, clientID: String) async throws {
         var request = URLRequest(url: URL(string: "https://auth.openai.com/api/accounts/oauth/revoke")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = form(["token": refreshToken, "client_id": clientID])
+        request.httpBody = form([
+            "token": refreshToken,
+            "token_type_hint": "refresh_token",
+            "client_id": clientID
+        ])
         let (_, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse).map({ 200 ..< 300 ~= $0.statusCode }) == true else { throw ChatGPTPlanOAuthError.invalidCallback }
+        guard let httpResponse = response as? HTTPURLResponse, (200 ..< 300).contains(httpResponse.statusCode) else {
+            throw ChatGPTPlanOAuthError.tokenRequestFailed(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
     }
 
     private func request(_ values: [String: String]) async throws -> ChatGPTPlanTokenResponse {
@@ -210,15 +233,121 @@ struct ChatGPTPlanHTTPTransport: ChatGPTPlanOAuthTransport {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = form(values)
         let (data, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse).map({ 200 ..< 300 ~= $0.statusCode }) == true else { throw ChatGPTPlanOAuthError.invalidCallback }
+        guard let httpResponse = response as? HTTPURLResponse, (200 ..< 300).contains(httpResponse.statusCode) else {
+            throw ChatGPTPlanOAuthError.tokenRequestFailed(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
         return try JSONDecoder().decode(ChatGPTPlanTokenResponse.self, from: data)
     }
 
     private func form(_ values: [String: String]) -> Data? {
         values.map { key, value in
-            let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            return "\(key)=\(encoded)"
+            "\(formEncoded(key))=\(formEncoded(value))"
         }.joined(separator: "&").data(using: .utf8)
+    }
+
+    private func formEncoded(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+    }
+}
+
+protocol ChatGPTPlanIDTokenVerifying: Sendable {
+    func verifySignature(of idToken: String) async throws
+}
+
+struct ChatGPTPlanIDTokenVerifier: ChatGPTPlanIDTokenVerifying {
+    private static let jwksURL = URL(string: "https://auth.openai.com/.well-known/jwks.json")!
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func verifySignature(of idToken: String) async throws {
+        let parts = idToken.split(separator: ".")
+        guard parts.count == 3,
+              let headerData = Data(base64URLString: String(parts[0])),
+              let header = try? JSONSerialization.jsonObject(with: headerData) as? [String: Any],
+              header["alg"] as? String == "RS256",
+              let keyID = header["kid"] as? String,
+              let signature = Data(base64URLString: String(parts[2])) else {
+            throw ChatGPTPlanOAuthError.invalidIDTokenSignature
+        }
+
+        let (data, response) = try await session.data(from: Self.jwksURL)
+        guard let httpResponse = response as? HTTPURLResponse, (200 ..< 300).contains(httpResponse.statusCode),
+              let jwks = try? JSONDecoder().decode(JWKS.self, from: data),
+              let jwk = jwks.keys.first(where: { $0.keyID == keyID && $0.algorithm == "RS256" }),
+              let publicKey = publicKey(for: jwk) else {
+            throw ChatGPTPlanOAuthError.invalidIDTokenSignature
+        }
+
+        let signingInput = Data("\(parts[0]).\(parts[1])".utf8)
+        var error: Unmanaged<CFError>?
+        guard SecKeyVerifySignature(publicKey, .rsaSignatureMessagePKCS1v15SHA256, signingInput as CFData, signature as CFData, &error) else {
+            throw ChatGPTPlanOAuthError.invalidIDTokenSignature
+        }
+    }
+
+    private func publicKey(for jwk: JWK) -> SecKey? {
+        guard jwk.keyType == "RSA",
+              let modulus = Data(base64URLString: jwk.modulus),
+              let exponent = Data(base64URLString: jwk.exponent) else { return nil }
+        let der = sequence(integer(modulus) + integer(exponent))
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+            kSecAttrKeySizeInBits as String: modulus.count * 8
+        ]
+        return SecKeyCreateWithData(der as CFData, attributes as CFDictionary, nil)
+    }
+
+    private func integer(_ value: Data) -> Data {
+        let needsLeadingZero = value.first.map { $0 & 0x80 != 0 } ?? false
+        return Data([0x02]) + derLength(value.count + (needsLeadingZero ? 1 : 0)) + (needsLeadingZero ? Data([0]) : Data()) + value
+    }
+
+    private func sequence(_ value: Data) -> Data {
+        Data([0x30]) + derLength(value.count) + value
+    }
+
+    private func derLength(_ length: Int) -> Data {
+        if length < 128 { return Data([UInt8(length)]) }
+        var value = length
+        var bytes: [UInt8] = []
+        while value > 0 {
+            bytes.insert(UInt8(value & 0xff), at: 0)
+            value >>= 8
+        }
+        return Data([0x80 | UInt8(bytes.count)]) + Data(bytes)
+    }
+
+    private struct JWKS: Decodable {
+        let keys: [JWK]
+    }
+
+    private struct JWK: Decodable {
+        let keyType: String
+        let keyID: String
+        let algorithm: String?
+        let modulus: String
+        let exponent: String
+
+        enum CodingKeys: String, CodingKey {
+            case keyType = "kty"
+            case keyID = "kid"
+            case algorithm = "alg"
+            case modulus = "n"
+            case exponent = "e"
+        }
+    }
+}
+
+private extension Data {
+    init?(base64URLString value: String) {
+        let padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        let remainder = padded.count % 4
+        self.init(base64Encoded: remainder == 0 ? padded : padded + String(repeating: "=", count: 4 - remainder))
     }
 }
 
@@ -228,11 +357,14 @@ final class ChatGPTPlanLoopbackListener {
     private var listener: NWListener?
     private var callback: CheckedContinuation<URL, Error>?
     private var receivedCallback: Result<URL, Error>?
+    private let networkQueue = DispatchQueue(label: "com.mangatranslator.chatgpt-plan-loopback")
 
     func start() async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             do {
-                let listener = try NWListener(using: .tcp, on: .any)
+                let parameters = NWParameters.tcp
+                parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+                let listener = try NWListener(using: parameters)
                 self.listener = listener
                 listener.newConnectionHandler = { [weak self] connection in
                     Task { @MainActor in self?.receive(connection) }
@@ -248,7 +380,7 @@ final class ChatGPTPlanLoopbackListener {
                         }
                     }
                 }
-                listener.start(queue: .main)
+                listener.start(queue: networkQueue)
             } catch { continuation.resume(throwing: error) }
         }
     }
@@ -275,13 +407,15 @@ final class ChatGPTPlanLoopbackListener {
     func cancel() { listener?.cancel(); listener = nil }
 
     private func receive(_ connection: NWConnection) {
-        connection.start(queue: .main)
+        connection.start(queue: networkQueue)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 8_192) { [weak self] data, _, _, error in
             defer { connection.cancel(); Task { @MainActor in self?.cancel() } }
             guard error == nil, let data, let request = String(data: data, encoding: .utf8), let target = request.split(separator: "\n").first?.split(separator: " ").dropFirst().first, let url = URL(string: "http://127.0.0.1\(target)") else {
                 Task { @MainActor in self?.finish(.failure(ChatGPTPlanOAuthError.invalidCallback)) }; return
             }
-            connection.send(content: Data("HTTP/1.1 200 OK\r\nContent-Length: 45\r\n\r\nYou may return to MangaTranslator.".utf8), completion: .contentProcessed { _ in })
+            let page = "You may return to MangaTranslator."
+            let response = "HTTP/1.1 200 OK\r\nContent-Length: \(page.utf8.count)\r\n\r\n\(page)"
+            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in })
             Task { @MainActor in self?.finish(.success(url)) }
         }
     }
@@ -295,6 +429,7 @@ final class ChatGPTPlanLoopbackListener {
 
 actor ChatGPTPlanAccountService {
     private let transport: any ChatGPTPlanOAuthTransport
+    private let idTokenVerifier: any ChatGPTPlanIDTokenVerifying
     private let load: @Sendable () -> ChatGPTPlanSession?
     private let save: @Sendable (ChatGPTPlanSession) -> Void
     private let clear: @Sendable () -> Void
@@ -302,8 +437,9 @@ actor ChatGPTPlanAccountService {
     private let hostID: String
     private var refreshTask: Task<ChatGPTPlanSession, Error>?
 
-    init(transport: any ChatGPTPlanOAuthTransport = ChatGPTPlanHTTPTransport(), store: ChatGPTPlanSessionStore = ChatGPTPlanSessionStore(), now: @escaping @Sendable () -> Date = Date.init, hostID: String = ChatGPTPlanAccountService.installationHostID()) {
+    init(transport: any ChatGPTPlanOAuthTransport = ChatGPTPlanHTTPTransport(), idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), store: ChatGPTPlanSessionStore = ChatGPTPlanSessionStore(), now: @escaping @Sendable () -> Date = Date.init, hostID: String = ChatGPTPlanAccountService.installationHostID()) {
         self.transport = transport
+        self.idTokenVerifier = idTokenVerifier
         self.load = { store.load() }
         self.save = { store.save($0) }
         self.clear = { store.clear() }
@@ -311,8 +447,8 @@ actor ChatGPTPlanAccountService {
         self.hostID = hostID
     }
 
-    init(transport: any ChatGPTPlanOAuthTransport, load: @escaping @Sendable () -> ChatGPTPlanSession?, save: @escaping @Sendable (ChatGPTPlanSession) -> Void, clear: @escaping @Sendable () -> Void, now: @escaping @Sendable () -> Date = Date.init, hostID: String = "test-host") {
-        self.transport = transport; self.load = load; self.save = save; self.clear = clear; self.now = now; self.hostID = hostID
+    init(transport: any ChatGPTPlanOAuthTransport, idTokenVerifier: any ChatGPTPlanIDTokenVerifying = ChatGPTPlanIDTokenVerifier(), load: @escaping @Sendable () -> ChatGPTPlanSession?, save: @escaping @Sendable (ChatGPTPlanSession) -> Void, clear: @escaping @Sendable () -> Void, now: @escaping @Sendable () -> Date = Date.init, hostID: String = "test-host") {
+        self.transport = transport; self.idTokenVerifier = idTokenVerifier; self.load = load; self.save = save; self.clear = clear; self.now = now; self.hostID = hostID
     }
 
     func session() -> ChatGPTPlanSession? { load() }
@@ -336,14 +472,18 @@ actor ChatGPTPlanAccountService {
 
     func signIn() async throws -> ChatGPTPlanSession {
         let listener = await MainActor.run { ChatGPTPlanLoopbackListener() }
+        defer { Task { @MainActor in listener.cancel() } }
         let redirectURI = try await listener.start()
         let attempt = ChatGPTPlanAuthorizationAttempt.make(redirectURI: redirectURI, issuedClientID: load()?.clientID)
         let authorizationURL = ChatGPTPlanOAuth.authorizationURL(for: attempt, hostID: hostID)
-        await MainActor.run { NSWorkspace.shared.open(authorizationURL) }
+        guard await MainActor.run(body: { NSWorkspace.shared.open(authorizationURL) }) else {
+            throw ChatGPTPlanOAuthError.browserLaunchFailed
+        }
         let callbackURL = try await listener.waitForCallback()
         let callback = try ChatGPTPlanOAuth.validate(callbackURL: callbackURL, for: attempt)
         let clientID = callback.clientID ?? attempt.clientID
         let token = try await transport.exchange(code: callback.code, clientID: clientID, redirectURI: redirectURI, verifier: attempt.verifier)
+        try await idTokenVerifier.verifySignature(of: token.idToken)
         let identity = try ChatGPTPlanOAuth.identity(from: token.idToken, expectedNonce: attempt.nonce, clientID: clientID, now: now())
         let session = makeSession(token, identity: identity, clientID: clientID)
         guard session.isAuthorizedForPlanUsage else { throw ChatGPTPlanOAuthError.missingPlanScope }

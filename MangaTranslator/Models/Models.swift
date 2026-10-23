@@ -181,8 +181,32 @@ enum ChatGPTPlanOAuthError: LocalizedError, Equatable {
     case unexpectedClientID
     case identityMismatch
     case missingPlanScope
+    case browserLaunchFailed
+    case tokenRequestFailed(statusCode: Int)
+    case invalidIDTokenSignature
 
-    var errorDescription: String? { "ChatGPT sign-in could not be completed. Please try again." }
+    var errorDescription: String? {
+        switch self {
+        case .authorizationDenied:
+            return "ChatGPT sign-in was cancelled in the browser."
+        case .stateMismatch:
+            return "ChatGPT returned a callback for a different sign-in attempt. Start sign-in again."
+        case .missingIssuedClientID, .unexpectedClientID:
+            return "ChatGPT did not complete client registration. Start sign-in again."
+        case .identityMismatch:
+            return "ChatGPT returned an invalid sign-in identity. Start sign-in again."
+        case .invalidIDTokenSignature:
+            return "ChatGPT returned an ID token that could not be verified. Start sign-in again."
+        case .missingPlanScope:
+            return "ChatGPT Plan permission was not granted. Enable it during sign-in and try again."
+        case .browserLaunchFailed:
+            return "Couldn’t open the browser for ChatGPT sign-in."
+        case .tokenRequestFailed(let statusCode):
+            return "ChatGPT sign-in could not exchange its authorization code (HTTP \(statusCode)). Start sign-in again."
+        case .invalidCallback:
+            return "ChatGPT did not return a valid sign-in callback. Start sign-in again."
+        }
+    }
 }
 
 struct ChatGPTPlanAuthorizationCallback: Sendable, Equatable {

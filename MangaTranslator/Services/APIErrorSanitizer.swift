@@ -219,7 +219,7 @@ enum APIErrorSanitizer {
         let code = (errorObj?["code"] as? String)
             ?? stringFromAny(errorObj?["code"])
             ?? (errorObj?["type"] as? String)
-        let message = errorObj?["message"] as? String
+        let message = (errorObj?["message"] as? String) ?? (dict["detail"] as? String)
         return Parsed(code: code, rawMessage: message)
     }
 
