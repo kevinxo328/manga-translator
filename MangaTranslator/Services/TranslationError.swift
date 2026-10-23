@@ -2,6 +2,7 @@ import Foundation
 
 enum TranslationError: LocalizedError {
     case missingAPIKey(TranslationEngine)
+    case chatGPTPlanNotConnected
     case invalidResponse
     case apiError(SanitizedAPIError)
     case networkError(Error)
@@ -10,6 +11,8 @@ enum TranslationError: LocalizedError {
         switch self {
         case .missingAPIKey(let engine):
             return "API key not found for \(engine.displayName). Please add it in Settings."
+        case .chatGPTPlanNotConnected:
+            return "ChatGPT Plan is not connected. Sign in from Settings to translate."
         case .invalidResponse:
             return "Failed to parse translation response"
         case .apiError(let sanitized):

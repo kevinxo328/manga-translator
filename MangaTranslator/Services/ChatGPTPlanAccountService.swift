@@ -181,7 +181,14 @@ struct ChatGPTPlanHTTPTransport: ChatGPTPlanOAuthTransport {
     init(session: URLSession = .shared) { self.session = session }
 
     func exchange(code: String, clientID: String, redirectURI: URL, verifier: String) async throws -> ChatGPTPlanTokenResponse {
-        try await request(["grant_type": "authorization_code", "code": code, "client_id": clientID, "redirect_uri": redirectURI.absoluteString, "code_verifier": verifier])
+        try await request([
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": clientID,
+            "redirect_uri": redirectURI.absoluteString,
+            "code_verifier": verifier,
+            "resource": ChatGPTPlanOAuth.resource
+        ])
     }
 
     func refresh(refreshToken: String, clientID: String) async throws -> ChatGPTPlanTokenResponse {

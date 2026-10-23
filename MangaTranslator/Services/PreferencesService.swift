@@ -117,7 +117,10 @@ struct ChatGPTPlanTranslationService: TranslationService {
     }
 
     private func responseText(systemPrompt: String, userPrompt: String) async throws -> String {
-        guard let model = await account.session()?.selectedModel, !model.isEmpty else {
+        guard let session = await account.session() else {
+            throw TranslationError.chatGPTPlanNotConnected
+        }
+        guard let model = session.selectedModel, !model.isEmpty else {
             throw TranslationError.invalidResponse
         }
         let accessToken = try await account.validAccessToken()

@@ -4,6 +4,48 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("Plan translation reports a disconnected account before checking a model")
+    func planTranslationReportsDisconnectedAccount() async {
+        let service = ChatGPTPlanTranslationService(
+            account: ChatGPTPlanAccountService(
+                transport: OAuthTransportStub(), load: { nil }, save: { _ in }, clear: {}
+            )
+        )
+
+        do {
+            _ = try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+            Issue.record("Expected a disconnected-account error")
+        } catch TranslationError.chatGPTPlanNotConnected {
+            // Expected: absence of an account is distinct from malformed output.
+        } catch {
+            Issue.record("Expected chatGPTPlanNotConnected, got \(error)")
+        }
+    }
+
+    @Test("Token exchange requests access for the Responses API resource")
+    func tokenExchangeIncludesResponsesAPIResource() async throws {
+        let captured = RequestBox()
+        let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
+            captured.request = request
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let data = Data(#"{"access_token":"access","refresh_token":"refresh","id_token":"id","expires_in":3600,"scope":"openid"}"#.utf8)
+            return (response, data)
+        }
+        defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
+
+        let transport = ChatGPTPlanHTTPTransport(session: httpSession)
+        _ = try await transport.exchange(
+            code: "authorization-code",
+            clientID: "client-id",
+            redirectURI: URL(string: "http://127.0.0.1:8080/callback")!,
+            verifier: "verifier"
+        )
+
+        let request = try #require(captured.request)
+        let form = String(data: request.readMockBody(), encoding: .utf8) ?? ""
+        #expect(form.contains("resource=\(ChatGPTPlanOAuth.resource)"))
+    }
+
     @Test("Plan translation streams a complete response with the selected model and full context")
     func planTranslationStreamsCompletedResponse() async throws {
         let store = SessionBox(session: session(selectedModel: "gpt-5"))
