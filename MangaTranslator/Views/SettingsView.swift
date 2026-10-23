@@ -76,6 +76,7 @@ struct SettingsView: View {
     @State private var chatGPTPlanModel: String?
     @State private var chatGPTPlanError: String?
     @State private var chatGPTPlanBusy = false
+    @State private var chatGPTPlanSignInTask: Task<Void, Never>?
     private let copilotModelStateOverride: CopilotModelLoadState?
     private let chatGPTPlanAccount = ChatGPTPlanAccountService()
 
@@ -255,6 +256,7 @@ struct SettingsView: View {
                 if chatGPTPlanBusy {
                     ProgressView("Connecting…")
                         .controlSize(.small)
+                    Button("Cancel", action: cancelChatGPTPlanSignIn)
                 }
                 if let chatGPTPlanError {
                     Text(chatGPTPlanError)
@@ -377,17 +379,24 @@ struct SettingsView: View {
     private func signInToChatGPTPlan() {
         chatGPTPlanBusy = true
         chatGPTPlanError = nil
-        Task {
+        chatGPTPlanSignInTask = Task {
             do {
                 chatGPTPlanSession = try await chatGPTPlanAccount.signIn()
                 if let chatGPTPlanSession {
                     await loadChatGPTPlanModels(for: chatGPTPlanSession)
                 }
+            } catch is CancellationError {
+                // The user cancelled before the browser completed the OAuth callback.
             } catch {
                 chatGPTPlanError = "ChatGPT sign-in could not be completed. Please try again."
             }
             chatGPTPlanBusy = false
+            chatGPTPlanSignInTask = nil
         }
+    }
+
+    private func cancelChatGPTPlanSignIn() {
+        chatGPTPlanSignInTask?.cancel()
     }
 
     private func signOutOfChatGPTPlan() {

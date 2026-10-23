@@ -18,6 +18,21 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(redirectURI.port != nil)
     }
 
+    @Test("OAuth listener cancellation releases a pending sign-in")
+    @MainActor
+    func loopbackListenerWaitCancels() async throws {
+        let listener = ChatGPTPlanLoopbackListener()
+        defer { listener.cancel() }
+        _ = try await listener.start()
+        let callback = Task { try await listener.waitForCallback() }
+
+        callback.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await callback.value
+        }
+    }
+
     @Test("Plan translation reports a disconnected account before checking a model")
     func planTranslationReportsDisconnectedAccount() async {
         let service = ChatGPTPlanTranslationService(

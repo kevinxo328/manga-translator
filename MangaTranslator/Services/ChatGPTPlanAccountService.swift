@@ -255,7 +255,21 @@ final class ChatGPTPlanLoopbackListener {
 
     func waitForCallback() async throws -> URL {
         if let receivedCallback { return try receivedCallback.get() }
-        return try await withCheckedThrowingContinuation { callback = $0 }
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                if let receivedCallback {
+                    continuation.resume(with: receivedCallback)
+                } else {
+                    callback = continuation
+                }
+            }
+        }, onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finish(.failure(CancellationError()))
+                self?.cancel()
+            }
+        })
     }
 
     func cancel() { listener?.cancel(); listener = nil }
@@ -364,8 +378,15 @@ actor ChatGPTPlanAccountService {
 
     private static func installationHostID() -> String {
         let key = "chatGPTPlanInstallationHostID"
-        if let existing = UserDefaults.standard.string(forKey: key) { return existing }
-        let created = UUID().uuidString
+        if let existing = UserDefaults.standard.string(forKey: key) {
+            if existing.hasPrefix("urn:uuid:") { return existing }
+            if let uuid = UUID(uuidString: existing) {
+                let migrated = "urn:uuid:\(uuid.uuidString.lowercased())"
+                UserDefaults.standard.set(migrated, forKey: key)
+                return migrated
+            }
+        }
+        let created = "urn:uuid:\(UUID().uuidString.lowercased())"
         UserDefaults.standard.set(created, forKey: key)
         return created
     }

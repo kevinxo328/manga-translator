@@ -36,6 +36,25 @@ func chatGPTPlanCallbackRejectsMismatchedState() {
     }
 }
 
+@Test("ChatGPT Plan authorization uses a UUID URN host identifier")
+func chatGPTPlanAuthorizationUsesUUIDURNHostID() throws {
+    let attempt = ChatGPTPlanAuthorizationAttempt(
+        state: "state", nonce: "nonce", verifier: "verifier",
+        redirectURI: URL(string: "http://127.0.0.1:1455/callback")!,
+        clientID: "dynamic_agent_client", isNewRegistration: true
+    )
+
+    let url = ChatGPTPlanOAuth.authorizationURL(
+        for: attempt,
+        hostID: "urn:uuid:123e4567-e89b-12d3-a456-426614174000"
+    )
+    let values = Dictionary(uniqueKeysWithValues: try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems).compactMap { item in
+        item.value.map { (item.name, $0) }
+    })
+
+    #expect(values["ext_agent_host_id"] == "urn:uuid:123e4567-e89b-12d3-a456-426614174000")
+}
+
 @Test("ChatGPT Plan token claims must belong to the authorization attempt")
 func chatGPTPlanTokenClaimsRejectMismatchedNonce() {
     #expect(throws: ChatGPTPlanOAuthError.identityMismatch) {
