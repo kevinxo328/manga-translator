@@ -264,9 +264,7 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                 }
             } header: {
-                Label("ChatGPT Plan (Preview)", systemImage: "person.badge.key")
-            } footer: {
-                Text("Plan eligibility, limits, and available models may change.")
+                Text("ChatGPT Plan (Preview)")
             }
 
             Section {
@@ -309,7 +307,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             } header: {
-                Label("GitHub Copilot", systemImage: "sparkles")
+                Text("GitHub Copilot")
             }
         }
         .formStyle(.grouped)
