@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.0 (2026-10-23)
+
+### New Features
+
+- **Translate with Your ChatGPT Plan** — Sign in with your ChatGPT account to translate pages using your existing subscription, no API key needed. Pick the model you prefer, watch translations appear as they're written, and if part of a page fails, the app automatically recovers so you still get a complete result.
+
 ## v1.5.11 (2026-10-22)
 
 ### Bug Fixes
