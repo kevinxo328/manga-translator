@@ -4,6 +4,20 @@ import Testing
 
 @Suite("ChatGPTPlanAccountService")
 struct ChatGPTPlanAccountServiceTests {
+    @Test("OAuth listener starts a loopback callback server")
+    @MainActor
+    func loopbackListenerStarts() async throws {
+        let listener = ChatGPTPlanLoopbackListener()
+        defer { listener.cancel() }
+
+        let redirectURI = try await listener.start()
+
+        #expect(redirectURI.scheme == "http")
+        #expect(redirectURI.host == "127.0.0.1")
+        #expect(redirectURI.path == "/callback")
+        #expect(redirectURI.port != nil)
+    }
+
     @Test("Plan translation reports a disconnected account before checking a model")
     func planTranslationReportsDisconnectedAccount() async {
         let service = ChatGPTPlanTranslationService(
