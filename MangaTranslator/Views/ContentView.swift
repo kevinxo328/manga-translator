@@ -523,7 +523,7 @@ struct ContentView: View {
                         .font(.subheadline)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
 
                 toolbarIcon("arrow.right")
                     .foregroundStyle(.secondary)
@@ -540,7 +540,7 @@ struct ContentView: View {
                         .font(.subheadline.bold())
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
             }
             .padding(.horizontal, 8)
             .controlSize(.small)
@@ -565,7 +565,7 @@ struct ContentView: View {
                         .font(.subheadline)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
             }
             .padding(.horizontal, 8)
             .controlSize(.small)
