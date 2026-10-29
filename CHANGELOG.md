@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.3 (2026-10-29)
+
+### Bug Fixes
+
+- Fixed an issue where ChatGPT Plan translations could hang or fail during network timeouts, ensuring completed pages are kept and remaining pages can be retried.
+
+### Improvements
+
+- Added release notes to the update window so you can see what is new and improved before installing an update.
+
 ## v1.6.2 (2026-10-24)
 
 ### Bug Fixes
