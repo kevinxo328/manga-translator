@@ -848,6 +848,27 @@ final class TranslationViewModel: ObservableObject {
             revertBatchPagesToPending(group)
             return true
         } catch {
+            if service.engine == .chatGPTPlan, isRequestTimeout(error) {
+                pipelineLogger.log(
+                    "ChatGPT Plan batch timed out; stopping without retry or per-page fallback",
+                    level: .error,
+                    category: .pipeline,
+                    metadata: [
+                        "operation": "chatGPTPlanBatchTimeout",
+                        "page_count": "\(group.count)"
+                    ]
+                )
+                for item in group where pages.indices.contains(item.pageIndex) {
+                    if let restoreFrom = item.restoreFrom {
+                        pages[item.pageIndex].state = restoreFrom.state
+                    } else {
+                        pages[item.pageIndex].state = .error(
+                            chatGPTPlanRecoveryErrorMessage(for: error)
+                        )
+                    }
+                }
+                return true
+            }
             if service.engine == .chatGPTPlan {
                 if Task.isCancelled {
                     revertBatchPagesToPending(group)
@@ -1027,10 +1048,22 @@ final class TranslationViewModel: ObservableObject {
     }
 
     private func chatGPTPlanRecoveryErrorMessage(for error: Error) -> String {
+        if isRequestTimeout(error) {
+            return "The translation request timed out. Please try again."
+        }
         guard !(error is TranslationError) else {
             return error.localizedDescription
         }
         return "The translation response was incomplete or unusable. Please try again."
+    }
+
+    private func isRequestTimeout(_ error: Error) -> Bool {
+        if let translationError = error as? TranslationError,
+           case .networkError(let underlying) = translationError {
+            return isRequestTimeout(underlying)
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut
     }
 
     func clearCacheAndResetPages() {

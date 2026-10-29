@@ -179,6 +179,8 @@ struct ChatGPTPlanAccountServiceTests {
 
         data: {"type":"response.output_text.delta","delta":"\\\"translation\\\":\\\"Hello\\\"}]"}
 
+        data: {"type":"response.output_text.done","text":"[{\\\"index\\\":0,\\\"translation\\\":\\\"Hello\\\"}]"}
+
         data: {"type":"response.completed"}
 
         """
@@ -189,7 +191,12 @@ struct ChatGPTPlanAccountServiceTests {
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
 
-        let service = ChatGPTPlanTranslationService(account: account, urlSession: httpSession)
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+        let logStore = DebugLogStore(databaseURL: databaseURL)
+        let logger = DebugLogger(store: logStore)
+        let service = ChatGPTPlanTranslationService(account: account, urlSession: httpSession, debugLogger: logger)
         let context = TranslationContext(
             glossaryTerms: [GlossaryTerm(id: "hero", sourceTerm: "勇者", targetTerm: "Hero", autoDetected: false)],
             recentPageSummaries: ["The hero enters the castle."]
@@ -198,8 +205,17 @@ struct ChatGPTPlanAccountServiceTests {
         bubble.index = 0
 
         let output = try await service.translate(bubbles: [bubble], from: .ja, to: .en, context: context)
+        await logger.flush()
+        let logMessages = (await logStore.query(filter: DebugLogFilter())).map(\.message).joined(separator: "\n")
 
         #expect(output.bubbles.map(\.translatedText) == ["Hello"])
+        #expect(logMessages.contains("Translation started"))
+        #expect(logMessages.contains("Request started"))
+        #expect(logMessages.contains("Response stream opened"))
+        #expect(logMessages.contains("SSE event received: response.output_text.done"))
+        #expect(logMessages.contains("SSE event received: response.completed"))
+        #expect(logMessages.contains("Response stream completed"))
+        #expect(logMessages.contains("Translation completed"))
         let request = try #require(captured.request)
         #expect(request.url == URL(string: "https://api.openai.com/v1/responses"))
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer old-access")
@@ -218,11 +234,74 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(body["max_output_tokens"] == nil)
     }
 
+    @Test("Plan translation completes when the completed event arrives before the connection closes")
+    func planTranslationCompletesWhenCompletedEventArrivesBeforeConnectionCloses() async throws {
+        let httpSession = OpenSSEProviderHTTPMockURLProtocol.makeSession(mode: .completedWithoutClosing)
+        defer { httpSession.invalidateAndCancel() }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")),
+            urlSession: httpSession
+        )
+
+        let output = try await withThrowingTaskGroup(of: TranslationOutput.self) { group in
+            group.addTask {
+                try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                throw OpenSSETimeout()
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+
+        #expect(output.bubbles.isEmpty)
+    }
+
+    @Test("Plan translation logs lifecycle events and reports a stalled stream")
+    func planTranslationLogsLifecycleEventsAndReportsStalledStream() async throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+        let store = DebugLogStore(databaseURL: databaseURL)
+        let logger = DebugLogger(store: store)
+        let httpSession = OpenSSEProviderHTTPMockURLProtocol.makeSession(mode: .stalled)
+        defer { httpSession.invalidateAndCancel() }
+        let service = ChatGPTPlanTranslationService(
+            account: account(with: session(selectedModel: "gpt-5")),
+            urlSession: httpSession,
+            requestTimeout: 0.05,
+            debugLogger: logger
+        )
+
+        var caughtError: Error?
+        do {
+            _ = try await service.translate(bubbles: [], from: .ja, to: .en, context: .empty)
+        } catch {
+            caughtError = error
+        }
+
+        await logger.flush()
+        let entries = await store.query(filter: DebugLogFilter())
+        let messages = entries.map(\.message).joined(separator: "\n")
+        #expect(caughtError is TranslationError)
+        #expect(messages.contains("Translation started"))
+        #expect(messages.contains("Request started"))
+        #expect(messages.contains("Response stream opened"))
+        #expect(messages.contains("timed out"))
+    }
+
     @Test("Plan translation rejects a stream without a successful terminal event")
     func planTranslationRejectsUnterminatedStream() async {
         let httpSession = ProviderHTTPMockURLProtocol.makeSession { request in
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (response, Data("data: {\"type\":\"response.output_text.delta\",\"delta\":\"[]\"}\n\n".utf8))
+            let sse = """
+            data: {"type":"response.output_text.delta","delta":"[]"}
+
+            data: {"type":"response.output_text.done","text":"[]"}
+
+            """
+            return (response, Data(sse.utf8))
         }
         defer { ProviderHTTPMockURLProtocol.releaseSession(httpSession) }
         let service = ChatGPTPlanTranslationService(
@@ -541,6 +620,54 @@ struct ChatGPTPlanAccountServiceTests {
 
     private func token(access: String, refresh: String) -> ChatGPTPlanTokenResponse {
         ChatGPTPlanTokenResponse(accessToken: access, refreshToken: refresh, idToken: "id", expiresIn: 3_600, scope: "openid chatgpt.tokens.use.direct")
+    }
+}
+
+private struct OpenSSETimeout: Error {}
+
+private final class OpenSSEProviderHTTPMockURLProtocol: URLProtocol {
+    enum Mode: Equatable {
+        case completedWithoutClosing
+        case stalled
+    }
+
+    private static let sessionHeaderName = "X-Open-SSE-Session-ID"
+    private static var modes: [String: Mode] = [:]
+    private static let lock = NSLock()
+
+    static func makeSession(mode: Mode) -> URLSession {
+        let id = UUID().uuidString
+        lock.lock()
+        Self.modes[id] = mode
+        lock.unlock()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [Self.self]
+        configuration.httpAdditionalHeaders = [sessionHeaderName: id]
+        return URLSession(configuration: configuration)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil,
+            headerFields: ["Content-Type": "text/event-stream"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+
+        let id = request.value(forHTTPHeaderField: Self.sessionHeaderName)
+        Self.lock.lock()
+        let mode = id.flatMap { Self.modes[$0] }
+        Self.lock.unlock()
+        guard mode == .completedWithoutClosing else { return }
+
+        let data = Data("data: {\"type\":\"response.output_text.delta\",\"delta\":\"[]\"}\n\ndata: {\"type\":\"response.completed\"}\n\n".utf8)
+        client?.urlProtocol(self, didLoad: data)
+    }
+
+    override func stopLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
     }
 }
 

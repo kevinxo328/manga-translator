@@ -23,6 +23,7 @@ enum DebugLogCategory: String, CaseIterable, Codable {
     case ocrManga = "ocr.manga"
     case ocrPaddle = "ocr.paddle"
     case translationOpenAI = "translation.openai"
+    case translationChatGPTPlan = "translation.chatgpt-plan"
     case translationGoogle = "translation.google"
     case translationDeepL = "translation.deepl"
     case translationCopilot = "translation.copilot"

@@ -3666,6 +3666,7 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
     private var _maximumConcurrentPerPageTranslations = 0
     private let perPageDelay: UInt64
     var failBatchForPageIds: Set<String> = []
+    var timeoutBatchForPageIds: Set<String> = []
     var remainingBatchFailuresForPageIds: [String: Int] = [:]
     var failPerPageForInputPrefixes: Set<String> = []
     var suspendBatchUntilCancel: Bool = false
@@ -3753,6 +3754,10 @@ private final class RecordingBatchTranslationService: @unchecked Sendable, Trans
             throw TranslationError.apiError(SanitizedAPIError(
                 provider: "Test", statusCode: 500, code: nil, message: "forced batch failure"
             ))
+        }
+
+        if !timeoutBatchForPageIds.isDisjoint(with: Set(pageIds)) {
+            throw TranslationError.networkError(URLError(.timedOut))
         }
 
         let outputs = pageInputs.map { input in
@@ -4073,6 +4078,30 @@ final class BatchSchedulerTests: XCTestCase {
         for index in vm.pages.indices {
             guard case .translated = vm.pages[index].state else {
                 return XCTFail("Page \(index) should be translated after recovery")
+            }
+        }
+    }
+
+    func testChatGPTPlanBatchTimeoutStopsWithoutRetryOrPerPageFallback() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4],
+            engine: .chatGPTPlan
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        service.timeoutBatchForPageIds = ["0"]
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"]])
+        XCTAssertTrue(service.perPageCalls.isEmpty, "A timeout must not start a second retry path")
+        XCTAssertFalse(vm.isProcessing, "A timed-out batch must release the processing lock")
+        guard case .error(let message) = vm.pages[0].state else {
+            return XCTFail("Timed-out page should be retryable error, got \(vm.pages[0].state)")
+        }
+        XCTAssertEqual(message, "The translation request timed out. Please try again.")
+        for index in [1, 2] {
+            guard case .pending = vm.pages[index].state else {
+                return XCTFail("Pages after the timed-out batch must remain pending, got \(vm.pages[index].state)")
             }
         }
     }
