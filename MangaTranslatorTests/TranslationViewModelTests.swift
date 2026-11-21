@@ -3894,6 +3894,22 @@ final class BatchSchedulerTests: XCTestCase {
         XCTAssertEqual(service.perPageCalls.count, 0)
     }
 
+    func testChatGPTPlanBatchPipelineUsesOnePagePerRequest() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: Array(repeating: 4, count: 5),
+            engine: .chatGPTPlan
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(
+            service.batchCalls.map(\.pageIds),
+            [["0"], ["1"], ["2"], ["3"], ["4"]]
+        )
+        XCTAssertTrue(service.perPageCalls.isEmpty)
+    }
+
     // 6.1 (ramp caps 1, 3, 5: five low-bubble pages split [0], [1,2,3], [4])
     func testRunBatchPipelineGroupsFiveLowBubblePagesUnderRampCaps() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
@@ -4051,7 +4067,10 @@ final class BatchSchedulerTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
+        XCTAssertEqual(
+            service.batchCalls.map(\.pageIds),
+            [["0"], ["1"], ["1"], ["2"], ["3"], ["4"]]
+        )
         XCTAssertTrue(service.perPageCalls.isEmpty, "A successful batch retry must not use per-page fallback")
         XCTAssertNil(vm.errorMessage, "A successful retry must not surface an error")
         for index in vm.pages.indices {
@@ -4071,9 +4090,12 @@ final class BatchSchedulerTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
-        XCTAssertEqual(service.perPageCalls.map { $0.input.prefix(4) }, ["w301", "w302", "w303"])
-        XCTAssertEqual(service.perPageCalls.map(\.summaries.count), [1, 2, 3])
+        XCTAssertEqual(
+            service.batchCalls.map(\.pageIds),
+            [["0"], ["1"], ["1"], ["2"], ["3"], ["4"]]
+        )
+        XCTAssertEqual(service.perPageCalls.map { $0.input.prefix(4) }, ["w301"])
+        XCTAssertEqual(service.perPageCalls.map(\.summaries.count), [1])
         XCTAssertNil(vm.errorMessage, "Successful page recovery must not surface an error")
         for index in vm.pages.indices {
             guard case .translated = vm.pages[index].state else {
@@ -4113,19 +4135,19 @@ final class BatchSchedulerTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         service.remainingBatchFailuresForPageIds = ["1": 2]
-        service.failPerPageForInputPrefixes = ["w302"]
+        service.failPerPageForInputPrefixes = ["w301"]
 
         await vm.loadFolder(root)
 
         guard case .translated = vm.pages[0].state else {
             return XCTFail("A completed page must remain translated")
         }
-        guard case .error(let message) = vm.pages[2].state else {
+        guard case .error(let message) = vm.pages[1].state else {
             return XCTFail("An unrecoverable page must remain retryable")
         }
         XCTAssertEqual(message, "The translation response was incomplete or unusable. Please try again.")
         XCTAssertFalse(message.contains("MultiPageParseError"))
-        for index in [1, 3, 4] {
+        for index in [2, 3, 4] {
             guard case .translated = vm.pages[index].state else {
                 return XCTFail("Recoverable page \(index) should still be translated")
             }

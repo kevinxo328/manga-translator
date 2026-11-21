@@ -517,8 +517,13 @@ final class TranslationViewModel: ObservableObject {
     // steady state uses the full cap — bounding the extra LLM calls versus
     // full-cap grouping to 2 per run. Group composition depends only on page
     // order, bubble counts, and preparation outcomes, never on OCR/LLM timing.
+    // ChatGPT Plan stays at one page per request because larger streamed
+    // responses can stall before reaching the terminal response event.
     // See producer-consumer-llm-pipeline/design.md D2.
-    private func rampPageCap(forGroupOrdinal ordinal: Int) -> Int {
+    private func rampPageCap(forGroupOrdinal ordinal: Int, engine: TranslationEngine) -> Int {
+        if engine == .chatGPTPlan {
+            return 1
+        }
         switch ordinal {
         case 0: return 1
         case 1: return 3
@@ -574,7 +579,10 @@ final class TranslationViewModel: ObservableObject {
                     ))
                     currentBubbleCount += meaningful.count
                     nextIndex += 1
-                    if currentGroup.count >= rampPageCap(forGroupOrdinal: dispatchedGroupCount) {
+                    if currentGroup.count >= rampPageCap(
+                        forGroupOrdinal: dispatchedGroupCount,
+                        engine: service.engine
+                    ) {
                         cancelled = await dispatchCurrentGroup()
                     }
                 default:
