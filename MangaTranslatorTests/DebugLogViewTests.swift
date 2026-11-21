@@ -1,5 +1,6 @@
 import Testing
 import SwiftUI
+import AppKit
 @testable import MangaTranslator
 
 @Suite("DebugLogView UI Tests")
@@ -238,6 +239,26 @@ struct DebugLogViewTests {
         let _: any View.Type = DebugLogRowView.self
         let _: any View.Type = DebugLogDetailSheet.self
         let _: any View.Type = LevelBadge.self
+    }
+
+    @Test("Copying a single log writes the complete entry to the clipboard")
+    func copyingSingleLogWritesCompleteEntryToClipboard() {
+        let entry = makeEntry(
+            message: "Full message here\nLine 2",
+            level: .warning,
+            category: .keychain,
+            kind: .content,
+            sessionID: "sess-abc",
+            source: "KeychainService.swift",
+            filePath: "/Users/user/image.png"
+        )
+
+        DebugLogClipboard.copy(entry)
+
+        let copiedText = NSPasteboard.general.string(forType: .string)
+        #expect(copiedText == entry.clipboardText)
+        #expect(copiedText?.contains("Full message here\nLine 2") == true)
+        #expect(copiedText?.contains("Session ID: sess-abc") == true)
     }
 
     // MARK: - Helpers

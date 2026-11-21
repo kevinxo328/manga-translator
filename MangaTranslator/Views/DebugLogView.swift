@@ -395,6 +395,11 @@ struct DebugLogDetailSheet: View {
     let entry: DebugLogEntry
     @Environment(\.dismiss) private var dismiss
 
+    private enum Layout {
+        static let actionButtonWidth: CGFloat = 72
+        static let actionButtonHeight: CGFloat = 24
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -402,7 +407,14 @@ struct DebugLogDetailSheet: View {
                 Text(entry.category.rawValue)
                     .font(.subheadline.bold())
                 Spacer()
+                Button {
+                    DebugLogClipboard.copy(entry)
+                } label: {
+                    Text("Copy")
+                }
+                .frame(width: Layout.actionButtonWidth, height: Layout.actionButtonHeight)
                 Button("Done") { dismiss() }
+                    .frame(width: Layout.actionButtonWidth, height: Layout.actionButtonHeight)
             }
 
             Divider()
@@ -426,6 +438,35 @@ struct DebugLogDetailSheet: View {
         }
         .padding()
         .frame(width: 500, height: 380)
+    }
+}
+
+extension DebugLogEntry {
+    var clipboardText: String {
+        var lines = [
+            "Level: \(level.rawValue)",
+            "Category: \(category.rawValue)",
+            "Message:\n\(message)",
+            "Timestamp: \(timestamp.formatted(.iso8601))",
+            "Kind: \(kind.rawValue)",
+            "Session ID: \(sessionID)",
+            "Source: \(sourceFileOrComponent)"
+        ]
+        if let filePath {
+            lines.append("File Path: \(filePath)")
+        }
+        if metadataJSON != "{}" {
+            lines.append("Metadata: \(metadataJSON)")
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+enum DebugLogClipboard {
+    static func copy(_ entry: DebugLogEntry) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(entry.clipboardText, forType: .string)
     }
 }
 
