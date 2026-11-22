@@ -84,6 +84,7 @@ struct ModelsTests {
         #expect(TranslationEngine.openAI.usesRecentPageContext)
         #expect(!TranslationEngine.githubCopilot.requiresAPIKey)
         #expect(TranslationEngine.githubCopilot.usesRecentPageContext)
+        #expect(TranslationPipelineLimits.allowedConcurrentPageCounts == [1, 2, 3])
         #expect(TranslationPipelineLimits.maximumConcurrentPages == 3)
     }
 

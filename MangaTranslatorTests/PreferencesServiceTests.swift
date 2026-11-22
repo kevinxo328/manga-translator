@@ -30,6 +30,13 @@ struct PreferencesServiceTests {
         #expect(preferences.copilotModel == "auto")
     }
 
+    @Test("Fresh preferences default batch concurrency to two pages")
+    func freshPreferencesDefaultBatchConcurrency() {
+        let preferences = PreferencesService(defaults: defaults)
+
+        #expect(preferences.batchConcurrency == 2)
+    }
+
     @Test(
         "Copilot model normalization follows successful catalog capability",
         arguments: CopilotPreferenceNormalizationCase.allCases
@@ -119,10 +126,23 @@ struct PreferencesServiceTests {
 
         preferences.openAIBaseURL = "https://example.invalid/v1"
         preferences.translationEngine = .google
+        preferences.batchConcurrency = 3
 
         let reloaded = PreferencesService(defaults: defaults)
         #expect(reloaded.openAIBaseURL == "https://example.invalid/v1")
         #expect(reloaded.translationEngine == .google)
+        #expect(reloaded.batchConcurrency == 3)
+    }
+
+    @Test("Batch concurrency stays within the supported range")
+    func batchConcurrencyClampsToSupportedRange() {
+        let preferences = PreferencesService(defaults: defaults)
+
+        preferences.batchConcurrency = 0
+        #expect(preferences.batchConcurrency == 1)
+
+        preferences.batchConcurrency = 4
+        #expect(preferences.batchConcurrency == 3)
     }
 
     @Test("Persisted zh-Hant source language is migrated to ja on init")

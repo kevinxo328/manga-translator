@@ -490,15 +490,19 @@ final class TranslationViewModel: ObservableObject {
         defer { isProcessing = false }
         let service = translationService
         let usesContext = usesRecentPageContext(service.engine)
+        let maxConcurrentPages = preferences.batchConcurrency
 
         if usesContext {
-            await runPipelinedLLMBatch(mode: mode, service: service)
+            await runPipelinedLLMBatch(
+                mode: mode,
+                service: service,
+                maxConcurrentPages: maxConcurrentPages
+            )
         } else {
             await withTaskGroup(of: Void.self) { group in
-                let maxConcurrent = TranslationPipelineLimits.maximumConcurrentPages
                 var started = 0
                 for i in pages.indices {
-                    if started >= maxConcurrent {
+                    if started >= maxConcurrentPages {
                         await group.next()
                     }
                     started += 1
@@ -532,7 +536,11 @@ final class TranslationViewModel: ObservableObject {
     // of contextual-translation. The first LLM request leaves as soon as
     // page 1's preparation is consumable; preparations continue while LLM
     // requests are in flight. See producer-consumer-llm-pipeline/design.md D1.
-    private func runPipelinedLLMBatch(mode: PageTranslationMode, service: any TranslationService) async {
+    private func runPipelinedLLMBatch(
+        mode: PageTranslationMode,
+        service: any TranslationService,
+        maxConcurrentPages: Int
+    ) async {
         var buffer: [Int: PagePreparation] = [:]
         var nextIndex = 0
         var currentGroup: [BatchPlanItem] = []
@@ -590,11 +598,10 @@ final class TranslationViewModel: ObservableObject {
         }
 
         await withTaskGroup(of: (Int, PagePreparation).self) { group in
-            let maxConcurrent = TranslationPipelineLimits.maximumConcurrentPages
             var started = 0
             for i in pages.indices {
                 if cancelled { break }
-                if started >= maxConcurrent {
+                if started >= maxConcurrentPages {
                     if let result = await group.next() {
                         buffer[result.0] = result.1
                         await consumeBuffered()

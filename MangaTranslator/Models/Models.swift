@@ -101,7 +101,10 @@ enum TranslationEngineRegistry {
 }
 
 enum TranslationPipelineLimits {
+    static let minimumConcurrentPages = 1
     static let maximumConcurrentPages = 3
+    static let defaultConcurrentPages = 2
+    static let allowedConcurrentPageCounts = Array(minimumConcurrentPages...maximumConcurrentPages)
 }
 
 /// The complete OAuth credential lifecycle for the one linked ChatGPT account.

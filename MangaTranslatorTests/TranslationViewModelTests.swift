@@ -1260,6 +1260,7 @@ final class TranslationViewModelTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: root) }
 
+        vm.preferences.batchConcurrency = 3
         await vm.loadFolder(root)
 
         XCTAssertEqual(vm.pages.count, 6)
@@ -3663,6 +3664,34 @@ private final class UniqueTextRecognizer: @unchecked Sendable, OCRRecognizing {
     }
 }
 
+private final class ConcurrencyTrackingTextRecognizer: @unchecked Sendable, OCRRecognizing {
+    private let lock = NSLock()
+    private let delay: TimeInterval
+    private var activeCalls = 0
+    private var maximumConcurrentCalls = 0
+
+    init(delay: TimeInterval) {
+        self.delay = delay
+    }
+
+    var maxConcurrentCalls: Int {
+        lock.withLock { maximumConcurrentCalls }
+    }
+
+    func recognizeText(in cgImage: CGImage, region: CGRect) throws -> (text: String, confidence: Float) {
+        lock.withLock {
+            activeCalls += 1
+            maximumConcurrentCalls = max(maximumConcurrentCalls, activeCalls)
+        }
+        defer { lock.withLock { activeCalls -= 1 } }
+
+        if delay > 0 {
+            Thread.sleep(forTimeInterval: delay)
+        }
+        return ("ocr", 1.0)
+    }
+}
+
 // Records every translateBatch and translate(...) invocation for assertions and supports
 // failure injection (failBatchForPageIds) and a cancel-aware suspension (suspendUntilCancel).
 private final class RecordingBatchTranslationService: @unchecked Sendable, TranslationService {
@@ -4308,6 +4337,42 @@ final class BatchSchedulerTests: XCTestCase {
 
         XCTAssertEqual(service.batchCalls.count, 0, "DeepL must never call translateBatch")
         XCTAssertEqual(service.perPageCalls.count, 3, "DeepL must use per-page parallel path")
+    }
+
+    func testRunBatchPipelineUsesConfiguredConcurrencyForNonContextEngine() async throws {
+        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [4, 4, 4, 4],
+            engine: .deepL,
+            perPageDelay: 50_000_000
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        vm.preferences.batchConcurrency = 1
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(
+            service.maximumConcurrentPerPageTranslations,
+            1,
+            "The Preferences value must bound non-context page translation concurrency"
+        )
+    }
+
+    func testRunBatchPipelineUsesConfiguredConcurrencyForContextPreparation() async throws {
+        let recognizer = ConcurrencyTrackingTextRecognizer(delay: 0.05)
+        let (root, _, vm, _) = try await makeBatchSchedulerFixture(
+            bubbleCountsByPage: [1, 1, 1, 1],
+            recognizer: recognizer
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        vm.preferences.batchConcurrency = 1
+        await vm.loadFolder(root)
+
+        XCTAssertEqual(
+            recognizer.maxConcurrentCalls,
+            1,
+            "The Preferences value must bound context-engine OCR preparation concurrency"
+        )
     }
 
     // 6.12

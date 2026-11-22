@@ -4,6 +4,7 @@ final class PreferencesService: ObservableObject {
     static let defaultOpenAIBaseURL = "https://api.openai.com/v1"
     static let defaultOpenAIModel = "gpt-5"
     static let defaultCopilotModel = "auto"
+    private static let batchConcurrencyKey = "batchConcurrency"
 
     private let defaults: UserDefaults
 
@@ -38,6 +39,17 @@ final class PreferencesService: ObservableObject {
         didSet { defaults.set(showPathBar, forKey: "showPathBar") }
     }
 
+    @Published var batchConcurrency: Int {
+        didSet {
+            let normalized = Self.normalizedBatchConcurrency(batchConcurrency)
+            if batchConcurrency != normalized {
+                batchConcurrency = normalized
+                return
+            }
+            defaults.set(batchConcurrency, forKey: Self.batchConcurrencyKey)
+        }
+    }
+
     // In-memory only: drives Settings tab deep-linking. Never persisted to UserDefaults.
     // Supported values: "apiKeys", "preferences", "debug", "about", "glossary".
     // Resets to "apiKeys" on every fresh app launch.
@@ -53,6 +65,8 @@ final class PreferencesService: ObservableObject {
         let openAIURL = defaults.string(forKey: "openAIBaseURL") ?? Self.defaultOpenAIBaseURL
         let copilotM = defaults.string(forKey: "copilotModel") ?? Self.defaultCopilotModel
         let showP = defaults.object(forKey: "showPathBar") as? Bool ?? true
+        let persistedBatchConcurrency = defaults.object(forKey: Self.batchConcurrencyKey) as? Int
+            ?? TranslationPipelineLimits.defaultConcurrentPages
 
         self.sourceLanguage = Language(rawValue: sourceLang).flatMap { Language.sourceLanguages.contains($0) ? $0 : nil } ?? .ja
         self.targetLanguage = Language(rawValue: targetLang) ?? .zhHant
@@ -61,6 +75,11 @@ final class PreferencesService: ObservableObject {
         self.openAIBaseURL = openAIURL
         self.copilotModel = copilotM
         self.showPathBar = showP
+        self.batchConcurrency = Self.normalizedBatchConcurrency(persistedBatchConcurrency)
+    }
+
+    private static func normalizedBatchConcurrency(_ value: Int) -> Int {
+        min(max(value, TranslationPipelineLimits.minimumConcurrentPages), TranslationPipelineLimits.maximumConcurrentPages)
     }
 }
 

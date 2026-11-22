@@ -478,6 +478,18 @@ struct SettingsView: View {
                 Label("Translation Defaults", systemImage: "gear")
             }
 
+            Section {
+                Picker("Batch Concurrency", selection: $preferences.batchConcurrency) {
+                    ForEach(TranslationPipelineLimits.allowedConcurrentPageCounts, id: \.self) { count in
+                        Text("\(count) pages").tag(count)
+                    }
+                }
+            } header: {
+                Label("Processing", systemImage: "arrow.triangle.2.circlepath")
+            } footer: {
+                Text("Applies to the next multi-page OCR and translation run.")
+            }
+
             #if arch(arm64)
             PaddleOCRSettingsSection(viewModel: paddleOCRViewModel)
             #endif
