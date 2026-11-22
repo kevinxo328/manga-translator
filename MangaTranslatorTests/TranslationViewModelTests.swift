@@ -713,17 +713,27 @@ final class TranslationViewModelTests: XCTestCase {
     // MARK: - 3. TDD — Meaningless bubble filter
 
     func testPunctuationOnlyBubblesNotInSidebar() async {
-        let router = await makeRouter(recognizerText: "。")
-        let prefs = makePrefs(source: .ja, target: .zhHant)
-        let vm = TranslationViewModel(preferences: prefs, ocrRouter: router, translationService: TrackingTranslationService())
-        var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/punct.jpg"))
-        page.image = makeTestImage()
-        vm.pages = [page]
-        await vm.translatePage(at: 0, mode: .retranslate)
-        guard case .translated(let bubbles) = vm.pages[0].state else {
-            return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+        for text in ["。", "●"] {
+            var translationCalled = false
+            let router = await makeRouter(recognizerText: text)
+            let prefs = makePrefs(source: .ja, target: .zhHant)
+            let vm = TranslationViewModel(
+                preferences: prefs,
+                ocrRouter: router,
+                translationService: TrackingTranslationService(onTranslate: { translationCalled = true })
+            )
+            var page = MangaPage(imageURL: URL(fileURLWithPath: "/tmp/meaningless-\(text).jpg"))
+            page.image = makeTestImage()
+            vm.pages = [page]
+
+            await vm.translatePage(at: 0, mode: .retranslate)
+
+            guard case .translated(let bubbles) = vm.pages[0].state else {
+                return XCTFail("Expected .translated, got \(vm.pages[0].state)")
+            }
+            XCTAssertTrue(bubbles.isEmpty, "Punct- or symbol-only bubbles must not appear in sidebar")
+            XCTAssertFalse(translationCalled, "Translation must not be called for meaningless bubbles")
         }
-        XCTAssertTrue(bubbles.isEmpty, "Punct-only bubbles must not appear in sidebar")
     }
 
     func testAllMeaninglessBubblesProducesEmptySidebarAndSkipsTranslation() async {
@@ -3894,22 +3904,6 @@ final class BatchSchedulerTests: XCTestCase {
         XCTAssertEqual(service.perPageCalls.count, 0)
     }
 
-    func testChatGPTPlanBatchPipelineUsesOnePagePerRequest() async throws {
-        let (root, service, vm, _) = try await makeBatchSchedulerFixture(
-            bubbleCountsByPage: Array(repeating: 4, count: 5),
-            engine: .chatGPTPlan
-        )
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        await vm.loadFolder(root)
-
-        XCTAssertEqual(
-            service.batchCalls.map(\.pageIds),
-            [["0"], ["1"], ["2"], ["3"], ["4"]]
-        )
-        XCTAssertTrue(service.perPageCalls.isEmpty)
-    }
-
     // 6.1 (ramp caps 1, 3, 5: five low-bubble pages split [0], [1,2,3], [4])
     func testRunBatchPipelineGroupsFiveLowBubblePagesUnderRampCaps() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
@@ -4067,10 +4061,7 @@ final class BatchSchedulerTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(
-            service.batchCalls.map(\.pageIds),
-            [["0"], ["1"], ["1"], ["2"], ["3"], ["4"]]
-        )
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
         XCTAssertTrue(service.perPageCalls.isEmpty, "A successful batch retry must not use per-page fallback")
         XCTAssertNil(vm.errorMessage, "A successful retry must not surface an error")
         for index in vm.pages.indices {
@@ -4090,12 +4081,9 @@ final class BatchSchedulerTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(
-            service.batchCalls.map(\.pageIds),
-            [["0"], ["1"], ["1"], ["2"], ["3"], ["4"]]
-        )
-        XCTAssertEqual(service.perPageCalls.map { $0.input.prefix(4) }, ["w301"])
-        XCTAssertEqual(service.perPageCalls.map(\.summaries.count), [1])
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2", "3"], ["1", "2", "3"], ["4"]])
+        XCTAssertEqual(service.perPageCalls.map { $0.input.prefix(4) }, ["w301", "w302", "w303"])
+        XCTAssertEqual(service.perPageCalls.map(\.summaries.count), [1, 2, 3])
         XCTAssertNil(vm.errorMessage, "Successful page recovery must not surface an error")
         for index in vm.pages.indices {
             guard case .translated = vm.pages[index].state else {
@@ -4104,7 +4092,7 @@ final class BatchSchedulerTests: XCTestCase {
         }
     }
 
-    func testChatGPTPlanBatchTimeoutStopsWithoutRetryOrPerPageFallback() async throws {
+    func testChatGPTPlanBatchTimeoutFallsBackToPerPageAndContinues() async throws {
         let (root, service, vm, _) = try await makeBatchSchedulerFixture(
             bubbleCountsByPage: [4, 4, 4],
             engine: .chatGPTPlan
@@ -4114,16 +4102,12 @@ final class BatchSchedulerTests: XCTestCase {
 
         await vm.loadFolder(root)
 
-        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"]])
-        XCTAssertTrue(service.perPageCalls.isEmpty, "A timeout must not start a second retry path")
+        XCTAssertEqual(service.batchCalls.map(\.pageIds), [["0"], ["1", "2"]])
+        XCTAssertEqual(service.perPageCalls.map { $0.input }, ["w300b0"])
         XCTAssertFalse(vm.isProcessing, "A timed-out batch must release the processing lock")
-        guard case .error(let message) = vm.pages[0].state else {
-            return XCTFail("Timed-out page should be retryable error, got \(vm.pages[0].state)")
-        }
-        XCTAssertEqual(message, "The translation request timed out. Please try again.")
-        for index in [1, 2] {
-            guard case .pending = vm.pages[index].state else {
-                return XCTFail("Pages after the timed-out batch must remain pending, got \(vm.pages[index].state)")
+        for index in vm.pages.indices {
+            guard case .translated = vm.pages[index].state else {
+                return XCTFail("Page \(index) should be translated after per-page recovery")
             }
         }
     }
@@ -4135,19 +4119,19 @@ final class BatchSchedulerTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         service.remainingBatchFailuresForPageIds = ["1": 2]
-        service.failPerPageForInputPrefixes = ["w301"]
+        service.failPerPageForInputPrefixes = ["w302"]
 
         await vm.loadFolder(root)
 
         guard case .translated = vm.pages[0].state else {
             return XCTFail("A completed page must remain translated")
         }
-        guard case .error(let message) = vm.pages[1].state else {
+        guard case .error(let message) = vm.pages[2].state else {
             return XCTFail("An unrecoverable page must remain retryable")
         }
         XCTAssertEqual(message, "The translation response was incomplete or unusable. Please try again.")
         XCTAssertFalse(message.contains("MultiPageParseError"))
-        for index in [2, 3, 4] {
+        for index in [1, 3, 4] {
             guard case .translated = vm.pages[index].state else {
                 return XCTFail("Recoverable page \(index) should still be translated")
             }

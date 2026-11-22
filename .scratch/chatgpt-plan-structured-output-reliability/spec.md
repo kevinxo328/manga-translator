@@ -50,9 +50,9 @@ is shown as a friendly retryable message.
 11. As a privacy-conscious user, I want diagnostics to retain only sanitized
     failure classification and metadata, so that manga text and OAuth tokens do
     not enter logs.
-12. As a user, I want ChatGPT Plan to retain rolling cross-page context while
-    using one page per request when larger streamed responses can stall, so
-    that reliability improvements do not affect other engines.
+12. As a user, I want ChatGPT Plan's normal batch size and cross-page context
+    retained when requests succeed, so that reliability improvements do not
+    reduce translation quality or throughput.
 
 ## Implementation Decisions
 
@@ -82,10 +82,8 @@ is shown as a friendly retryable message.
 - Successful structured-output fallback and per-page recovery do not display a
   notification. Sanitized diagnostic events distinguish unsupported capability,
   incomplete stream, malformed completed output, retry, and final failure.
-- API-key OpenAI, GitHub Copilot, DeepL, and Google retain the existing batch
-  limits of up to five pages and 45 bubbles, with the existing single-page
-  oversize behavior. ChatGPT Plan uses one page per request because larger
-  streamed responses can stall before the terminal response event.
+- The existing batch limits remain unchanged: up to five pages and 45 bubbles,
+  with the existing single-page oversize behavior.
 
 ## Testing Decisions
 
@@ -104,9 +102,8 @@ is shown as a friendly retryable message.
 
 ## Out of Scope
 
-- Adding input-token sizing or splitting a single page into smaller translation
-  requests. The ChatGPT Plan one-page request limit is an explicit reliability
-  exception; changing batch sizes for other engines remains out of scope.
+- Changing normal batch size, adding input-token sizing, or splitting a single
+  page into smaller translation requests.
 - A separate network request made solely to probe model support.
 - Modifying the selected model, switching translation engines, or bypassing
   ChatGPT Plan availability and eligibility failures.

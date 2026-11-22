@@ -206,7 +206,8 @@ struct ChatGPTPlanAccountServiceTests {
 
         let output = try await service.translate(bubbles: [bubble], from: .ja, to: .en, context: context)
         await logger.flush()
-        let logMessages = (await logStore.query(filter: DebugLogFilter())).map(\.message).joined(separator: "\n")
+        let entries = await logStore.query(filter: DebugLogFilter())
+        let logMessages = entries.map(\.message).joined(separator: "\n")
 
         #expect(output.bubbles.map(\.translatedText) == ["Hello"])
         #expect(logMessages.contains("Translation started"))
@@ -216,6 +217,12 @@ struct ChatGPTPlanAccountServiceTests {
         #expect(logMessages.contains("SSE event received: response.completed"))
         #expect(logMessages.contains("Response stream completed"))
         #expect(logMessages.contains("Translation completed"))
+        #expect(entries.contains {
+            $0.kind == .content
+                && $0.message.contains("SSE data frame #2")
+                && $0.message.contains("Hello")
+        })
+        #expect(!logMessages.contains("old-access"))
         let request = try #require(captured.request)
         #expect(request.url == URL(string: "https://api.openai.com/v1/responses"))
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer old-access")

@@ -296,6 +296,11 @@ struct ChatGPTPlanTranslationService: TranslationService {
                     model: model,
                     endpoint: endpoint
                 )
+            } onDataFrame: { frameNumber, rawLine in
+                debugLogger.logContent(
+                    "SSE data frame #\(frameNumber): \(rawLine)",
+                    category: .translationChatGPTPlan
+                )
             }
             debugLogger.logAPIDiagnostic(
                 "Response stream completed",
@@ -454,10 +459,12 @@ private enum ChatGPTPlanSSEDecoder {
 
     static func responseText(
         from bytes: URLSession.AsyncBytes,
-        onEvent: @escaping @Sendable (String) -> Void = { _ in }
+        onEvent: @escaping @Sendable (String) -> Void = { _ in },
+        onDataFrame: @escaping @Sendable (Int, String) -> Void = { _, _ in }
     ) async throws -> String {
         var text = ""
         var completed = false
+        var frameNumber = 0
 
         func consume(_ payload: String) throws -> Bool {
             guard !payload.isEmpty else { return false }
@@ -484,7 +491,10 @@ private enum ChatGPTPlanSSEDecoder {
         }
         for try await line in bytes.lines {
             if line.hasPrefix("data:") {
-                if try consume(String(line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces))) {
+                frameNumber += 1
+                onDataFrame(frameNumber, String(line))
+                let payload = String(line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces))
+                if try consume(payload) {
                     break
                 }
             }

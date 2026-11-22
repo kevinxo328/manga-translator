@@ -517,13 +517,7 @@ final class TranslationViewModel: ObservableObject {
     // steady state uses the full cap — bounding the extra LLM calls versus
     // full-cap grouping to 2 per run. Group composition depends only on page
     // order, bubble counts, and preparation outcomes, never on OCR/LLM timing.
-    // ChatGPT Plan stays at one page per request because larger streamed
-    // responses can stall before reaching the terminal response event.
-    // See producer-consumer-llm-pipeline/design.md D2.
-    private func rampPageCap(forGroupOrdinal ordinal: Int, engine: TranslationEngine) -> Int {
-        if engine == .chatGPTPlan {
-            return 1
-        }
+    private func rampPageCap(forGroupOrdinal ordinal: Int) -> Int {
         switch ordinal {
         case 0: return 1
         case 1: return 3
@@ -579,10 +573,7 @@ final class TranslationViewModel: ObservableObject {
                     ))
                     currentBubbleCount += meaningful.count
                     nextIndex += 1
-                    if currentGroup.count >= rampPageCap(
-                        forGroupOrdinal: dispatchedGroupCount,
-                        engine: service.engine
-                    ) {
+                    if currentGroup.count >= rampPageCap(forGroupOrdinal: dispatchedGroupCount) {
                         cancelled = await dispatchCurrentGroup()
                     }
                 default:
@@ -780,7 +771,9 @@ final class TranslationViewModel: ObservableObject {
         do {
             let pageResult = try await ocrRouter.processPage(image: nsImage, sourceLanguage: preferences.sourceLanguage)
             let ordered = pageResult.bubbles
-            let meaningful = ordered.filter { !$0.text.allSatisfy { $0.isPunctuation || $0.isWhitespace } }
+            let meaningful = ordered.filter {
+                !$0.text.allSatisfy { $0.isPunctuation || $0.isSymbol || $0.isWhitespace }
+            }
             let skippedCount = ordered.count - meaningful.count
             if skippedCount > 0 {
                 pipelineLogger.log(
@@ -814,7 +807,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     // Run one multi-page LLM batch. Returns true when later groups must stop. ChatGPT Plan
-    // retries a failed batch once before using the same per-page recovery as other LLMs.
+    // retries ordinary batch failures once; timeouts go directly to per-page recovery.
     private func runBatch(_ group: [BatchPlanItem], service: any TranslationService) async -> Bool {
         guard !group.isEmpty else { return false }
         let pageInputs = group.map {
@@ -858,26 +851,15 @@ final class TranslationViewModel: ObservableObject {
         } catch {
             if service.engine == .chatGPTPlan, isRequestTimeout(error) {
                 pipelineLogger.log(
-                    "ChatGPT Plan batch timed out; stopping without retry or per-page fallback",
-                    level: .error,
+                    "ChatGPT Plan batch timed out; falling back to per-page translation",
+                    level: .warning,
                     category: .pipeline,
                     metadata: [
                         "operation": "chatGPTPlanBatchTimeout",
                         "page_count": "\(group.count)"
                     ]
                 )
-                for item in group where pages.indices.contains(item.pageIndex) {
-                    if let restoreFrom = item.restoreFrom {
-                        pages[item.pageIndex].state = restoreFrom.state
-                    } else {
-                        pages[item.pageIndex].state = .error(
-                            chatGPTPlanRecoveryErrorMessage(for: error)
-                        )
-                    }
-                }
-                return true
-            }
-            if service.engine == .chatGPTPlan {
+            } else if service.engine == .chatGPTPlan {
                 if Task.isCancelled {
                     revertBatchPagesToPending(group)
                     return true
