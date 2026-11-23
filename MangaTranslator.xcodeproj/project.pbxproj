@@ -1445,7 +1445,7 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		C10000010000000000000002 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
+			repositoryURL = "https://github.com/kevinxo328/onnxruntime-swift-package-manager-mirror";
 			requirement = {
 				kind = exactVersion;
 				version = 1.20.0;
