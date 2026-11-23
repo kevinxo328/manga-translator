@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.4 (2026-11-23)
+
+### New Features
+
+- **Batch Processing Control** — Choose whether multi-page OCR and translation processes 1, 2, or 3 pages at a time in Settings → Preferences.
+- **Copy Individual Debug Entries** — Copy a complete debug log entry from its detail view for easier sharing and troubleshooting.
+
+### Bug Fixes
+
+- Fixed ChatGPT Plan translations stalling during larger batches; timed-out requests now recover page by page so remaining pages can complete.
+- Fixed symbol-only OCR results being sent for translation, so decorative marks no longer appear as translated content.
+
 ## v1.6.3 (2026-10-29)
 
 ### Bug Fixes
